@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed OpenAIP Map Test</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        #map { width: 100%; height: 600px; border: 1px solid #ccc; }
+        .status { margin-bottom: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>🗺️ Fixed OpenAIP Map Test</h1>
+    <div id="status" class="status">Initializing map...</div>
+    <div id="map"></div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        
+        function updateStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${isError ? 'error' : 'success'}`;
+            console.log(message);
+        }
+
+        // Test the fixed base style
+        const testStyle = {
+            version: 8,
+            name: 'Fixed OpenAIP Test',
+            sources: {
+                'maptiler-base': {
+                    type: 'raster',
+                    tiles: [
+                        // Use MapTiler basic style for better reliability
+                        'https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key=j17qmowDrtDVYZ7Zn34d',
+                        // Fallback to OpenStreetMap if MapTiler fails
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+                    ],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '© MapTiler © OpenStreetMap contributors'
+                },
+                'openaip-data': {
+                    type: 'vector',
+                    tiles: ['http://localhost:3001/api/maps/openaip-vectortiles/{z}/{x}/{y}'],
+                    maxzoom: 14
+                }
+            },
+            layers: [
+                {
+                    id: 'background',
+                    type: 'background',
+                    paint: {
+                        'background-color': '#f8f8f6'
+                    }
+                },
+                {
+                    id: 'base-map',
+                    type: 'raster',
+                    source: 'maptiler-base',
+                    paint: {
+                        'raster-opacity': 0.8
+                    }
+                },
+                // Test OpenAIP airspace layer
+                {
+                    id: 'airspace-fill',
+                    type: 'fill',
+                    source: 'openaip-data',
+                    'source-layer': 'airspaces',
+                    paint: {
+                        'fill-color': [
+                            'match',
+                            ['get', 'type'],
+                            'CTR', '#ff0000',
+                            'TMA', '#0000ff',
+                            'MOA', '#800080',
+                            '#cccccc'
+                        ],
+                        'fill-opacity': 0.2
+                    }
+                },
+                // Test OpenAIP airports layer
+                {
+                    id: 'airports',
+                    type: 'circle',
+                    source: 'openaip-data',
+                    'source-layer': 'airports',
+                    paint: {
+                        'circle-radius': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            7, 3,
+                            10, 6,
+                            14, 10
+                        ],
+                        'circle-color': '#0066cc',
+                        'circle-stroke-color': '#004499',
+                        'circle-stroke-width': 1
+                    }
+                }
+            ]
+        };
+
+        try {
+            updateStatus('Creating map with fixed base style...');
+            
+            const map = new maplibregl.Map({
+                container: 'map',
+                style: testStyle,
+                center: [8.5, 47.4], // Switzerland
+                zoom: 8
+            });
+
+            map.on('load', () => {
+                updateStatus('✅ Map loaded successfully! Base tiles working, OpenAIP data loading...');
+            });
+
+            map.on('error', (e) => {
+                updateStatus(`❌ Map error: ${e.error.message}`, true);
+            });
+
+            map.on('sourcedata', (e) => {
+                if (e.sourceId === 'openaip-data' && e.isSourceLoaded) {
+                    updateStatus('✅ OpenAIP data loaded successfully!');
+                }
+            });
+
+            // Add navigation controls
+            map.addControl(new maplibregl.NavigationControl());
+
+        } catch (error) {
+            updateStatus(`❌ Failed to initialize map: ${error.message}`, true);
+        }
+    </script>
+</body>
+</html>

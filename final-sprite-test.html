@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final OpenAIP Sprite Fix Test</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Courier New', monospace; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 450px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+        .test-header {
+            color: #4ecdc4;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+        .success { color: #51cf66; }
+        .error { color: #ff6b6b; }
+        .warning { color: #ffd43b; }
+        .info { color: #74c0fc; }
+        .test-section {
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px dotted #444;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="status">
+        <div class="test-header">🔧 OpenAIP Sprite Fix Verification</div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        let testCount = 0;
+        let passCount = 0;
+        let failCount = 0;
+        
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerHTML = message;
+            log.appendChild(div);
+            console.log(message.replace(/<[^>]*>/g, ''));
+        }
+
+        function startTest(name) {
+            testCount++;
+            addLog(`<div class="test-section"><strong>Test ${testCount}: ${name}</strong></div>`, 'info');
+        }
+
+        function passTest(message) {
+            passCount++;
+            addLog(`✅ ${message}`, 'success');
+        }
+
+        function failTest(message) {
+            failCount++;
+            addLog(`❌ ${message}`, 'error');
+        }
+
+        function warnTest(message) {
+            addLog(`⚠️ ${message}`, 'warning');
+        }
+
+        // Test the OpenAIP base style (similar to our implementation)
+        startTest('OpenAIP Base Style Creation');
+        
+        const OPENAIP_COLORS = {
+            BACKGROUND: '#f8f8f6',
+            WATER: '#b3d9ff',
+            LAND: '#f0f0e8'
+        };
+
+        const createOpenAipBaseStyle = () => {
+            return {
+                version: 8,
+                name: 'OpenAIP Authentic Base',
+                metadata: {
+                    'mapbox:autocomposite': false,
+                    'mapbox:type': 'template',
+                    'openaip:version': '1.0.0'
+                },
+                sources: {
+                    'osm-tiles': {
+                        type: 'raster',
+                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        maxzoom: 19
+                    }
+                },
+                layers: [
+                    {
+                        id: 'background',
+                        type: 'background',
+                        paint: {
+                            'background-color': OPENAIP_COLORS.BACKGROUND
+                        }
+                    },
+                    {
+                        id: 'base-raster',
+                        type: 'raster',
+                        source: 'osm-tiles',
+                        layout: {
+                            visibility: 'visible'
+                        },
+                        paint: {
+                            'raster-opacity': 0.4,
+                            'raster-brightness-min': 0.2,
+                            'raster-brightness-max': 0.8,
+                            'raster-contrast': -0.1,
+                            'raster-saturation': -0.3
+                        }
+                    }
+                ],
+                glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf'
+                // NO SPRITE PROPERTY - this is the key fix
+            };
+        };
+
+        try {
+            const baseStyle = createOpenAipBaseStyle();
+            
+            if (baseStyle.sprite === undefined) {
+                warnTest('Base style has undefined sprite property');
+            } else if (!baseStyle.hasOwnProperty('sprite')) {
+                passTest('Base style correctly omits sprite property');
+            } else {
+                failTest(`Base style has sprite property: ${baseStyle.sprite}`);
+            }
+            
+        } catch (error) {
+            failTest(`Base style creation failed: ${error.message}`);
+        }
+
+        // Test map initialization with the fixed style
+        startTest('Map Initialization with Fixed Style');
+        
+        try {
+            const map = new maplibregl.Map({
+                container: 'map',
+                style: createOpenAipBaseStyle(),
+                center: [8.5, 47.4],
+                zoom: 7
+            });
+
+            map.on('load', () => {
+                passTest('Map loaded successfully without sprite errors');
+                
+                // Test adding custom symbols (our canvas-generated symbols)
+                startTest('Custom Symbol Addition');
+                
+                try {
+                    // Test runway symbol
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    
+                    // Critical fix: clear canvas first
+                    ctx.clearRect(0, 0, 32, 32);
+                    
+                    // Draw runway symbol
+                    ctx.fillStyle = '#333333';
+                    ctx.fillRect(6, 14, 20, 4);
+                    ctx.fillRect(14, 6, 4, 20);
+                    
+                    // Critical fix: convert to ImageData
+                    const imageData = ctx.getImageData(0, 0, 32, 32);
+                    
+                    // Test duplicate checking
+                    if (map.hasImage('runway-symbol')) {
+                        warnTest('Runway symbol already exists');
+                    } else {
+                        map.addImage('runway-symbol', imageData);
+                        passTest('Runway symbol added successfully');
+                    }
+                    
+                    // Test VOR symbol
+                    const vorCanvas = document.createElement('canvas');
+                    const vorCtx = vorCanvas.getContext('2d');
+                    vorCanvas.width = 24;
+                    vorCanvas.height = 24;
+                    
+                    vorCtx.clearRect(0, 0, 24, 24);
+                    vorCtx.strokeStyle = '#8e44ad';
+                    vorCtx.lineWidth = 2;
+                    vorCtx.beginPath();
+                    vorCtx.arc(12, 12, 8, 0, 2 * Math.PI);
+                    vorCtx.stroke();
+                    
+                    const vorImageData = vorCtx.getImageData(0, 0, 24, 24);
+                    map.addImage('vor-symbol', vorImageData);
+                    passTest('VOR symbol added successfully');
+                    
+                    // Test airspace pattern
+                    const patternCanvas = document.createElement('canvas');
+                    const patternCtx = patternCanvas.getContext('2d');
+                    patternCanvas.width = 16;
+                    patternCanvas.height = 16;
+                    
+                    patternCtx.clearRect(0, 0, 16, 16);
+                    patternCtx.strokeStyle = '#ff0000';
+                    patternCtx.lineWidth = 1;
+                    for (let i = 0; i < 16; i += 4) {
+                        patternCtx.beginPath();
+                        patternCtx.moveTo(i, 0);
+                        patternCtx.lineTo(i + 16, 16);
+                        patternCtx.stroke();
+                    }
+                    
+                    const patternImageData = patternCtx.getImageData(0, 0, 16, 16);
+                    map.addImage('airspace-hatch', patternImageData);
+                    passTest('Airspace hatch pattern added successfully');
+                    
+                } catch (error) {
+                    failTest(`Symbol addition failed: ${error.message}`);
+                }
+                
+                // Final summary
+                setTimeout(() => {
+                    startTest('Final Results');
+                    addLog(`<div class="test-section">
+                        <strong>Summary:</strong><br>
+                        Total Tests: ${testCount}<br>
+                        <span class="success">Passed: ${passCount}</span><br>
+                        <span class="error">Failed: ${failCount}</span><br>
+                        <span class="warning">Warnings: ${testCount - passCount - failCount}</span>
+                    </div>`, 'info');
+                    
+                    if (failCount === 0) {
+                        passTest('🎉 All sprite fixes working correctly!');
+                    } else {
+                        failTest(`${failCount} issues still need attention`);
+                    }
+                }, 1000);
+            });
+
+            map.on('error', (e) => {
+                failTest(`Map error: ${e.error.message}`);
+                
+                if (e.error.message.includes('sprite')) {
+                    failTest('SPRITE ERROR STILL PRESENT - needs further investigation');
+                }
+            });
+            
+        } catch (error) {
+            failTest(`Map initialization failed: ${error.message}`);
+        }
+    </script>
+</body>
+</html>

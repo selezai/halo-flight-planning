@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Simple OpenAIP Vector Tile Properties</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .property { margin: 5px 0; }
+        .label { font-weight: bold; color: #333; }
+        .value { color: #666; }
+        pre { background: #f5f5f5; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>OpenAIP Vector Tile Properties Test</h1>
+    <p>This will help us understand what simple properties are available from OpenAIP vector tiles</p>
+    
+    <h2>Expected Properties for LFSM (based on OpenAIP data):</h2>
+    <div class="property"><span class="label">Name:</span> <span class="value">MONTBELIARD COURCELLES</span></div>
+    <div class="property"><span class="label">ICAO:</span> <span class="value">LFSM</span></div>
+    <div class="property"><span class="label">Country:</span> <span class="value">FR</span></div>
+    <div class="property"><span class="label">Type:</span> <span class="value">Airport resp. Airfield IFR</span></div>
+    <div class="property"><span class="label">Elevation:</span> <span class="value">317 m MSL</span></div>
+    <div class="property"><span class="label">Coordinates:</span> <span class="value">47.486670, 6.791390</span></div>
+    <div class="property"><span class="label">Traffic Types:</span> <span class="value">VFR/IFR</span></div>
+    
+    <h2>Properties to look for in vector tiles:</h2>
+    <pre>
+// Basic properties (likely available directly)
+name: "MONTBELIARD COURCELLES"
+icao: "LFSM" 
+identifier: "LFSM"
+country: "FR"
+type: "Airport resp. Airfield IFR" or similar
+elevation: 317 or "317"
+latitude: 47.486670
+longitude: 6.791390
+
+// Extended properties (might be in name_label_full or other fields)
+name_label_full: might contain frequency info like "LFSM 317 m MSL"
+name_label: simplified version
+traffic_type: "VFR/IFR" or similar
+frequencies: might be embedded in text fields
+
+// Runway info (might be in text fields)
+runway_info: might contain "08L 855x50m GRASS, 08 1700x23m ASPH"
+surface: "GRASS" or "ASPH"
+
+// Services (might be boolean flags)
+skydiving: true/false
+avgas: true/false
+jet_a1: true/false
+</pre>
+
+    <h2>Simple Extraction Strategy:</h2>
+    <ol>
+        <li><strong>Use direct property access</strong> - same as map labels: <code>props.name</code>, <code>props.icao</code></li>
+        <li><strong>Parse name_label_full</strong> - often contains elevation, frequency info</li>
+        <li><strong>Look for simple boolean flags</strong> - for services like fuel, skydiving</li>
+        <li><strong>Extract from text fields</strong> - runway info might be in description/remarks</li>
+        <li><strong>Provide reasonable defaults</strong> - instead of "NIL" everywhere</li>
+    </ol>
+
+    <script>
+        // Simple test function to analyze OpenAIP properties
+        function analyzeOpenAipProperties(feature) {
+            const props = feature.properties || {};
+            
+            console.log('🔍 Analyzing OpenAIP feature properties:');
+            console.log('Raw properties:', props);
+            
+            // Basic extraction (same as map labels)
+            const basicData = {
+                name: props.name || 'Unknown',
+                icao: props.icao || props.identifier || 'N/A',
+                country: props.country || 'Unknown',
+                type: props.type || 'Unknown',
+                elevation: props.elevation || 'Unknown',
+                coordinates: [props.longitude, props.latitude],
+                
+                // Text fields that might contain additional info
+                fullLabel: props.name_label_full || '',
+                label: props.name_label || '',
+                description: props.description || '',
+                remarks: props.remarks || ''
+            };
+            
+            console.log('✅ Basic extracted data:', basicData);
+            
+            // Look for patterns in text fields
+            if (basicData.fullLabel) {
+                console.log('🔍 Analyzing full label for patterns:', basicData.fullLabel);
+                
+                // Look for elevation pattern
+                const elevationMatch = basicData.fullLabel.match(/(\d+)\s*m\s*MSL/i);
+                if (elevationMatch) {
+                    console.log('✅ Found elevation in label:', elevationMatch[1] + ' m MSL');
+                }
+                
+                // Look for frequency pattern
+                const freqMatch = basicData.fullLabel.match(/(\d{3}\.\d{1,3})\s*MHz/i);
+                if (freqMatch) {
+                    console.log('✅ Found frequency in label:', freqMatch[1] + ' MHz');
+                }
+            }
+            
+            return basicData;
+        }
+        
+        // This function will be called when we click on features in the actual map
+        window.testOpenAipExtraction = analyzeOpenAipProperties;
+        
+        console.log('🚀 OpenAIP property analysis ready. Click on airport features to test.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenAIP Debug Test</title>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #debug { position: absolute; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; max-width: 300px; font-family: monospace; font-size: 12px; z-index: 1000; }
+    </style>
+</head>
+<body>
+    <div id="debug">Loading OpenAIP debug test...</div>
+    <div id="map"></div>
+    
+    <script>
+        const debugDiv = document.getElementById('debug');
+        
+        function log(message) {
+            console.log(message);
+            debugDiv.innerHTML += message + '<br>';
+        }
+        
+        async function testOpenAIP() {
+            try {
+                log('🔄 Fetching OpenAIP style...');
+                
+                const response = await fetch('http://localhost:3001/api/styles/openaip-default-style.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const style = await response.json();
+                log(`✅ Style loaded with ${Object.keys(style.sources).length} sources and ${style.layers.length} layers`);
+                
+                // Log sources
+                log('📊 Sources:');
+                Object.keys(style.sources).forEach(sourceId => {
+                    const source = style.sources[sourceId];
+                    log(`  - ${sourceId}: ${source.type}`);
+                    if (source.tiles) {
+                        log(`    Tiles: ${source.tiles[0]}`);
+                    }
+                });
+                
+                // Log layers by source
+                log('🗂️ Layers by source:');
+                const layersBySource = {};
+                style.layers.forEach(layer => {
+                    if (!layersBySource[layer.source]) {
+                        layersBySource[layer.source] = [];
+                    }
+                    layersBySource[layer.source].push(layer.id);
+                });
+                
+                Object.keys(layersBySource).forEach(sourceId => {
+                    log(`  ${sourceId}: ${layersBySource[sourceId].length} layers`);
+                    layersBySource[sourceId].slice(0, 5).forEach(layerId => {
+                        log(`    - ${layerId}`);
+                    });
+                    if (layersBySource[sourceId].length > 5) {
+                        log(`    ... and ${layersBySource[sourceId].length - 5} more`);
+                    }
+                });
+                
+                // Test a tile request
+                log('🧪 Testing tile request...');
+                const tileResponse = await fetch('http://localhost:3001/api/maps/openaip-vectortiles/7/67/44.pbf');
+                log(`📦 Tile response: ${tileResponse.status} (${tileResponse.headers.get('content-length')} bytes)`);
+                
+                // Initialize map with OpenAIP style
+                log('🗺️ Initializing map...');
+                const map = new maplibregl.Map({
+                    container: 'map',
+                    style: style,
+                    center: [8.5, 47.4], // Switzerland
+                    zoom: 8
+                });
+                
+                map.on('load', () => {
+                    log('✅ Map loaded successfully!');
+                    
+                    // Check what sources and layers are actually on the map
+                    const mapSources = Object.keys(map.getStyle().sources);
+                    const mapLayers = map.getStyle().layers.map(l => l.id);
+                    
+                    log(`🔍 Map has ${mapSources.length} sources: ${mapSources.join(', ')}`);
+                    log(`🔍 Map has ${mapLayers.length} layers`);
+                    
+                    // Check for OpenAIP data
+                    const openAipLayers = mapLayers.filter(id => 
+                        map.getLayer(id) && 
+                        (map.getLayer(id).source === 'openaip-data' || map.getLayer(id).source === 'openaip-tiles')
+                    );
+                    log(`🎯 OpenAIP layers: ${openAipLayers.length}`);
+                    openAipLayers.forEach(layerId => {
+                        const layer = map.getLayer(layerId);
+                        log(`  - ${layerId} (${layer.type}) from ${layer.source}`);
+                    });
+                });
+                
+                map.on('error', (e) => {
+                    log(`❌ Map error: ${e.error.message}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+        
+        testOpenAIP();
+    </script>
+</body>
+</html>

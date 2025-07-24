@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAIP Fixes Test</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="status">
+        <div>🧪 Testing OpenAIP Sprite Fixes</div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message) {
+            const div = document.createElement('div');
+            div.textContent = message;
+            log.appendChild(div);
+            console.log(message);
+        }
+
+        // Test canvas to ImageData conversion
+        function testCanvasToImageData() {
+            addLog('Testing canvas to ImageData conversion...');
+            
+            try {
+                // Create a test canvas
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 32;
+                canvas.height = 32;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, 32, 32);
+                
+                // Draw a simple shape
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(10, 10, 12, 12);
+                
+                // Convert to ImageData
+                const imageData = ctx.getImageData(0, 0, 32, 32);
+                
+                addLog(`✅ Canvas to ImageData: ${imageData.width}x${imageData.height}, ${imageData.data.length} bytes`);
+                return imageData;
+                
+            } catch (error) {
+                addLog(`❌ Canvas to ImageData failed: ${error.message}`);
+                return null;
+            }
+        }
+
+        // Test MapLibre GL with ImageData
+        function testMapLibreImageData() {
+            addLog('Testing MapLibre GL with ImageData...');
+            
+            const map = new maplibregl.Map({
+                container: 'map',
+                style: {
+                    version: 8,
+                    sources: {},
+                    layers: [
+                        {
+                            id: 'background',
+                            type: 'background',
+                            paint: {
+                                'background-color': '#f8f8f6'
+                            }
+                        }
+                    ]
+                },
+                center: [8.5, 47.4],
+                zoom: 7
+            });
+
+            map.on('load', () => {
+                addLog('Map loaded, testing image addition...');
+                
+                try {
+                    // Test the fixed canvas to ImageData approach
+                    const testImageData = testCanvasToImageData();
+                    
+                    if (testImageData) {
+                        map.addImage('test-symbol', testImageData);
+                        addLog('✅ Successfully added ImageData to map');
+                        
+                        // Add a test layer to use the symbol
+                        map.addLayer({
+                            id: 'test-layer',
+                            type: 'symbol',
+                            source: {
+                                type: 'geojson',
+                                data: {
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'Point',
+                                        coordinates: [8.5, 47.4]
+                                    },
+                                    properties: {}
+                                }
+                            },
+                            layout: {
+                                'icon-image': 'test-symbol',
+                                'icon-size': 1
+                            }
+                        });
+                        
+                        addLog('✅ Test symbol layer added successfully');
+                    }
+                    
+                } catch (error) {
+                    addLog(`❌ MapLibre GL test failed: ${error.message}`);
+                }
+            });
+
+            map.on('error', (e) => {
+                addLog(`❌ Map error: ${e.error.message}`);
+            });
+        }
+
+        // Run tests
+        addLog('Starting OpenAIP sprite fix tests...');
+        testMapLibreImageData();
+    </script>
+</body>
+</html>

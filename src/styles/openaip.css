@@ -1,0 +1,336 @@
+/* OpenAIP Professional Map Styling */
+
+/* Smooth transitions for all interactive elements */
+.openaip-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Popup animations */
+.openaip-popup-enter {
+  animation: slideUpFade 0.3s ease-out;
+}
+
+@keyframes slideUpFade {
+  from {
+    transform: translateY(20px) translateX(-50%);
+    opacity: 0;
+    scale: 0.95;
+  }
+  to {
+    transform: translateY(0) translateX(-50%);
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Sidebar slide animation */
+.openaip-sidebar-enter {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.openaip-sidebar-exit {
+  animation: slideOutLeft 0.3s ease-in;
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+/* Map container styling */
+.openaip-map-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f8f9fa;
+}
+
+/* Custom MapLibre controls styling */
+.maplibregl-ctrl-group {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.maplibregl-ctrl-group button {
+  background: transparent;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: rgba(59, 130, 246, 0.1);
+  transform: scale(1.05);
+}
+
+/* Custom popup styling */
+.maplibregl-popup {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.maplibregl-popup-content {
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  padding: 0;
+  max-width: 400px;
+}
+
+.maplibregl-popup-close-button {
+  display: none; /* We use our own close button */
+}
+
+.maplibregl-popup-tip {
+  border-top-color: white;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Loading spinner */
+.openaip-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+}
+
+.openaip-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Feature highlight effects */
+.openaip-feature-highlight {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+/* Smooth zoom transitions */
+.maplibregl-map {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom scrollbar for sidebar */
+.openaip-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.openaip-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.openaip-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.openaip-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Toggle switch styling */
+.openaip-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.openaip-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.openaip-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.openaip-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.openaip-toggle input:checked + .openaip-toggle-slider {
+  background-color: #3b82f6;
+}
+
+.openaip-toggle input:checked + .openaip-toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* Search results styling */
+.openaip-search-result {
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.openaip-search-result:hover {
+  border-left-color: #3b82f6;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 0%, transparent 100%);
+  transform: translateX(2px);
+}
+
+/* Layer panel styling */
+.openaip-layer-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.openaip-layer-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%);
+  transition: width 0.3s ease;
+}
+
+.openaip-layer-item:hover::before {
+  width: 100%;
+}
+
+/* Professional button styling */
+.openaip-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.openaip-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s ease, height 0.3s ease;
+}
+
+.openaip-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .openaip-sidebar {
+    width: 100vw;
+  }
+  
+  .openaip-popup {
+    max-width: 90vw;
+    margin: 0 5vw;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .openaip-sidebar {
+    border: 2px solid #000;
+  }
+  
+  .openaip-popup {
+    border: 2px solid #000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .openaip-transition,
+  .openaip-popup-enter,
+  .openaip-sidebar-enter,
+  .openaip-sidebar-exit,
+  .maplibregl-map {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Focus styles for accessibility */
+.openaip-focusable:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+  .openaip-sidebar,
+  .openaip-popup,
+  .maplibregl-ctrl-group {
+    display: none;
+  }
+}

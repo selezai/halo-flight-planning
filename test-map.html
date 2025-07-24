@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAIP Map Test - Authentic Styling</title>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f6f0;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .status-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 4px;
+            z-index: 1000;
+        }
+        
+        .controls button {
+            margin: 2px;
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        
+        .controls button:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="status-indicator" id="status">🛫 Initializing OpenAIP Map...</div>
+    <div class="controls">
+        <h4>OpenAIP Test Controls</h4>
+        <button onclick="testAirports()">Test Airports</button>
+        <button onclick="testNavaids()">Test Navaids</button>
+        <button onclick="testAirspaces()">Test Airspaces</button>
+        <button onclick="resetView()">Reset View</button>
+    </div>
+
+    <script>
+        // OpenAIP Base Colors
+        const OPENAIP_BASE_COLORS = {
+            BACKGROUND: '#f8f6f0',
+            WATER: '#b8d4f0',
+            WATER_OUTLINE: '#8bb8e8',
+            ROAD_MAJOR: '#d0d0d0',
+            LABEL_TEXT: '#333333',
+            LABEL_HALO: '#ffffff',
+        };
+
+        // OpenAIP Aeronautical Colors
+        const OPENAIP_COLORS = {
+            // Airspace colors
+            CTR_FILL: 'rgba(255, 0, 0, 0.08)',
+            CTR_STROKE: '#ff0000',
+            TMA_FILL: 'rgba(58, 112, 184, 0.08)',
+            TMA_STROKE: '#3a70b8',
+            RESTRICTED_FILL: 'rgba(204, 0, 0, 0.12)',
+            RESTRICTED_STROKE: '#cc0000',
+            
+            // Airport colors
+            AIRPORT_PRIMARY: '#3a70b8',
+            AIRPORT_SECONDARY: '#5a8bc4',
+            HELIPORT: '#27ae60',
+            
+            // Navaid colors
+            VOR_NAVAID: '#8e44ad',
+            NDB_NAVAID: '#d68910',
+            WAYPOINT: '#27ae60',
+            
+            // Common colors
+            WHITE: '#ffffff',
+            BLACK: '#000000',
+        };
+
+        // Create authentic OpenAIP base style
+        const createOpenAipBaseStyle = () => {
+            return {
+                version: 8,
+                name: 'OpenAIP Authentic Base Style',
+                sources: {
+                    'osm': {
+                        type: 'raster',
+                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '© OpenStreetMap contributors'
+                    }
+                },
+                layers: [
+                    {
+                        id: 'background',
+                        type: 'background',
+                        paint: {
+                            'background-color': OPENAIP_BASE_COLORS.BACKGROUND
+                        }
+                    },
+                    {
+                        id: 'osm-raster',
+                        type: 'raster',
+                        source: 'osm',
+                        paint: {
+                            'raster-opacity': 0.3,
+                            'raster-saturation': -0.8,
+                            'raster-brightness-min': 0.8,
+                            'raster-brightness-max': 1.2
+                        }
+                    }
+                ]
+            };
+        };
+
+        // Create VOR symbol
+        const createVORSymbol = (map) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 32;
+            canvas.width = size;
+            canvas.height = size;
+            
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const radius = size * 0.35;
+            
+            // Draw outer circle
+            ctx.strokeStyle = OPENAIP_COLORS.VOR_NAVAID;
+            ctx.fillStyle = OPENAIP_COLORS.VOR_NAVAID;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            // Draw compass rose spokes
+            const spokeLength = radius * 0.8;
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI) / 4;
+                const startX = centerX + Math.cos(angle) * (radius * 0.3);
+                const startY = centerY + Math.sin(angle) * (radius * 0.3);
+                const endX = centerX + Math.cos(angle) * spokeLength;
+                const endY = centerY + Math.sin(angle) * spokeLength;
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+            
+            // Draw center dot
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 3, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            map.addImage('vor-symbol', canvas);
+        };
+
+        // Create runway symbol
+        const createRunwaySymbol = (map) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 32;
+            canvas.width = size;
+            canvas.height = size;
+            
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const runwayWidth = 20;
+            const runwayHeight = 4;
+            
+            // Draw runway
+            ctx.fillStyle = '#666666';
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 1;
+            
+            ctx.fillRect(
+                centerX - runwayWidth / 2,
+                centerY - runwayHeight / 2,
+                runwayWidth,
+                runwayHeight
+            );
+            
+            ctx.strokeRect(
+                centerX - runwayWidth / 2,
+                centerY - runwayHeight / 2,
+                runwayWidth,
+                runwayHeight
+            );
+            
+            // Add threshold markings
+            ctx.fillStyle = '#333333';
+            ctx.fillRect(centerX - runwayWidth / 2 + 2, centerY - runwayHeight / 2, 2, runwayHeight);
+            ctx.fillRect(centerX + runwayWidth / 2 - 4, centerY - runwayHeight / 2, 2, runwayHeight);
+            
+            map.addImage('runway-symbol', canvas);
+        };
+
+        // Initialize map
+        let map;
+        
+        const initMap = async () => {
+            try {
+                updateStatus('🗺️ Creating OpenAIP base style...');
+                
+                map = new maplibregl.Map({
+                    container: 'map',
+                    style: createOpenAipBaseStyle(),
+                    center: [8.5, 47.4], // Switzerland
+                    zoom: 7
+                });
+
+                map.on('load', async () => {
+                    updateStatus('✅ Base map loaded, creating symbols...');
+                    
+                    // Create aviation symbols
+                    createVORSymbol(map);
+                    createRunwaySymbol(map);
+                    
+                    updateStatus('🛫 OpenAIP Test Map Ready - Authentic Styling Applied');
+                    
+                    // Try to load OpenAIP data through proxy
+                    try {
+                        updateStatus('🔄 Attempting to load OpenAIP data...');
+                        
+                        const response = await fetch('http://localhost:3001/api/styles/openaip-default-style.json');
+                        if (response.ok) {
+                            const openAipStyle = await response.json();
+                            updateStatus(`📊 OpenAIP style loaded: ${openAipStyle.layers.length} layers`);
+                            
+                            // Add OpenAIP sources
+                            Object.entries(openAipStyle.sources).forEach(([sourceId, source]) => {
+                                if (source.type === 'vector' && !map.getSource(sourceId)) {
+                                    map.addSource(sourceId, source);
+                                }
+                            });
+                            
+                            // Add sample layers for testing
+                            const testLayers = openAipStyle.layers.filter(layer => 
+                                layer.id.includes('airport') || 
+                                layer.id.includes('navaid') || 
+                                layer.id.includes('airspace')
+                            ).slice(0, 10); // Limit to first 10 for testing
+                            
+                            testLayers.forEach(layer => {
+                                if (!map.getLayer(layer.id)) {
+                                    try {
+                                        map.addLayer(layer);
+                                        console.log(`✅ Added layer: ${layer.id}`);
+                                    } catch (err) {
+                                        console.warn(`❌ Failed to add layer ${layer.id}:`, err);
+                                    }
+                                }
+                            });
+                            
+                            updateStatus(`🛫 OpenAIP Test: ${testLayers.length} layers loaded`);
+                        } else {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                    } catch (error) {
+                        console.warn('OpenAIP data not available:', error);
+                        updateStatus('⚠️ OpenAIP data unavailable - showing base style only');
+                        
+                        // Add sample test data
+                        addTestData();
+                    }
+                });
+
+                map.on('error', (e) => {
+                    console.error('Map error:', e);
+                    updateStatus('❌ Map error - check console');
+                });
+
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+                updateStatus('❌ Failed to initialize map');
+            }
+        };
+
+        // Add test data for demonstration
+        const addTestData = () => {
+            // Add test airport
+            map.addSource('test-airports', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: [
+                        {
+                            type: 'Feature',
+                            geometry: { type: 'Point', coordinates: [8.5, 47.4] },
+                            properties: { name: 'Test Airport', icao: 'LSZH', type: 'large_airport' }
+                        }
+                    ]
+                }
+            });
+
+            map.addLayer({
+                id: 'test-airports-symbols',
+                type: 'symbol',
+                source: 'test-airports',
+                layout: {
+                    'icon-image': 'runway-symbol',
+                    'icon-size': 1.0,
+                    'text-field': ['get', 'icao'],
+                    'text-font': ['Open Sans Bold'],
+                    'text-size': 12,
+                    'text-anchor': 'top',
+                    'text-offset': [0, 1.5]
+                },
+                paint: {
+                    'text-color': OPENAIP_COLORS.AIRPORT_PRIMARY,
+                    'text-halo-color': OPENAIP_COLORS.WHITE,
+                    'text-halo-width': 1.5
+                }
+            });
+
+            // Add test VOR
+            map.addSource('test-navaids', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: [
+                        {
+                            type: 'Feature',
+                            geometry: { type: 'Point', coordinates: [8.3, 47.2] },
+                            properties: { name: 'Test VOR', ident: 'TST', type: 'VOR' }
+                        }
+                    ]
+                }
+            });
+
+            map.addLayer({
+                id: 'test-navaids-symbols',
+                type: 'symbol',
+                source: 'test-navaids',
+                layout: {
+                    'icon-image': 'vor-symbol',
+                    'icon-size': 0.8,
+                    'text-field': ['get', 'ident'],
+                    'text-font': ['Open Sans Bold'],
+                    'text-size': 10,
+                    'text-anchor': 'top',
+                    'text-offset': [0, 1.2]
+                },
+                paint: {
+                    'text-color': OPENAIP_COLORS.VOR_NAVAID,
+                    'text-halo-color': OPENAIP_COLORS.WHITE,
+                    'text-halo-width': 1.5
+                }
+            });
+
+            updateStatus('🧪 Test data added - Airport & VOR symbols visible');
+        };
+
+        // Utility functions
+        const updateStatus = (message) => {
+            document.getElementById('status').textContent = message;
+            console.log(message);
+        };
+
+        const testAirports = () => {
+            if (map.getLayer('test-airports-symbols')) {
+                map.flyTo({ center: [8.5, 47.4], zoom: 12 });
+                updateStatus('✈️ Focusing on test airport');
+            }
+        };
+
+        const testNavaids = () => {
+            if (map.getLayer('test-navaids-symbols')) {
+                map.flyTo({ center: [8.3, 47.2], zoom: 12 });
+                updateStatus('🧭 Focusing on test VOR');
+            }
+        };
+
+        const testAirspaces = () => {
+            updateStatus('🛡️ Airspace test - check console for available layers');
+            const layers = map.getStyle().layers;
+            layers.forEach(layer => {
+                if (layer.id.includes('airspace')) {
+                    console.log(`Airspace layer: ${layer.id} (${layer.type})`);
+                }
+            });
+        };
+
+        const resetView = () => {
+            map.flyTo({ center: [8.5, 47.4], zoom: 7 });
+            updateStatus('🗺️ View reset to Switzerland');
+        };
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initMap);
+    </script>
+</body>
+</html>

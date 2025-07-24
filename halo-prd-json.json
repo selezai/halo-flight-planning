@@ -1,0 +1,485 @@
+{
+  "product": {
+    "name": "Halo",
+    "displayName": "Halo Flight Planning",
+    "version": "1.0",
+    "type": "Progressive Web App with Native iOS/Android",
+    "lastUpdated": "2025-01-01"
+  },
+  "executiveSummary": {
+    "productOverview": "Next-generation flight planning and navigation application designed to address gaps in current aviation software, particularly in the African market",
+    "visionStatement": "To become the preferred flight planning solution for pilots in Africa and beyond by offering superior weather visualization, seamless traffic integration, and intelligent flight planning assistance at an accessible price point",
+    "keyDifferentiators": [
+      "Dual VFR/IFR Capability unlike SkyDemon's VFR focus",
+      "AI-Enhanced Planning with Gemini integration",
+      "African Market Focus optimized for South African aviation",
+      "Multi-Source Traffic Integration",
+      "Advanced Weather Visualization",
+      "Competitive pricing: 69% cheaper than SkyDemon for basic tier"
+    ]
+  },
+  "marketAnalysis": {
+    "targetMarket": {
+      "primary": "South African private and commercial pilots",
+      "secondary": "Flight schools and training organizations in Southern Africa",
+      "tertiary": "Expansion to broader African market and international users"
+    },
+    "userPersonas": [
+      {
+        "type": "Private VFR Pilot",
+        "characteristics": [
+          "Flies 50-100 hours annually",
+          "Needs simple, intuitive planning tools",
+          "Values weather visualization and airspace warnings",
+          "Price-sensitive"
+        ]
+      },
+      {
+        "type": "Commercial IFR Pilot",
+        "characteristics": [
+          "Flies 500+ hours annually",
+          "Requires comprehensive IFR features",
+          "Needs reliable performance data",
+          "Values efficiency and time-saving features"
+        ]
+      },
+      {
+        "type": "Flight Instructor",
+        "characteristics": [
+          "Needs tools for both teaching and flying",
+          "Requires multi-aircraft profiles",
+          "Values clear visualization for instruction",
+          "Needs student-friendly features"
+        ]
+      }
+    ],
+    "competitiveLandscape": [
+      {
+        "competitor": "SkyDemon",
+        "strengths": "Market leader for VFR in Europe",
+        "weaknesses": "Limited IFR capability, no AI features",
+        "pricing": "R319/month"
+      },
+      {
+        "competitor": "ForeFlight",
+        "strengths": "Strong IFR features",
+        "weaknesses": "iOS-only and expensive",
+        "pricing": "~R400+/month"
+      },
+      {
+        "competitor": "Garmin Pilot",
+        "strengths": "Good Garmin hardware integration",
+        "weaknesses": "Complex interface",
+        "pricing": "~R300+/month"
+      }
+    ]
+  },
+  "features": {
+    "basicTier": {
+      "name": "Basic",
+      "price": {
+        "monthly": "ZAR 99",
+        "yearly": "ZAR 713 (40% discount)"
+      },
+      "features": {
+        "flightPlanning": [
+          "Route creation with drag-and-drop waypoints",
+          "Automatic route optimization",
+          "Mass and balance calculations",
+          "Fuel planning with reserves",
+          "Performance calculations",
+          "Flight plan filing (ICAO format)",
+          "Multi-leg journey support",
+          "Alternative route planning"
+        ],
+        "navigation": [
+          "Moving map with GPS positioning",
+          "Offline map support",
+          "Track recording and replay",
+          "Direct-to functionality",
+          "Nearest airport/navaid search",
+          "Approach guidance",
+          "Circuit patterns",
+          "Taxi diagrams"
+        ],
+        "weather": [
+          "METAR/TAF display",
+          "Graphical weather overlay",
+          "Wind visualization at multiple altitudes",
+          "Cloud coverage display",
+          "Precipitation radar",
+          "Temperature and pressure charts",
+          "Sunset/sunrise calculations",
+          "Weather along route"
+        ],
+        "airspaceAndNotams": [
+          "Interactive airspace display",
+          "Altitude-filtered airspace",
+          "NOTAM graphical representation",
+          "Airspace warnings",
+          "Frequency information",
+          "ATC contact details",
+          "Special use airspace alerts",
+          "Temporary restrictions"
+        ],
+        "aircraftManagement": [
+          "Multiple aircraft profiles (limit: 3)",
+          "Performance data storage",
+          "Weight and balance templates",
+          "Equipment configuration",
+          "Maintenance tracking",
+          "Document storage",
+          "Checklist integration"
+        ]
+      },
+      "support": "Community support",
+      "flightLogStorage": "1 year"
+    },
+    "premiumTier": {
+      "name": "Premium",
+      "price": {
+        "monthly": "ZAR 249",
+        "yearly": "ZAR 1,793 (40% discount)"
+      },
+      "includesAllBasicFeatures": true,
+      "additionalFeatures": {
+        "aiPoweredAssistant": {
+          "poweredBy": "Gemini AI",
+          "capabilities": [
+            "Intelligent Route Optimization - Analyzes weather, winds, terrain, and airspace",
+            "Natural Language Queries - Ask questions like 'Plan a route to Cape Town avoiding bad weather'",
+            "Automated Weather Analysis - AI interprets complex weather patterns",
+            "Smart Alternate Selection - Automatically suggests suitable alternates",
+            "Fuel Stop Optimization - Calculates optimal refueling points",
+            "Risk Assessment - Provides flight risk scores",
+            "Predictive Alerts - Warns of potential issues",
+            "Historical Pattern Analysis - Learns from previous flights",
+            "Dynamic Re-routing - Real-time route adjustments",
+            "Performance Predictions - AI-calculated fuel burn and time"
+          ]
+        },
+        "advancedWeather": [
+          "AI-enhanced weather prediction",
+          "Turbulence forecasting",
+          "Icing probability maps",
+          "Enhanced resolution weather data",
+          "Custom weather alerts",
+          "Weather trend analysis",
+          "Route-specific briefings"
+        ],
+        "enhancedTrafficIntegration": [
+          "Multi-source traffic display (ADS-B, FLARM, FANET)",
+          "Traffic conflict alerts",
+          "Traffic pattern analysis",
+          "See-and-avoid assistance",
+          "Historical traffic density maps",
+          "Formation flight support"
+        ],
+        "ifrCapabilities": [
+          "Approach plate overlay",
+          "SID/STAR integration",
+          "Airways navigation",
+          "Hold pattern assistance",
+          "Procedure turn guidance",
+          "DME arc support",
+          "IFR alternate requirements",
+          "MEA/MOCA display"
+        ],
+        "professionalTools": [
+          "Unlimited aircraft profiles",
+          "Flight log synchronization",
+          "Currency tracking",
+          "Duty time monitoring",
+          "Expense tracking",
+          "Custom report generation",
+          "API access for integration"
+        ]
+      },
+      "support": "Priority support (4h response)",
+      "flightLogStorage": "Lifetime"
+    }
+  },
+  "hardwareIntegration": [
+    "External GPS support",
+    "ADS-B receiver compatibility (SkyEcho, PilotAware, Stratux)",
+    "Autopilot connectivity via Bluetooth/RS232",
+    "AHRS integration",
+    "Engine monitor data display",
+    "Headset audio integration",
+    "External display support"
+  ],
+  "technicalArchitecture": {
+    "frontend": {
+      "type": "Progressive Web App",
+      "technologies": [
+        "React-based responsive design",
+        "Service workers for offline functionality",
+        "WebGL for advanced graphics",
+        "Touch-optimized interface"
+      ]
+    },
+    "nativeApps": {
+      "framework": "React Native or Flutter",
+      "features": [
+        "Background GPS tracking",
+        "Push notifications",
+        "Native hardware access",
+        "App store distribution"
+      ]
+    },
+    "backend": {
+      "platform": "Supabase",
+      "components": [
+        "PostgreSQL database",
+        "Real-time subscriptions",
+        "Authentication and authorization",
+        "File storage for charts/documents",
+        "Edge functions for API logic"
+      ]
+    },
+    "ai": {
+      "platform": "Gemini API",
+      "implementation": "Model Context Protocol (MCP) for dynamic data integration"
+    },
+    "dataSources": {
+      "aviationData": [
+        "SACAA AIS (official South African data)",
+        "OpenAIP (community data)",
+        "ICAO API (international standards)"
+      ],
+      "weatherData": [
+        "NOAA/NWS aviation weather",
+        "Local meteorological services",
+        "AI-enhanced predictions"
+      ],
+      "trafficData": [
+        "ADS-B Exchange",
+        "OpenSky Network",
+        "Direct device connections"
+      ]
+    }
+  },
+  "userExperience": {
+    "designPrinciples": [
+      "Clarity First - Information hierarchy optimized for in-flight use",
+      "Touch Optimized - Large touch targets for turbulence",
+      "Glanceable - Critical info visible at a glance",
+      "Consistent - Familiar aviation conventions",
+      "Responsive - Adapts to device and orientation",
+      "Accessible - High contrast modes, colorblind support"
+    ],
+    "keyInterfaces": [
+      "Main Map View - Full-screen with overlay controls",
+      "Planning Interface - Split-screen route/map view",
+      "Navigation Mode - Uncluttered in-flight display"
+    ],
+    "interactionPatterns": [
+      "Swipe gestures for common actions",
+      "Long-press for context menus",
+      "Hardware button integration",
+      "Shake-to-undo",
+      "Smart suggestions based on context"
+    ]
+  },
+  "businessModel": {
+    "pricing": {
+      "basic": {
+        "monthly": "ZAR 99",
+        "yearly": "ZAR 713",
+        "discount": "40% off yearly"
+      },
+      "premium": {
+        "monthly": "ZAR 249",
+        "yearly": "ZAR 1,793",
+        "discount": "40% off yearly"
+      }
+    },
+    "paymentProcessing": {
+      "provider": "PayFast",
+      "methods": [
+        "Credit/debit cards",
+        "EFT payment option",
+        "Auto-renewal with notifications",
+        "Grace period for failed payments"
+      ]
+    },
+    "trialStrategy": {
+      "duration": "7 days",
+      "features": "Full features",
+      "creditCardRequired": false
+    },
+    "discounts": [
+      "Annual subscription: 40% off",
+      "Beta tester loyalty: 50% off first year"
+    ]
+  },
+  "developmentRoadmap": {
+    "mvpPhase": {
+      "duration": "Months 1-3",
+      "designSystem": "Shadcn UI - modern, clean, professional design without emojis",
+      "features": [
+        "Core flight planning functionality",
+        "Basic map and navigation",
+        "Weather integration",
+        "Offline capability",
+        "Aircraft profiles",
+        "South Africa coverage"
+      ]
+    },
+    "enhancementPhase": {
+      "duration": "Months 4-6",
+      "features": [
+        "AI planning assistant",
+        "Traffic integration",
+        "Advanced weather features",
+        "IFR capabilities",
+        "Hardware connectivity",
+        "Regional expansion"
+      ]
+    },
+    "growthPhase": {
+      "duration": "Months 7-12",
+      "features": [
+        "Full premium tier features",
+        "Multi-platform sync",
+        "Flight school features",
+        "API development",
+        "International expansion",
+        "Advanced AI features"
+      ]
+    }
+  },
+  "goToMarketStrategy": {
+    "launch": [
+      "Soft launch with beta testers",
+      "Flight school partnerships",
+      "Aviation influencer engagement",
+      "Demo at aviation events",
+      "Free workshops at flying clubs"
+    ],
+    "marketingChannels": [
+      "Flight school partnerships (primary)",
+      "Aviation influencers and bloggers",
+      "Social media (aviation groups)",
+      "Aviation publications",
+      "Word-of-mouth referrals",
+      "SEO-optimized content"
+    ],
+    "userAcquisition": [
+      "Referral program (1 month free per referral)",
+      "Instructor certification program",
+      "Integration with flight school systems",
+      "Presence at aviation expos",
+      "Online aviation forums",
+      "Targeted social media ads"
+    ]
+  },
+  "successMetrics": {
+    "kpis": [
+      "Monthly Active Users (MAU)",
+      "Conversion rate (trial to paid)",
+      "Churn rate",
+      "Average Revenue Per User (ARPU)",
+      "User engagement (flights planned/month)",
+      "App store ratings",
+      "Support ticket volume",
+      "Feature adoption rates"
+    ],
+    "milestones": [
+      {
+        "timeframe": "Month 3",
+        "target": "100 beta users"
+      },
+      {
+        "timeframe": "Month 6",
+        "target": "500 paying subscribers"
+      },
+      {
+        "timeframe": "Month 12",
+        "target": "2,000 paying subscribers"
+      },
+      {
+        "timeframe": "Year 2",
+        "target": "10,000 subscribers"
+      },
+      {
+        "timeframe": "Year 3",
+        "target": "Regional market leader"
+      }
+    ]
+  },
+  "riskAnalysis": {
+    "technical": [
+      {
+        "risk": "Data accuracy",
+        "mitigation": "Multiple source verification, user reporting system"
+      },
+      {
+        "risk": "Offline reliability",
+        "mitigation": "Robust sync protocols, data validation"
+      },
+      {
+        "risk": "Scalability",
+        "mitigation": "Cloud-native architecture, load testing"
+      }
+    ],
+    "market": [
+      {
+        "risk": "Competition",
+        "mitigation": "Unique features, better pricing, local focus"
+      },
+      {
+        "risk": "Regulatory changes",
+        "mitigation": "Stay informed, adaptable architecture"
+      },
+      {
+        "risk": "User adoption",
+        "mitigation": "Strong onboarding, community building"
+      }
+    ]
+  },
+  "compliance": {
+    "regulatory": [
+      "SACAA regulations adherence",
+      "ICAO standards compliance",
+      "POPIA (Protection of Personal Information Act)",
+      "Consumer Protection Act",
+      "Electronic Communications Act"
+    ],
+    "disclaimers": [
+      "Not for primary navigation",
+      "Pilot responsibility emphasis",
+      "Data accuracy limitations",
+      "Weather currency warnings",
+      "Terms of service",
+      "Privacy policy"
+    ]
+  },
+  "support": {
+    "customerSupport": [
+      "In-app help system",
+      "Community forums",
+      "Email support (24-48h response)",
+      "Premium priority support (4h response)",
+      "FAQ and knowledge base",
+      "Written documentation and guides"
+    ],
+    "contentOperations": [
+      "Weekly data updates",
+      "Monthly feature releases",
+      "Continuous chart updates",
+      "NOTAM integration",
+      "User-generated content moderation"
+    ],
+    "infrastructure": {
+      "uptimeTarget": "99.9%",
+      "features": [
+        "Auto-scaling capability",
+        "Global CDN distribution",
+        "Automated backups",
+        "Disaster recovery plan",
+        "Performance monitoring"
+      ]
+    }
+  }
+}

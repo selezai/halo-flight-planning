@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Error Test</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; font-family: monospace; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #log {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            z-index: 1000;
+            max-width: 400px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .warning { color: #ffd43b; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="log">
+        <div class="success">🧪 Testing Sprite Configuration</div>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        const messages = document.getElementById('messages');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = message;
+            messages.appendChild(div);
+            console.log(message);
+        }
+
+        // Test 1: Style with undefined sprite
+        log('Test 1: Style with undefined sprite');
+        try {
+            const styleWithUndefinedSprite = {
+                version: 8,
+                sources: {},
+                layers: [{
+                    id: 'background',
+                    type: 'background',
+                    paint: { 'background-color': '#f8f8f6' }
+                }],
+                sprite: undefined
+            };
+            
+            const map1 = new maplibregl.Map({
+                container: document.createElement('div'),
+                style: styleWithUndefinedSprite
+            });
+            
+            map1.on('error', (e) => {
+                log(`❌ Error with undefined sprite: ${e.error.message}`, 'error');
+            });
+            
+            map1.on('load', () => {
+                log('✅ Map with undefined sprite loaded successfully', 'success');
+                map1.remove();
+            });
+            
+        } catch (error) {
+            log(`❌ Exception with undefined sprite: ${error.message}`, 'error');
+        }
+
+        // Test 2: Style without sprite property
+        log('Test 2: Style without sprite property');
+        try {
+            const styleWithoutSprite = {
+                version: 8,
+                sources: {},
+                layers: [{
+                    id: 'background',
+                    type: 'background',
+                    paint: { 'background-color': '#f8f8f6' }
+                }]
+                // No sprite property at all
+            };
+            
+            const map2 = new maplibregl.Map({
+                container: document.createElement('div'),
+                style: styleWithoutSprite
+            });
+            
+            map2.on('error', (e) => {
+                log(`❌ Error without sprite: ${e.error.message}`, 'error');
+            });
+            
+            map2.on('load', () => {
+                log('✅ Map without sprite property loaded successfully', 'success');
+                map2.remove();
+            });
+            
+        } catch (error) {
+            log(`❌ Exception without sprite: ${error.message}`, 'error');
+        }
+
+        // Test 3: Main map (like our OpenAIP implementation)
+        log('Test 3: Main map test');
+        try {
+            const mainStyle = {
+                version: 8,
+                sources: {
+                    'test-source': {
+                        type: 'raster',
+                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                        tileSize: 256
+                    }
+                },
+                layers: [
+                    {
+                        id: 'background',
+                        type: 'background',
+                        paint: { 'background-color': '#f8f8f6' }
+                    },
+                    {
+                        id: 'test-raster',
+                        type: 'raster',
+                        source: 'test-source',
+                        paint: { 'raster-opacity': 0.5 }
+                    }
+                ]
+                // No sprite property - this should work
+            };
+            
+            const mainMap = new maplibregl.Map({
+                container: 'map',
+                style: mainStyle,
+                center: [8.5, 47.4],
+                zoom: 7
+            });
+            
+            mainMap.on('error', (e) => {
+                log(`❌ Main map error: ${e.error.message}`, 'error');
+            });
+            
+            mainMap.on('load', () => {
+                log('✅ Main map loaded successfully', 'success');
+                
+                // Test adding a custom symbol
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    
+                    ctx.clearRect(0, 0, 32, 32);
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(8, 8, 16, 16);
+                    
+                    const imageData = ctx.getImageData(0, 0, 32, 32);
+                    mainMap.addImage('test-symbol', imageData);
+                    
+                    log('✅ Custom symbol added successfully', 'success');
+                } catch (error) {
+                    log(`❌ Failed to add custom symbol: ${error.message}`, 'error');
+                }
+            });
+            
+        } catch (error) {
+            log(`❌ Main map exception: ${error.message}`, 'error');
+        }
+    </script>
+</body>
+</html>

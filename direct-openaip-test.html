@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Direct OpenAIP Test</title>
+  <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 10px;
+      background-color: white;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      z-index: 1;
+      max-width: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: green; }
+    .error { color: red; }
+    .loading { color: blue; }
+    .log-container {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 16px;
+      background-color: #0078ff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <h3>Direct OpenAIP Test</h3>
+    <div>Status: <span id="status-text">Loading...</span></div>
+    <button id="test-direct">Test Direct OpenAIP</button>
+    <button id="test-proxy">Test Proxy OpenAIP</button>
+    <div class="log-container" id="log"></div>
+  </div>
+  <div id="map"></div>
+
+  <script>
+    // OpenAIP API Key - IMPORTANT: This should be kept secure in production
+    const OPENAIP_KEY = '0ed9a9fa7799f83eb30c5fb4865b1a6c';
+    
+    // Log function
+    function log(message) {
+      const now = new Date();
+      const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      const logElement = document.getElementById('log');
+      logElement.innerHTML = `${timestamp}: ${message}\n` + logElement.innerHTML;
+      console.log(`${timestamp}: ${message}`);
+    }
+    
+    // Update status
+    function updateStatus(message, type = 'normal') {
+      const statusElement = document.getElementById('status-text');
+      statusElement.textContent = message;
+      statusElement.className = type;
+    }
+    
+    // Initialize map
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: {
+        version: 8,
+        sources: {
+          'osm': {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors'
+          }
+        },
+        layers: [
+          {
+            id: 'osm-layer',
+            type: 'raster',
+            source: 'osm',
+            minzoom: 0,
+            maxzoom: 19
+          }
+        ]
+      },
+      center: [28.2, -26.1], // Johannesburg
+      zoom: 9
+    });
+    
+    // Test direct OpenAIP
+    document.getElementById('test-direct').addEventListener('click', async () => {
+      updateStatus('Testing direct OpenAIP...', 'loading');
+      log('Testing direct OpenAIP connection');
+      
+      try {
+        // Remove existing OpenAIP source if it exists
+        if (map.getSource('openaip-direct')) {
+          map.removeSource('openaip-direct');
+        }
+        
+        // Add OpenAIP vector source directly
+        map.addSource('openaip-direct', {
+          type: 'vector',
+          tiles: [`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.pbf`],
+          minzoom: 6,
+          maxzoom: 14,
+          // Add transformRequest to include API key in headers
+          transformRequest: (url, resourceType) => {
+            return {
+              url: url,
+              headers: { 'x-openaip-client-id': OPENAIP_KEY }
+            };
+          }
+        });
+        
+        // Try different source-layer names for airports
+        const airportLayers = ['airport', 'airports', 'Airport', 'Airports'];
+        let airportLayerAdded = false;
+        
+        for (const layerName of airportLayers) {
+          try {
+            map.addLayer({
+              id: 'airports-direct-' + layerName,
+              type: 'circle',
+              source: 'openaip-direct',
+              'source-layer': layerName,
+              paint: {
+                'circle-radius': 6,
+                'circle-color': '#0066CC',
+                'circle-stroke-color': '#FFFFFF',
+                'circle-stroke-width': 2
+              }
+            });
+            log(`Added direct airport layer with source-layer: ${layerName}`);
+            airportLayerAdded = true;
+          } catch (err) {
+            log(`Failed to add direct airport layer with source-layer: ${layerName} - ${err.message}`);
+          }
+        }
+        
+        if (!airportLayerAdded) {
+          log('Could not add any airport layers - trying generic approach');
+          // Try a generic approach
+          map.addLayer({
+            id: 'airports-direct-generic',
+            type: 'circle',
+            source: 'openaip-direct',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': '#0066CC',
+              'circle-stroke-color': '#FFFFFF',
+              'circle-stroke-width': 2
+            }
+          });
+        }
+        
+        // Try different source-layer names for airspaces
+        const airspaceLayers = ['airspace', 'airspaces', 'Airspace', 'Airspaces'];
+        let airspaceLayerAdded = false;
+        
+        for (const layerName of airspaceLayers) {
+          try {
+            map.addLayer({
+              id: 'airspaces-direct-' + layerName,
+              type: 'fill',
+              source: 'openaip-direct',
+              'source-layer': layerName,
+              paint: {
+                'fill-color': 'rgba(255, 0, 0, 0.2)',
+                'fill-outline-color': '#FF0000'
+              }
+            });
+            log(`Added direct airspace layer with source-layer: ${layerName}`);
+            airspaceLayerAdded = true;
+          } catch (err) {
+            log(`Failed to add direct airspace layer with source-layer: ${layerName} - ${err.message}`);
+          }
+        }
+        
+        if (!airspaceLayerAdded) {
+          log('Could not add any airspace layers - trying generic approach');
+          // Try a generic approach
+          map.addLayer({
+            id: 'airspaces-direct-generic',
+            type: 'fill',
+            source: 'openaip-direct',
+            paint: {
+              'fill-color': 'rgba(255, 0, 0, 0.2)',
+              'fill-outline-color': '#FF0000'
+            }
+          });
+        }
+        
+        updateStatus('Direct OpenAIP layers added!', 'success');
+        log('Direct OpenAIP layers added successfully');
+      } catch (error) {
+        updateStatus('Error adding direct OpenAIP layers', 'error');
+        log('Error: ' + error.message);
+      }
+    });
+    
+    // Test proxy OpenAIP
+    document.getElementById('test-proxy').addEventListener('click', async () => {
+      updateStatus('Testing proxy OpenAIP...', 'loading');
+      log('Testing proxy OpenAIP connection');
+      
+      try {
+        // Remove existing OpenAIP source if it exists
+        if (map.getSource('openaip-proxy')) {
+          map.removeSource('openaip-proxy');
+        }
+        
+        // Add OpenAIP vector source through proxy
+        map.addSource('openaip-proxy', {
+          type: 'vector',
+          tiles: [`http://localhost:3001/api/maps/openaip-vectortiles/{z}/{x}/{y}.pbf`],
+          minzoom: 6,
+          maxzoom: 14,
+          // Add transformRequest to include API key in headers
+          transformRequest: (url, resourceType) => {
+            return {
+              url: url,
+              headers: { 'x-openaip-client-id': OPENAIP_KEY }
+            };
+          }
+        });
+        
+        // Try different source-layer names for airports
+        const proxyAirportLayers = ['airport', 'airports', 'Airport', 'Airports'];
+        let proxyAirportLayerAdded = false;
+        
+        for (const layerName of proxyAirportLayers) {
+          try {
+            map.addLayer({
+              id: 'airports-proxy-' + layerName,
+              type: 'circle',
+              source: 'openaip-proxy',
+              'source-layer': layerName,
+              paint: {
+                'circle-radius': 6,
+                'circle-color': '#FF6600',
+                'circle-stroke-color': '#FFFFFF',
+                'circle-stroke-width': 2
+              }
+            });
+            log(`Added proxy airport layer with source-layer: ${layerName}`);
+            proxyAirportLayerAdded = true;
+          } catch (err) {
+            log(`Failed to add proxy airport layer with source-layer: ${layerName} - ${err.message}`);
+          }
+        }
+        
+        if (!proxyAirportLayerAdded) {
+          log('Could not add any proxy airport layers - trying generic approach');
+          // Try a generic approach
+          map.addLayer({
+            id: 'airports-proxy-generic',
+            type: 'circle',
+            source: 'openaip-proxy',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': '#FF6600',
+              'circle-stroke-color': '#FFFFFF',
+              'circle-stroke-width': 2
+            }
+          });
+        }
+        
+        // Try different source-layer names for airspaces
+        const proxyAirspaceLayers = ['airspace', 'airspaces', 'Airspace', 'Airspaces'];
+        let proxyAirspaceLayerAdded = false;
+        
+        for (const layerName of proxyAirspaceLayers) {
+          try {
+            map.addLayer({
+              id: 'airspaces-proxy-' + layerName,
+              type: 'fill',
+              source: 'openaip-proxy',
+              'source-layer': layerName,
+              paint: {
+                'fill-color': 'rgba(0, 255, 0, 0.2)',
+                'fill-outline-color': '#00FF00'
+              }
+            });
+            log(`Added proxy airspace layer with source-layer: ${layerName}`);
+            proxyAirspaceLayerAdded = true;
+          } catch (err) {
+            log(`Failed to add proxy airspace layer with source-layer: ${layerName} - ${err.message}`);
+          }
+        }
+        
+        if (!proxyAirspaceLayerAdded) {
+          log('Could not add any proxy airspace layers - trying generic approach');
+          // Try a generic approach
+          map.addLayer({
+            id: 'airspaces-proxy-generic',
+            type: 'fill',
+            source: 'openaip-proxy',
+            paint: {
+              'fill-color': 'rgba(0, 255, 0, 0.2)',
+              'fill-outline-color': '#00FF00'
+            }
+          });
+        }
+        
+        updateStatus('Proxy OpenAIP layers added!', 'success');
+        log('Proxy OpenAIP layers added successfully');
+      } catch (error) {
+        updateStatus('Error adding proxy OpenAIP layers', 'error');
+        log('Error: ' + error.message);
+      }
+    });
+    
+    // Map load event
+    map.on('load', () => {
+      updateStatus('Map loaded, click a test button', 'success');
+      log('Map loaded successfully');
+    });
+  </script>
+</body>
+</html>

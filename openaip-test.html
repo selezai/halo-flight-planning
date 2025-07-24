@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OpenAIP Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="openaip-key" content="0ed9a9fa7799f83eb30c5fb4865b1a6c">
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-width: 300px;
+    }
+    #status {
+      font-weight: bold;
+    }
+    .success { color: #2ecc71; }
+    .error { color: #e74c3c; }
+    .loading { color: #3498db; }
+    .test-button {
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .test-button:hover {
+      background: #2980b9;
+    }
+    .log {
+      margin-top: 15px;
+      font-size: 12px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      padding: 8px;
+      background: #f9f9f9;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
+    }
+    .log-success { color: #2ecc71; }
+    .log-error { color: #e74c3c; }
+    .log-info { color: #3498db; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <h3>OpenAIP Test Map</h3>
+    <p>Status: <span id="status" class="loading">Loading...</span></p>
+    <div>
+      <button id="testHealth" class="test-button">Test Health Endpoint</button>
+      <button id="testStyle" class="test-button">Test Style</button>
+      <button id="testCdn" class="test-button">Test CDN</button>
+    </div>
+    <div class="log" id="logContainer"></div>
+  </div>
+  
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <script>
+    // Get OpenAIP API key from meta tag
+    const OPENAIP_KEY = document.querySelector('meta[name="openaip-key"]').getAttribute('content');
+    const logContainer = document.getElementById('logContainer');
+    const statusEl = document.getElementById('status');
+    let map = null;
+    
+    // Add log entry
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+      logContainer.prepend(entry);
+    }
+    
+    // Update status
+    function updateStatus(message, type = 'loading') {
+      statusEl.textContent = message;
+      statusEl.className = type;
+    }
+    
+    // Test health endpoint
+    async function testHealth() {
+      try {
+        updateStatus('Testing health endpoint...', 'loading');
+        log('Testing health endpoint...');
+        
+        const response = await fetch('http://localhost:3001/health');
+        if (!response.ok) {
+          throw new Error(`Health check failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        log(`Health check success: ${JSON.stringify(data)}`, 'success');
+        updateStatus('Health endpoint OK', 'success');
+        return data;
+      } catch (error) {
+        log(`Health check error: ${error.message}`, 'error');
+        updateStatus(`Health error: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+    
+    // Test style endpoint
+    async function testStyle() {
+      try {
+        updateStatus('Testing style endpoint...', 'loading');
+        log('Testing style endpoint...');
+        
+        const response = await fetch('http://localhost:3001/api/styles/openaip-default-style.json', {
+          headers: { 'x-openaip-client-id': OPENAIP_KEY }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Style request failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        log('Style request success', 'success');
+        updateStatus('Style endpoint OK', 'success');
+        return data;
+      } catch (error) {
+        log(`Style request error: ${error.message}`, 'error');
+        updateStatus(`Style error: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+    
+    // Test CDN endpoint
+    async function testCdn() {
+      try {
+        updateStatus('Testing CDN endpoint...', 'loading');
+        log('Testing CDN endpoint...');
+        
+        const response = await fetch('http://localhost:3001/cdn/sprites/openaip-icons.png');
+        if (!response.ok) {
+          throw new Error(`CDN request failed: ${response.status}`);
+        }
+        
+        log('CDN request success', 'success');
+        updateStatus('CDN endpoint OK', 'success');
+        return true;
+      } catch (error) {
+        log(`CDN request error: ${error.message}`, 'error');
+        updateStatus(`CDN error: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+    
+    // Initialize map
+    async function initMap() {
+      try {
+        // Test if proxy is running
+        const healthData = await testHealth();
+        
+        // Create map with OpenStreetMap base
+        map = new maplibregl.Map({
+          container: 'map',
+          style: {
+            version: 8,
+            sources: {
+              'osm-tiles': {
+                type: 'raster',
+                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                tileSize: 256,
+                attribution: '&copy; OpenStreetMap contributors'
+              }
+            },
+            layers: [{
+              id: 'osm-tiles',
+              type: 'raster',
+              source: 'osm-tiles',
+              minzoom: 0,
+              maxzoom: 19
+            }]
+          },
+          center: [8.5, 47.4], // Switzerland
+          zoom: 8
+        });
+        
+        map.on('load', async () => {
+          updateStatus('Map loaded, adding OpenAIP...', 'loading');
+          log('Map loaded, adding OpenAIP layers');
+          
+          try {
+            // First try to fetch the tiles.json to understand the source structure
+            try {
+              const tilesResponse = await fetch('http://localhost:3001/api/maps/openaip-vectortiles/tiles.json', {
+                headers: { 'x-openaip-client-id': OPENAIP_KEY }
+              });
+              
+              if (tilesResponse.ok) {
+                const tilesJson = await tilesResponse.json();
+                log('Tiles JSON loaded successfully: ' + JSON.stringify(tilesJson).substring(0, 100) + '...');
+              } else {
+                log('Failed to load tiles.json: ' + tilesResponse.status);
+              }
+            } catch (err) {
+              log('Error fetching tiles.json: ' + err.message);
+            }
+            
+            // Add OpenAIP vector source with explicit URL format
+            map.addSource('openaip', {
+              type: 'vector',
+              tiles: [`http://localhost:3001/api/maps/openaip-vectortiles/{z}/{x}/{y}.pbf`],
+              minzoom: 6,
+              maxzoom: 14,
+              // Add transformRequest to include API key in headers
+              transformRequest: (url, resourceType) => {
+                return {
+                  url: url,
+                  headers: { 'x-openaip-client-id': OPENAIP_KEY }
+                };
+              }
+            });
+            
+            // Try multiple possible source-layer names for airports
+            const possibleAirportLayers = ['airports', 'airport', 'Airports', 'Airport'];
+            
+            for (const layerName of possibleAirportLayers) {
+              try {
+                // Add airports layer
+                map.addLayer({
+                  id: 'airports-' + layerName,
+                  type: 'circle',
+                  source: 'openaip',
+                  'source-layer': layerName,
+                  paint: {
+                    'circle-radius': 6,
+                    'circle-color': '#0066CC',
+                    'circle-stroke-color': '#FFFFFF',
+                    'circle-stroke-width': 2
+                  }
+                });
+                log(`Added airport layer with source-layer: ${layerName}`);
+              } catch (err) {
+                log(`Failed to add airport layer with source-layer: ${layerName} - ${err.message}`);
+              }
+            }
+            
+            // Try multiple possible source-layer names for airspaces
+            const possibleAirspaceLayers = ['airspaces', 'airspace', 'Airspaces', 'Airspace'];
+            
+            for (const layerName of possibleAirspaceLayers) {
+              try {
+                // Add airspaces layer
+                map.addLayer({
+                  id: 'airspaces-' + layerName,
+                  type: 'fill',
+                  source: 'openaip',
+                  'source-layer': layerName,
+                  paint: {
+                    'fill-color': [
+                      'match',
+                      ['get', 'type'],
+                      'CTR', 'rgba(255, 0, 0, 0.2)',
+                      'D', 'rgba(0, 0, 255, 0.2)',
+                      'P', 'rgba(255, 0, 0, 0.3)',
+                      'R', 'rgba(255, 165, 0, 0.3)',
+                      'rgba(128, 128, 128, 0.2)'
+                    ],
+                    'fill-outline-color': [
+                      'match',
+                      ['get', 'type'],
+                      'CTR', '#FF0000',
+                      'D', '#0000FF',
+                      'P', '#FF0000',
+                      'R', '#FFA500',
+                      '#808080'
+                    ]
+                  }
+                });
+                log(`Added airspace layer with source-layer: ${layerName}`);
+              } catch (err) {
+                log(`Failed to add airspace layer with source-layer: ${layerName} - ${err.message}`);
+              }
+            }
+            
+            // Add navaids layer
+            map.addLayer({
+              id: 'navaids',
+              type: 'circle',
+              source: 'openaip',
+              'source-layer': 'navaids',
+              paint: {
+                'circle-radius': 5,
+                'circle-color': '#FF6600',
+                'circle-stroke-color': '#FFFFFF',
+                'circle-stroke-width': 1
+              }
+            });
+            
+            updateStatus('✅ OpenAIP layers added!', 'success');
+            log('OpenAIP layers added successfully', 'success');
+            
+            // Add click handler for debugging
+            map.on('click', 'airports', (e) => {
+              const props = e.features[0].properties;
+              log(`Airport clicked: ${props.name || 'Unknown'}`, 'info');
+              
+              new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`<h3>${props.name || 'Airport'}</h3>
+                          <p>ICAO: ${props.icao || 'N/A'}</p>
+                          <p>Type: ${props.type || 'N/A'}</p>`)
+                .addTo(map);
+            });
+            
+            map.on('mouseenter', 'airports', () => {
+              map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            map.on('mouseleave', 'airports', () => {
+              map.getCanvas().style.cursor = '';
+            });
+            
+          } catch (error) {
+            updateStatus(`❌ Error adding OpenAIP: ${error.message}`, 'error');
+            log(`Error adding OpenAIP layers: ${error.message}`, 'error');
+          }
+        });
+        
+      } catch (error) {
+        updateStatus(`❌ Error: ${error.message}`, 'error');
+        log(`Initialization error: ${error.message}`, 'error');
+      }
+    }
+    
+    // Add event listeners for test buttons
+    document.getElementById('testHealth').addEventListener('click', testHealth);
+    document.getElementById('testStyle').addEventListener('click', testStyle);
+    document.getElementById('testCdn').addEventListener('click', testCdn);
+    
+    // Initialize the map
+    initMap();
+  </script>
+</body>
+</html>

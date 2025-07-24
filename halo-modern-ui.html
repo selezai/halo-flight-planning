@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halo - Modern Flight Planning UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            /* Modern color palette */
+            --primary: #0ea5e9; /* Sky blue */
+            --primary-dark: #0284c7;
+            --secondary: #6366f1; /* Indigo */
+            --accent: #10b981; /* Emerald */
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            
+            /* Neutral colors */
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            
+            /* Gradients */
+            --gradient-sky: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+            --gradient-sunset: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+            --gradient-dark: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+            
+            /* Shadows */
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+            --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.5);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px 0;
+            background: var(--gradient-sky);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            font-weight: 800;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .screen-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+        
+        .screen-container {
+            background: white;
+            border-radius: 24px;
+            box-shadow: var(--shadow-xl);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .screen-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+        }
+        
+        .screen-header {
+            padding: 20px;
+            background: var(--gradient-dark);
+            color: white;
+        }
+        
+        .screen-header h3 {
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+        
+        .device-modern {
+            width: 375px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 40px;
+            padding: 10px;
+            box-shadow: var(--shadow-xl);
+        }
+        
+        .device-screen {
+            background: white;
+            border-radius: 30px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .status-bar {
+            background: var(--gradient-dark);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .nav-header {
+            background: white;
+            padding: 20px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .nav-header h2 {
+            flex: 1;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        .icon-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .icon-button:hover {
+            background: var(--gray-200);
+            transform: scale(1.05);
+        }
+        
+        /* Map Screen Styles */
+        .map-container {
+            height: 500px;
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .map-overlay-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .search-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 14px 20px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.2s ease;
+            background: white;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+        }
+        
+        .btn-primary {
+            padding: 14px 24px;
+            background: var(--gradient-sky);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .flight-info-card {
+            background: var(--gradient-sky);
+            color: white;
+            padding: 20px;
+            border-radius: 16px;
+            margin-top: 16px;
+        }
+        
+        .flight-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+        
+        .flight-info-row h3 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        
+        .flight-info-row span {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+        
+        .flight-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        /* Weather Visualization */
+        .weather-layer {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .weather-pills {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .weather-pill {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+        
+        .weather-pill.active {
+            background: var(--gradient-sky);
+            color: white;
+        }
+        
+        .weather-status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .weather-item {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .weather-icon {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 8px;
+            background: var(--gradient-sky);
+            border-radius: 50%;
+        }
+        
+        .weather-label {
+            font-size: 14px;
+            color: var(--gray-600);
+        }
+        
+        .weather-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid var(--gray-100);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+        }
+        
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 3px;
+            background: var(--gradient-sky);
+            border-radius: 0 0 3px 3px;
+        }
+        
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+            background: var(--gray-400);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .nav-item.active .nav-icon {
+            background: var(--gradient-sky);
+        }
+        
+        .nav-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            font-weight: 500;
+        }
+        
+        .nav-item.active .nav-label {
+            color: var(--primary);
+        }
+        
+        /* Planning Screen */
+        .planning-content {
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+        }
+        
+        .ai-suggestion-card {
+            background: linear-gradient(135deg, #ddd6fe 0%, #c7d2fe 100%);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .ai-suggestion-card::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 150px;
+            height: 150px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+        }
+        
+        .ai-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .ai-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-sky);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+        }
+        
+        .waypoint-card {
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s ease;
+            cursor: move;
+        }
+        
+        .waypoint-card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow);
+            transform: translateX(4px);
+        }
+        
+        .waypoint-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-sky);
+            color: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        
+        .waypoint-info h4 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .waypoint-info p {
+            font-size: 14px;
+            color: var(--gray-600);
+        }
+        
+        .route-line {
+            text-align: center;
+            margin: 16px 0;
+            position: relative;
+        }
+        
+        .route-line::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 40px;
+            background: var(--gradient-sky);
+        }
+        
+        .route-distance {
+            background: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: var(--gray-600);
+            display: inline-block;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Aircraft Profile Card */
+        .aircraft-card {
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .aircraft-card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .aircraft-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .aircraft-title h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        .aircraft-title p {
+            font-size: 14px;
+            color: var(--gray-600);
+        }
+        
+        .aircraft-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        
+        .aircraft-stat {
+            background: var(--gray-50);
+            padding: 12px;
+            border-radius: 12px;
+        }
+        
+        .aircraft-stat-label {
+            font-size: 12px;
+            color: var(--gray-600);
+            margin-bottom: 4px;
+        }
+        
+        .aircraft-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        /* Premium Badge */
+        .premium-badge {
+            background: var(--gradient-sunset);
+            color: white;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .premium-badge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .premium-badge h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .premium-badge p {
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Glassmorphism cards */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+        
+        /* Loading animation */
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-300) 50%, var(--gray-200) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 8px;
+            height: 20px;
+            margin-bottom: 12px;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* Floating Action Button */
+        .fab {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            background: var(--gradient-sky);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .fab:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: var(--shadow-xl);
+        }
+        
+        /* Toggle Switch */
+        .toggle-switch {
+            width: 48px;
+            height: 24px;
+            background: var(--gray-300);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .toggle-switch.active {
+            background: var(--gradient-sky);
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow);
+        }
+        
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Halo</h1>
+        <p>Modern Flight Planning Interface Design</p>
+    </div>
+    
+    <div class="container">
+        <div class="screen-grid">
+            <!-- Map & Navigation Screen -->
+            <div class="screen-container">
+                <div class="screen-header">
+                    <h3>Map & Navigation</h3>
+                </div>
+                <div class="device-modern">
+                    <div class="device-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>100% • LTE</span>
+                        </div>
+                        
+                        <div class="nav-header">
+                            <div class="icon-button">≡</div>
+                            <h2>Halo</h2>
+                            <div class="icon-button">⊕</div>
+                        </div>
+                        
+                        <div class="map-container">
+                            <!-- Animated map background -->
+                            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 30% 40%, rgba(14, 165, 233, 0.1) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(99, 102, 241, 0.1) 0%, transparent 50%);"></div>
+                            
+                            <!-- Route visualization -->
+                            <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                                <defs>
+                                    <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#0ea5e9;stop-opacity:1" />
+                                        <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M 60 150 Q 180 180 300 280" stroke="url(#routeGradient)" stroke-width="4" fill="none" stroke-dasharray="10,5" opacity="0.8"/>
+                            </svg>
+                            
+                            <!-- Search overlay -->
+                            <div class="map-overlay-card">
+                                <div class="search-bar">
+                                    <input type="text" class="search-input" placeholder="Search airports, waypoints..." />
+                                    <button class="btn-primary">Go</button>
+                                </div>
+                                
+                                <div class="flight-info-card">
+                                    <div class="flight-info-row">
+                                        <h3>FACT → FAOR</h3>
+                                        <span>Active</span>
+                                    </div>
+                                    <div class="flight-stats">
+                                        <div class="stat-item">
+                                            <div class="stat-value">435</div>
+                                            <div class="stat-label">nm</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-value">2:45</div>
+                                            <div class="stat-label">ETE</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-value">FL095</div>
+                                            <div class="stat-label">Altitude</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-value">45.2</div>
+                                            <div class="stat-label">Fuel (gal)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Weather overlay -->
+                            <div class="weather-layer">
+                                <div class="weather-pills">
+                                    <div class="weather-pill active">Radar</div>
+                                    <div class="weather-pill">Clouds</div>
+                                    <div class="weather-pill">Winds</div>
+                                    <div class="weather-pill">SIGMETs</div>
+                                </div>
+                                <div class="weather-status">
+                                    <div class="weather-item">
+                                        <div class="weather-icon"></div>
+                                        <div class="weather-label">FACT</div>
+                                        <div class="weather-value">VFR</div>
+                                    </div>
+                                    <div class="weather-item">
+                                        <div class="weather-icon" style="background: linear-gradient(135deg, #f59e0b, #fbbf24);"></div>
+                                        <div class="weather-label">En Route</div>
+                                        <div class="weather-value">MVFR</div>
+                                    </div>
+                                    <div class="weather-item">
+                                        <div class="weather-icon"></div>
+                                        <div class="weather-label">FAOR</div>
+                                        <div class="weather-value">VFR</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Floating Action Button -->
+                            <div class="fab">+</div>
+                        </div>
+                        
+                        <div class="bottom-nav">
+                            <div class="nav-item active">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Map</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Plan</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Weather</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Aircraft</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">More</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Flight Planning Screen -->
+            <div class="screen-container">
+                <div class="screen-header">
+                    <h3>AI-Powered Planning</h3>
+                </div>
+                <div class="device-modern">
+                    <div class="device-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>100% • LTE</span>
+                        </div>
+                        
+                        <div class="nav-header">
+                            <div class="icon-button">←</div>
+                            <h2>New Flight</h2>
+                            <div class="icon-button">✓</div>
+                        </div>
+                        
+                        <div class="planning-content">
+                            <div class="ai-suggestion-card">
+                                <div class="ai-header">
+                                    <div class="ai-icon">AI</div>
+                                    <div>
+                                        <h4 style="font-weight: 700;">Gemini Assistant</h4>
+                                        <p style="font-size: 14px; opacity: 0.8;">Weather analysis complete</p>
+                                    </div>
+                                </div>
+                                <p style="margin-top: 12px;">Based on current conditions, I recommend FL095 to avoid turbulence. Tailwinds will save 12 minutes.</p>
+                                <button class="btn-primary" style="margin-top: 12px; width: 100%;">Apply Recommendations</button>
+                            </div>
+                            
+                            <h3 style="margin-bottom: 16px; font-weight: 700;">Route Waypoints</h3>
+                            
+                            <div class="waypoint-card">
+                                <div class="waypoint-icon">FACT</div>
+                                <div class="waypoint-info" style="flex: 1;">
+                                    <h4>Cape Town Intl</h4>
+                                    <p>Departure • Rwy 19</p>
+                                </div>
+                                <div class="icon-button">⋮</div>
+                            </div>
+                            
+                            <div class="route-line">
+                                <span class="route-distance">217 nm</span>
+                            </div>
+                            
+                            <div class="waypoint-card">
+                                <div class="waypoint-icon">GAV</div>
+                                <div class="waypoint-info" style="flex: 1;">
+                                    <h4>Gariep VOR</h4>
+                                    <p>114.4 MHz</p>
+                                </div>
+                                <div class="icon-button">⋮</div>
+                            </div>
+                            
+                            <div class="route-line">
+                                <span class="route-distance">218 nm</span>
+                            </div>
+                            
+                            <div class="waypoint-card">
+                                <div class="waypoint-icon">FAOR</div>
+                                <div class="waypoint-info" style="flex: 1;">
+                                    <h4>OR Tambo Intl</h4>
+                                    <p>Destination • Rwy 03L</p>
+                                </div>
+                                <div class="icon-button">⋮</div>
+                            </div>
+                            
+                            <button class="btn-primary" style="width: 100%; margin-top: 24px; padding: 16px;">
+                                Calculate Performance
+                            </button>
+                        </div>
+                        
+                        <div class="bottom-nav">
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Map</span>
+                            </div>
+                            <div class="nav-item active">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Plan</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Weather</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Aircraft</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">More</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Aircraft Profile Screen -->
+            <div class="screen-container">
+                <div class="screen-header">
+                    <h3>Aircraft Management</h3>
+                </div>
+                <div class="device-modern">
+                    <div class="device-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>100% • LTE</span>
+                        </div>
+                        
+                        <div class="nav-header">
+                            <div class="icon-button">←</div>
+                            <h2>Aircraft</h2>
+                            <div class="icon-button">+</div>
+                        </div>
+                        
+                        <div class="planning-content">
+                            <div class="premium-badge">
+                                <h3>3 of 3 Used</h3>
+                                <p>Upgrade to Premium for unlimited aircraft</p>
+                            </div>
+                            
+                            <div class="aircraft-card">
+                                <div class="aircraft-header">
+                                    <div class="aircraft-title">
+                                        <h3>ZS-ABC</h3>
+                                        <p>Cessna 172S Skyhawk</p>
+                                    </div>
+                                    <div class="icon-button">✎</div>
+                                </div>
+                                <div class="aircraft-stats">
+                                    <div class="aircraft-stat">
+                                        <div class="aircraft-stat-label">Cruise Speed</div>
+                                        <div class="aircraft-stat-value">124 kts</div>
+                                    </div>
+                                    <div class="aircraft-stat">
+                                        <div class="aircraft-stat-label">Fuel Capacity</div>
+                                        <div class="aircraft-stat-value">56 gal</div>
+                                    </div>
+                                    <div class="aircraft-stat">
+                                        <div class="aircraft-stat-label">Empty Weight</div>
+                                        <div class="aircraft-stat-value">1,663 lbs</div>
+                                    </div>
+                                    <div class="aircraft-stat">
+                                        <div class="aircraft-stat-label">MTOW</div>
+                                        <div class="aircraft-stat-value">2,550 lbs</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="aircraft-card">
+                                <div class="aircraft-header">
+                                    <div class="aircraft-title">
+                                        <h3>ZS-DEF</h3>
+                                        <p>Piper PA-28-181 Archer III</p>
+                                    </div>
+                                    <div class="icon-button">✎</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bottom-nav">
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Map</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Plan</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Weather</span>
+                            </div>
+                            <div class="nav-item active">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">Aircraft</span>
+                            </div>
+                            <div class="nav-item">
+                                <div class="nav-icon"></div>
+                                <span class="nav-label">More</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Design System Components -->
+        <div style="margin-top: 60px;">
+            <h2 style="text-align: center; font-size: 2.5em; font-weight: 800; margin-bottom: 40px;">Modern Design Elements</h2>
+            
+            <div class="screen-grid">
+                <!-- Component Showcase -->
+                <div class="glass-card">
+                    <h3 style="font-weight: 700; margin-bottom: 20px;">Interactive Components</h3>
+                    
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="font-weight: 600; margin-bottom: 12px;">Buttons</h4>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <button class="btn-primary">Primary Action</button>
+                            <button class="btn-primary" style="background: var(--gray-800);">Secondary</button>
+                            <button class="btn-primary" style="background: var(--gradient-sunset);">Premium</button>
+                            <button class="btn-primary" style="background: transparent; border: 2px solid var(--primary); color: var(--primary);">Outline</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="font-weight: 600; margin-bottom: 12px;">Input Fields</h4>
+                        <input type="text" class="search-input" placeholder="Modern input with focus state" style="width: 100%; margin-bottom: 12px;" />
+                        <div style="position: relative;">
+                            <input type="text" class="search-input" placeholder="Airport search with icon" style="width: 100%; padding-left: 48px;" />
+                            <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--gray-400);">✈</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="font-weight: 600; margin-bottom: 12px;">Toggle Switches</h4>
+                        <div style="display: flex; gap: 20px; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span>Dark Mode</span>
+                                <div class="toggle-switch"></div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span>Notifications</span>
+                                <div class="toggle-switch active"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="font-weight: 600; margin-bottom: 12px;">Loading States</h4>
+                        <div class="loading-skeleton"></div>
+                        <div class="loading-skeleton" style="width: 60%;"></div>
+                        <div class="loading-skeleton" style="width: 80%;"></div>
+                    </div>
+                </div>
+                
+                <!-- Color System -->
+                <div class="glass-card">
+                    <h3 style="font-weight: 700; margin-bottom: 20px;">Color System</h3>
+                    
+                    <div style="display: grid; gap: 16px;">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 60px; height: 60px; background: var(--gradient-sky); border-radius: 12px;"></div>
+                            <div>
+                                <h4 style="font-weight: 600;">Primary Sky</h4>
+                                <p style="font-size: 14px; color: var(--gray-600);">Main actions, navigation</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 60px; height: 60px; background: var(--gradient-sunset); border-radius: 12px;"></div>
+                            <div>
+                                <h4 style="font-weight: 600;">Premium Sunset</h4>
+                                <p style="font-size: 14px; color: var(--gray-600);">Premium features, CTAs</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 60px; height: 60px; background: var(--success); border-radius: 12px;"></div>
+                            <div>
+                                <h4 style="font-weight: 600;">VFR Green</h4>
+                                <p style="font-size: 14px; color: var(--gray-600);">Good weather conditions</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 60px; height: 60px; background: var(--warning); border-radius: 12px;"></div>
+                            <div>
+                                <h4 style="font-weight: 600;">MVFR Amber</h4>
+                                <p style="font-size: 14px; color: var(--gray-600);">Marginal conditions</p>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 60px; height: 60px; background: var(--danger); border-radius: 12px;"></div>
+                            <div>
+                                <h4 style="font-weight: 600;">IFR Red</h4>
+                                <p style="font-size: 14px; color: var(--gray-600);">Poor conditions, warnings</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Typography -->
+                <div class="glass-card">
+                    <h3 style="font-weight: 700; margin-bottom: 20px;">Typography Scale</h3>
+                    
+                    <div style="font-size: 36px; font-weight: 800; margin-bottom: 8px;">Display</div>
+                    <div style="font-size: 28px; font-weight: 700; margin-bottom: 8px;">Heading 1</div>
+                    <div style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">Heading 2</div>
+                    <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Heading 3</div>
+                    <div style="font-size: 16px; margin-bottom: 8px;">Body text for general content</div>
+                    <div style="font-size: 14px; color: var(--gray-600); margin-bottom: 8px;">Small text for labels</div>
+                    <div style="font-size: 12px; color: var(--gray-500);">Tiny text for captions</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Key Design Principles -->
+        <div style="margin-top: 60px; text-align: center;">
+            <h2 style="font-size: 2.5em; font-weight: 800; margin-bottom: 40px;">Design Principles</h2>
+            
+            <div class="screen-grid">
+                <div class="glass-card" style="text-align: left;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🎨</div>
+                    <h3 style="font-weight: 700; margin-bottom: 12px;">Visual Hierarchy</h3>
+                    <p>Clear distinction between primary actions, secondary information, and background elements using color, size, and spacing.</p>
+                </div>
+                
+                <div class="glass-card" style="text-align: left;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
+                    <h3 style="font-weight: 700; margin-bottom: 12px;">Micro-interactions</h3>
+                    <p>Subtle animations and transitions that provide feedback and delight users without being distracting.</p>
+                </div>
+                
+                <div class="glass-card" style="text-align: left;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📱</div>
+                    <h3 style="font-weight: 700; margin-bottom: 12px;">Mobile-first</h3>
+                    <p>Designed for touch with generous tap targets, swipe gestures, and thumb-friendly navigation.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Add interactivity
+        document.querySelectorAll('.toggle-switch').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                this.classList.toggle('active');
+            });
+        });
+        
+        document.querySelectorAll('.weather-pill').forEach(pill => {
+            pill.addEventListener('click', function() {
+                document.querySelectorAll('.weather-pill').forEach(p => p.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const parent = this.parentElement;
+                parent.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // Animate elements on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '0';
+                    entry.target.style.transform = 'translateY(20px)';
+                    setTimeout(() => {
+                        entry.target.style.transition = 'all 0.6s ease';
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }, 100);
+                }
+            });
+        });
+        
+        document.querySelectorAll('.screen-container, .glass-card').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

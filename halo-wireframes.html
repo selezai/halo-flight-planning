@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halo Flight Planning App - Wireframes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+        
+        .wireframe-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .nav-btn {
+            padding: 12px 24px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .nav-btn:hover {
+            background: #1557b0;
+            transform: translateY(-2px);
+        }
+        
+        .nav-btn.active {
+            background: #0d47a1;
+        }
+        
+        .wireframe-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .screen-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .device-frame {
+            width: 375px;
+            margin: 0 auto;
+            border: 12px solid #222;
+            border-radius: 36px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        .device-screen {
+            width: 100%;
+            height: 667px;
+            background: #fff;
+            position: relative;
+            overflow-y: auto;
+        }
+        
+        .tablet-frame {
+            width: 768px;
+            height: 1024px;
+        }
+        
+        .tablet-frame .device-screen {
+            height: 1000px;
+        }
+        
+        /* Wireframe Components */
+        .status-bar {
+            height: 44px;
+            background: #f8f8f8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .nav-bar {
+            height: 56px;
+            background: #1a73e8;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            color: white;
+            gap: 16px;
+        }
+        
+        .bottom-nav {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        
+        .bottom-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            padding: 8px 16px;
+        }
+        
+        .bottom-nav-item.active {
+            color: #1a73e8;
+        }
+        
+        .icon {
+            width: 24px;
+            height: 24px;
+            background: #666;
+            border-radius: 4px;
+        }
+        
+        .bottom-nav-item.active .icon {
+            background: #1a73e8;
+        }
+        
+        .map-view {
+            height: calc(100% - 156px);
+            background: #e8f5e9;
+            position: relative;
+        }
+        
+        .map-overlay {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .search-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn-secondary {
+            background: #666;
+        }
+        
+        .flight-info {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 12px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .weather-strip {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Planning Screen Elements */
+        .planning-container {
+            padding: 16px;
+            height: calc(100% - 100px);
+            overflow-y: auto;
+        }
+        
+        .route-card {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .route-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .waypoint {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        
+        .waypoint-icon {
+            width: 40px;
+            height: 40px;
+            background: #1a73e8;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .waypoint-info {
+            flex: 1;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        /* AI Assistant */
+        .ai-assistant {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .ai-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .ai-icon {
+            width: 32px;
+            height: 32px;
+            background: #1a73e8;
+            border-radius: 50%;
+        }
+        
+        .ai-suggestions {
+            background: white;
+            border-radius: 4px;
+            padding: 12px;
+        }
+        
+        /* Weather Visualization */
+        .weather-panel {
+            padding: 16px;
+        }
+        
+        .weather-map {
+            height: 300px;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+        
+        .weather-legend {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .metar-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .metar-card {
+            background: #f5f5f5;
+            padding: 16px;
+            border-radius: 8px;
+        }
+        
+        /* Settings */
+        .settings-container {
+            padding: 16px;
+        }
+        
+        .settings-section {
+            margin-bottom: 24px;
+        }
+        
+        .settings-section h3 {
+            margin-bottom: 12px;
+            color: #333;
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        
+        .toggle {
+            width: 48px;
+            height: 24px;
+            background: #ccc;
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .toggle.active {
+            background: #1a73e8;
+        }
+        
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+        
+        .toggle.active::after {
+            transform: translateX(24px);
+        }
+        
+        /* Responsive */
+        .wireframe-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .device-frame {
+                transform: scale(0.8);
+                margin: -40px auto;
+            }
+            
+            .tablet-frame {
+                transform: scale(0.5);
+                margin: -200px auto;
+            }
+        }
+        
+        .screen-description {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .screen-description h4 {
+            margin-bottom: 8px;
+            color: #1a73e8;
+        }
+        
+        .screen-description ul {
+            margin-left: 20px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Halo</h1>
+        <p class="subtitle">Interactive Wireframes & User Interface Design</p>
+        <p style="text-align: center; color: #666; margin-bottom: 20px; font-style: italic;">
+            Note: MVP will use Shadcn UI components for a modern, clean design without emojis
+        </p>
+        
+        <div class="wireframe-nav">
+            <button class="nav-btn active" onclick="showScreen('map')">Map View</button>
+            <button class="nav-btn" onclick="showScreen('planning')">Flight Planning</button>
+            <button class="nav-btn" onclick="showScreen('weather')">Weather</button>
+            <button class="nav-btn" onclick="showScreen('aircraft')">Aircraft</button>
+            <button class="nav-btn" onclick="showScreen('settings')">Settings</button>
+            <button class="nav-btn" onclick="showScreen('ai')">AI Assistant</button>
+        </div>
+        
+        <!-- Map View Screen -->
+        <div id="map-screen" class="wireframe-container">
+            <h2 class="screen-title">Map & Navigation View</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100%</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">Menu</span>
+                        <span style="font-size: 18px; flex: 1;">Halo</span>
+                        <span style="font-size: 20px;">Settings</span>
+                    </div>
+                    <div class="map-view">
+                        <div class="map-overlay">
+                            <div class="search-bar">
+                                <input type="text" class="search-input" placeholder="Search airports, navaids..." />
+                                <button class="btn">Go</button>
+                            </div>
+                            <div class="flight-info">
+                                <div class="info-row">
+                                    <span><strong>FAOR → FACT</strong></span>
+                                    <span>435 nm</span>
+                                </div>
+                                <div class="info-row">
+                                    <span>ETE: 2:45</span>
+                                    <span>Fuel: 45.2 gal</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Map Elements -->
+                        <div style="position: absolute; top: 40%; left: 20%; width: 60px; height: 60px; background: #ff5722; border-radius: 50%; opacity: 0.3;"></div>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                            <div style="width: 40px; height: 40px; background: #1a73e8; transform: rotate(45deg);"></div>
+                        </div>
+                        <div style="position: absolute; top: 30%; right: 25%; font-size: 12px; background: white; padding: 4px 8px; border-radius: 4px;">FAOR</div>
+                        <div style="position: absolute; bottom: 35%; left: 25%; font-size: 12px; background: white; padding: 4px 8px; border-radius: 4px;">FACT</div>
+                        
+                        <!-- Route Line -->
+                        <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                            <line x1="25%" y1="30%" x2="75%" y2="65%" stroke="#1a73e8" stroke-width="3" stroke-dasharray="5,5" />
+                        </svg>
+                        
+                        <div class="weather-strip">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><strong>FAOR:</strong> VFR</span>
+                                <span><strong>FACT:</strong> MVFR</span>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Details</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Map Controls -->
+                        <div style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%);">
+                            <div style="background: white; border-radius: 8px; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="padding: 8px; cursor: pointer;">+</div>
+                                <div style="padding: 8px; cursor: pointer; border-top: 1px solid #ddd;">−</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bottom-nav">
+                        <div class="bottom-nav-item active">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Map</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Plan</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Weather</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Aircraft</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">More</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features:</h4>
+                <ul>
+                    <li>Interactive moving map with GPS position</li>
+                    <li>Route visualization with waypoints</li>
+                    <li>Quick weather status strip</li>
+                    <li>Airspace layers (altitude filtered)</li>
+                    <li>Traffic display integration</li>
+                    <li>Direct-to functionality</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Flight Planning Screen -->
+        <div id="planning-screen" class="wireframe-container hidden">
+            <h2 class="screen-title">Flight Planning</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100% ✈️</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">←</span>
+                        <span style="font-size: 18px; flex: 1;">New Flight Plan</span>
+                        <span style="font-size: 20px;">💾</span>
+                    </div>
+                    <div class="planning-container">
+                        <div class="ai-assistant">
+                            <div class="ai-header">
+                                <div class="ai-icon"></div>
+                                <span><strong>Gemini AI Assistant</strong></span>
+                            </div>
+                            <div class="ai-suggestions">
+                                <p style="font-size: 14px; margin-bottom: 8px;">Based on current weather, I recommend FL095 for optimal winds</p>
+                                <button class="btn" style="font-size: 12px;">Apply Suggestion</button>
+                            </div>
+                        </div>
+                        
+                        <div class="route-card">
+                            <div class="route-header">
+                                <h3>Route</h3>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">+ Add Waypoint</button>
+                            </div>
+                            <div class="waypoint">
+                                <div class="waypoint-icon">FAOR</div>
+                                <div class="waypoint-info">
+                                    <strong>OR Tambo Intl</strong>
+                                    <div style="font-size: 12px; color: #666;">Departure • Rwy 03L</div>
+                                </div>
+                            </div>
+                            <div style="text-align: center; margin: 8px 0; color: #666;">↓ 217nm</div>
+                            <div class="waypoint">
+                                <div class="waypoint-icon">GAV</div>
+                                <div class="waypoint-info">
+                                    <strong>Gariep VOR</strong>
+                                    <div style="font-size: 12px; color: #666;">114.4 MHz</div>
+                                </div>
+                            </div>
+                            <div style="text-align: center; margin: 8px 0; color: #666;">↓ 218nm</div>
+                            <div class="waypoint">
+                                <div class="waypoint-icon">FACT</div>
+                                <div class="waypoint-info">
+                                    <strong>Cape Town Intl</strong>
+                                    <div style="font-size: 12px; color: #666;">Destination • Rwy 19</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Aircraft</label>
+                            <select>
+                                <option>ZS-ABC - Cessna 172S</option>
+                                <option>ZS-DEF - Piper PA-28</option>
+                                <option>ZS-GHI - Beechcraft Bonanza</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Cruise Altitude</label>
+                            <input type="text" value="FL095" />
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Departure Time</label>
+                            <input type="datetime-local" value="2025-01-15T10:00" />
+                        </div>
+                        
+                        <button class="btn" style="width: 100%; padding: 16px; font-size: 16px;">Calculate Flight Plan</button>
+                    </div>
+                    <div class="bottom-nav">
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Map</span>
+                        </div>
+                        <div class="bottom-nav-item active">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Plan</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Weather</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Aircraft</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">More</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features:</h4>
+                <ul>
+                    <li>AI-powered route suggestions (Gemini)</li>
+                    <li>Drag-and-drop waypoint editing</li>
+                    <li>Aircraft selection from profiles</li>
+                    <li>Automatic performance calculations</li>
+                    <li>Multi-leg journey support</li>
+                    <li>IFR/VFR route planning</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Weather Screen -->
+        <div id="weather-screen" class="wireframe-container hidden">
+            <h2 class="screen-title">Weather Visualization</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100% ✈️</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">←</span>
+                        <span style="font-size: 18px; flex: 1;">Weather</span>
+                        <span style="font-size: 20px;">🔄</span>
+                    </div>
+                    <div class="weather-panel">
+                        <div class="weather-map">
+                            <div class="weather-legend">
+                                <div style="font-size: 12px; margin-bottom: 8px;"><strong>Precipitation</strong></div>
+                                <div style="display: flex; gap: 4px; align-items: center; font-size: 11px;">
+                                    <div style="width: 16px; height: 16px; background: #4CAF50;"></div> Light
+                                </div>
+                                <div style="display: flex; gap: 4px; align-items: center; font-size: 11px;">
+                                    <div style="width: 16px; height: 16px; background: #FF9800;"></div> Moderate
+                                </div>
+                                <div style="display: flex; gap: 4px; align-items: center; font-size: 11px;">
+                                    <div style="width: 16px; height: 16px; background: #F44336;"></div> Heavy
+                                </div>
+                            </div>
+                            
+                            <!-- Weather overlay visualization -->
+                            <div style="position: absolute; top: 30%; left: 20%; width: 100px; height: 100px; background: rgba(76, 175, 80, 0.3); border-radius: 50%;"></div>
+                            <div style="position: absolute; bottom: 40%; right: 30%; width: 80px; height: 80px; background: rgba(255, 152, 0, 0.3); border-radius: 50%;"></div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                            <button class="btn" style="flex: 1;">Radar</button>
+                            <button class="btn btn-secondary" style="flex: 1;">Satellite</button>
+                            <button class="btn btn-secondary" style="flex: 1;">Winds</button>
+                        </div>
+                        
+                        <h3 style="margin-bottom: 12px;">METAR/TAF Along Route</h3>
+                        <div class="metar-list">
+                            <div class="metar-card">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <strong>FAOR</strong>
+                                    <span style="color: #4CAF50;">VFR</span>
+                                </div>
+                                <div style="font-size: 12px; font-family: monospace;">
+                                    FAOR 150800Z 18012KT CAVOK 25/14 Q1018
+                                </div>
+                            </div>
+                            <div class="metar-card">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <strong>FACT</strong>
+                                    <span style="color: #FF9800;">MVFR</span>
+                                </div>
+                                <div style="font-size: 12px; font-family: monospace;">
+                                    FACT 150800Z 32015G25KT 6000 SCT025 BKN040 18/12 Q1015
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bottom-nav">
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Map</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Plan</span>
+                        </div>
+                        <div class="bottom-nav-item active">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Weather</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Aircraft</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">More</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features:</h4>
+                <ul>
+                    <li>Advanced weather visualization layers</li>
+                    <li>Real-time METAR/TAF display</li>
+                    <li>Precipitation radar overlay</li>
+                    <li>Wind visualization at multiple altitudes</li>
+                    <li>AI-enhanced weather predictions (Premium)</li>
+                    <li>Route-specific weather briefing</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Aircraft Screen -->
+        <div id="aircraft-screen" class="wireframe-container hidden">
+            <h2 class="screen-title">Aircraft Profiles</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100% ✈️</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">←</span>
+                        <span style="font-size: 18px; flex: 1;">Aircraft</span>
+                        <span style="font-size: 20px;">+</span>
+                    </div>
+                    <div class="planning-container">
+                        <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;">
+                            <strong>3 of 3 aircraft profiles used</strong> (Upgrade to Premium for unlimited)
+                        </div>
+                        
+                        <div class="route-card">
+                            <div class="route-header">
+                                <div>
+                                    <h3>ZS-ABC</h3>
+                                    <div style="font-size: 14px; color: #666;">Cessna 172S Skyhawk</div>
+                                </div>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Cruise Speed</div>
+                                    <strong>124 kts</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Fuel Capacity</div>
+                                    <strong>56 gal</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Empty Weight</div>
+                                    <strong>1,663 lbs</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">MTOW</div>
+                                    <strong>2,550 lbs</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="route-card">
+                            <div class="route-header">
+                                <div>
+                                    <h3>ZS-DEF</h3>
+                                    <div style="font-size: 14px; color: #666;">Piper PA-28-181 Archer III</div>
+                                </div>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Cruise Speed</div>
+                                    <strong>128 kts</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Fuel Capacity</div>
+                                    <strong>48 gal</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Empty Weight</div>
+                                    <strong>1,434 lbs</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">MTOW</div>
+                                    <strong>2,550 lbs</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="route-card">
+                            <div class="route-header">
+                                <div>
+                                    <h3>ZS-GHI</h3>
+                                    <div style="font-size: 14px; color: #666;">Beechcraft F33A Bonanza</div>
+                                </div>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Edit</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Cruise Speed</div>
+                                    <strong>176 kts</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Fuel Capacity</div>
+                                    <strong>74 gal</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">Empty Weight</div>
+                                    <strong>2,138 lbs</strong>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #666;">MTOW</div>
+                                    <strong>3,400 lbs</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bottom-nav">
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Map</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Plan</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Weather</span>
+                        </div>
+                        <div class="bottom-nav-item active">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Aircraft</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">More</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features:</h4>
+                <ul>
+                    <li>Store multiple aircraft profiles (3 for Basic, unlimited for Premium)</li>
+                    <li>Performance data storage</li>
+                    <li>Weight and balance configurations</li>
+                    <li>Equipment and avionics details</li>
+                    <li>Maintenance tracking</li>
+                    <li>Document storage for POH, checklists</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="wireframe-container hidden">
+            <h2 class="screen-title">Settings & Account</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100% ✈️</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">←</span>
+                        <span style="font-size: 18px; flex: 1;">Settings</span>
+                    </div>
+                    <div class="settings-container">
+                        <div style="background: linear-gradient(135deg, #1a73e8, #0d47a1); color: white; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+                            <div style="font-size: 20px; margin-bottom: 8px;">Basic Plan</div>
+                            <div style="font-size: 14px; opacity: 0.9;">R99/month</div>
+                            <button style="margin-top: 12px; background: white; color: #1a73e8; padding: 8px 16px; border: none; border-radius: 4px; font-weight: bold;">Upgrade to Premium</button>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>Units & Display</h3>
+                            <div class="setting-item">
+                                <span>Distance Units</span>
+                                <select style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>Nautical Miles</option>
+                                    <option>Kilometers</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <span>Altitude Units</span>
+                                <select style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>Feet</option>
+                                    <option>Meters</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <span>Dark Mode</span>
+                                <div class="toggle"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>Map Settings</h3>
+                            <div class="setting-item">
+                                <span>Show Traffic</span>
+                                <div class="toggle active"></div>
+                            </div>
+                            <div class="setting-item">
+                                <span>Terrain Warnings</span>
+                                <div class="toggle active"></div>
+                            </div>
+                            <div class="setting-item">
+                                <span>Auto-Center Map</span>
+                                <div class="toggle"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>Data & Sync</h3>
+                            <div class="setting-item">
+                                <span>Auto-Download Charts</span>
+                                <div class="toggle active"></div>
+                            </div>
+                            <div class="setting-item">
+                                <span>Offline Maps</span>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Manage</button>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>Account</h3>
+                            <div class="setting-item">
+                                <span>pilot@example.com</span>
+                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Sign Out</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features:</h4>
+                <ul>
+                    <li>Subscription management and upgrade options</li>
+                    <li>Unit preferences (metric/imperial)</li>
+                    <li>Map display customization</li>
+                    <li>Data sync and offline settings</li>
+                    <li>Hardware connection settings</li>
+                    <li>Privacy and data management</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- AI Assistant Screen -->
+        <div id="ai-screen" class="wireframe-container hidden">
+            <h2 class="screen-title">Gemini AI Assistant (Premium)</h2>
+            <div class="device-frame">
+                <div class="device-screen">
+                    <div class="status-bar">
+                        <span>9:41 AM</span>
+                        <span>100% ✈️</span>
+                    </div>
+                    <div class="nav-bar">
+                        <span style="font-size: 20px;">←</span>
+                        <span style="font-size: 18px; flex: 1;">AI Flight Assistant</span>
+                        <span style="font-size: 20px;">🎤</span>
+                    </div>
+                    <div style="padding: 16px; height: calc(100% - 156px); overflow-y: auto;">
+                        <!-- Chat Interface -->
+                        <div style="margin-bottom: 16px;">
+                            <div style="background: #e3f2fd; padding: 12px; border-radius: 8px 8px 8px 0; margin-bottom: 12px; max-width: 80%;">
+                                <strong>Gemini AI</strong>
+                                <p style="margin-top: 4px;">Hello! I'm your AI flight assistant. I can help you plan routes, analyze weather, and optimize your flights. What would you like to know?</p>
+                            </div>
+                            
+                            <div style="background: #f5f5f5; padding: 12px; border-radius: 8px 8px 0 8px; margin-bottom: 12px; max-width: 80%; margin-left: auto;">
+                                <p>Plan a VFR route from Johannesburg to Cape Town avoiding bad weather</p>
+                            </div>
+                            
+                            <div style="background: #e3f2fd; padding: 12px; border-radius: 8px 8px 8px 0; max-width: 80%;">
+                                <strong>Gemini AI</strong>
+                                <p style="margin-top: 4px;">I've analyzed current weather conditions. Here's my recommended route:</p>
+                                <div style="background: white; padding: 12px; border-radius: 4px; margin-top: 8px;">
+                                    <strong>FAOR → FAEL → FABB → FACT</strong>
+                                    <ul style="font-size: 14px; margin-top: 8px;">
+                                        <li>Avoids thunderstorms west of Kimberley</li>
+                                        <li>FL095 for favorable winds</li>
+                                        <li>Clear weather at destination</li>
+                                        <li>Total: 642nm, 4:12 flight time</li>
+                                    </ul>
+                                    <button class="btn" style="margin-top: 8px; width: 100%;">Load This Route</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Actions -->
+                        <div style="margin-top: 24px;">
+                            <h4 style="margin-bottom: 12px;">Quick Actions</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <button class="btn btn-secondary" style="padding: 12px; font-size: 14px;">Analyze Weather</button>
+                                <button class="btn btn-secondary" style="padding: 12px; font-size: 14px;">Find Alternates</button>
+                                <button class="btn btn-secondary" style="padding: 12px; font-size: 14px;">Optimize Fuel</button>
+                                <button class="btn btn-secondary" style="padding: 12px; font-size: 14px;">Risk Assessment</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Input Area -->
+                    <div style="position: absolute; bottom: 56px; left: 0; right: 0; background: white; border-top: 1px solid #e0e0e0; padding: 12px;">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" placeholder="Ask anything about your flight..." style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+                            <button class="btn">Send</button>
+                        </div>
+                    </div>
+                    
+                    <div class="bottom-nav">
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Map</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Plan</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Weather</span>
+                        </div>
+                        <div class="bottom-nav-item">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">Aircraft</span>
+                        </div>
+                        <div class="bottom-nav-item active">
+                            <div class="icon"></div>
+                            <span style="font-size: 12px;">AI</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="screen-description">
+                <h4>Key Features (Premium Only):</h4>
+                <ul>
+                    <li>Natural language flight planning queries</li>
+                    <li>Intelligent route optimization</li>
+                    <li>Automated weather analysis and briefings</li>
+                    <li>Smart alternate airport selection</li>
+                    <li>Fuel stop optimization</li>
+                    <li>Real-time risk assessment</li>
+                    <li>Dynamic re-routing suggestions</li>
+                    <li>Performance predictions based on actual conditions</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Additional Tablet View -->
+        <div style="margin-top: 60px;">
+            <h2 style="text-align: center; margin-bottom: 30px;">Tablet Experience (iPad/Android Tablet)</h2>
+            <div class="wireframe-container">
+                <div class="device-frame tablet-frame" style="margin: 0 auto;">
+                    <div class="device-screen">
+                        <div class="status-bar">
+                            <span>9:41 AM</span>
+                            <span>100% ✈️</span>
+                        </div>
+                        <div style="display: flex; height: calc(100% - 44px);">
+                            <!-- Left Panel - Route Planning -->
+                            <div style="width: 40%; background: #f8f8f8; border-right: 1px solid #e0e0e0; padding: 20px;">
+                                <h2 style="margin-bottom: 20px;">Flight Planning</h2>
+                                
+                                <div class="ai-assistant">
+                                    <div class="ai-header">
+                                        <div class="ai-icon"></div>
+                                        <span><strong>Gemini AI Assistant</strong></span>
+                                    </div>
+                                    <div class="ai-suggestions">
+                                        <p style="font-size: 14px;">Weather analysis complete. Moderate turbulence expected at FL110+. Recommend FL095.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="route-card">
+                                    <h3>Route Waypoints</h3>
+                                    <div class="waypoint">
+                                        <div class="waypoint-icon">FAOR</div>
+                                        <div class="waypoint-info">
+                                            <strong>OR Tambo Intl</strong>
+                                            <div style="font-size: 12px; color: #666;">ATIS 126.2</div>
+                                        </div>
+                                    </div>
+                                    <div class="waypoint">
+                                        <div class="waypoint-icon">GAV</div>
+                                        <div class="waypoint-info">
+                                            <strong>Gariep VOR</strong>
+                                            <div style="font-size: 12px; color: #666;">114.4 MHz</div>
+                                        </div>
+                                    </div>
+                                    <div class="waypoint">
+                                        <div class="waypoint-icon">FACT</div>
+                                        <div class="waypoint-info">
+                                            <strong>Cape Town Intl</strong>
+                                            <div style="font-size: 12px; color: #666;">ATIS 127.8</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-top: 20px;">
+                                    <h4>Performance Summary</h4>
+                                    <div style="background: white; padding: 16px; border-radius: 8px;">
+                                        <div class="info-row">
+                                            <span>Distance:</span>
+                                            <strong>435 nm</strong>
+                                        </div>
+                                        <div class="info-row">
+                                            <span>Flight Time:</span>
+                                            <strong>2:45</strong>
+                                        </div>
+                                        <div class="info-row">
+                                            <span>Fuel Required:</span>
+                                            <strong>45.2 gal</strong>
+                                        </div>
+                                        <div class="info-row">
+                                            <span>Fuel Reserves:</span>
+                                            <strong>10.8 gal</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Right Panel - Map -->
+                            <div style="flex: 1; position: relative;">
+                                <div style="position: absolute; top: 20px; left: 20px; right: 20px; z-index: 10;">
+                                    <div class="search-bar" style="background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                        <input type="text" class="search-input" placeholder="Search airports, navaids, waypoints..." />
+                                        <button class="btn">Search</button>
+                                        <button class="btn btn-secondary">Direct To</button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Map Area -->
+                                <div style="width: 100%; height: 100%; background: #e8f5e9; position: relative;">
+                                    <!-- Route visualization -->
+                                    <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                                        <line x1="30%" y1="25%" x2="70%" y2="75%" stroke="#1a73e8" stroke-width="4" />
+                                    </svg>
+                                    
+                                    <!-- Airspace overlay -->
+                                    <div style="position: absolute; top: 35%; left: 40%; width: 200px; height: 150px; border: 2px dashed #ff5722; opacity: 0.5;"></div>
+                                    
+                                    <!-- Weather overlay -->
+                                    <div style="position: absolute; bottom: 30%; right: 20%; width: 150px; height: 150px; background: rgba(255, 152, 0, 0.2); border-radius: 50%;"></div>
+                                    
+                                    <!-- Info panels -->
+                                    <div style="position: absolute; top: 20px; right: 20px; background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                        <h4 style="margin-bottom: 8px;">Current Position</h4>
+                                        <div style="font-size: 14px;">
+                                            <div>HDG: 247°</div>
+                                            <div>GS: 145 kts</div>
+                                            <div>Alt: FL095</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="weather-strip" style="width: auto; max-width: 500px;">
+                                        <h4 style="margin-bottom: 8px;">Weather Along Route</h4>
+                                        <div style="display: flex; gap: 16px;">
+                                            <div>
+                                                <strong>FAOR:</strong> VFR ☀️
+                                                <div style="font-size: 12px;">Wind 180/12</div>
+                                            </div>
+                                            <div>
+                                                <strong>En Route:</strong> VMC ⛅
+                                                <div style="font-size: 12px;">FL100: -15°C</div>
+                                            </div>
+                                            <div>
+                                                <strong>FACT:</strong> MVFR ☁️
+                                                <div style="font-size: 12px;">Wind 320/15G25</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="screen-description">
+                    <h4>Tablet Optimizations:</h4>
+                    <ul>
+                        <li>Split-screen layout for simultaneous planning and map viewing</li>
+                        <li>Enhanced information density</li>
+                        <li>Larger touch targets optimized for tablet use</li>
+                        <li>Multi-panel workflow</li>
+                        <li>Drag-and-drop between panels</li>
+                        <li>Extended weather and performance displays</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showScreen(screen) {
+            // Hide all screens
+            document.querySelectorAll('.wireframe-container').forEach(container => {
+                container.classList.add('hidden');
+            });
+            
+            // Remove active class from all nav buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected screen
+            document.getElementById(screen + '-screen').classList.remove('hidden');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+        
+        // Add interactive elements
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                this.classList.toggle('active');
+            });
+        });
+        
+        // Add hover effects
+        document.querySelectorAll('.btn, .nav-btn, .bottom-nav-item').forEach(element => {
+            element.addEventListener('mouseenter', function() {
+                this.style.opacity = '0.8';
+            });
+            element.addEventListener('mouseleave', function() {
+                this.style.opacity = '1';
+            });
+        });
+    </script>
+</body>
+</html>
