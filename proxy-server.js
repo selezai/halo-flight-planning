@@ -12,6 +12,12 @@ const app = express();
 const port = process.env.PORT || 3001;
 const apiKey = process.env.VITE_OPENAIP_API_KEY;
 
+// Debug API key loading
+console.log('🔑 API Key Status:');
+console.log('  - API Key loaded:', apiKey ? 'YES' : 'NO');
+console.log('  - API Key length:', apiKey?.length || 0);
+console.log('  - API Key preview:', apiKey ? `${apiKey.substring(0, 8)}...` : 'NONE');
+
 // --- Logger Setup ---
 const logger = winston.createLogger({
   level: 'info',
@@ -42,7 +48,53 @@ if (!apiKey) {
 }
 
 logger.info('Proxy server starting up...');
-logger.info(`OpenAIP API Key Loaded: ${apiKey.substring(0, 4)}...`);
+logger.info(`OpenAIP API Key Loaded: ${apiKey.substring(0, 3)}...`);
+
+// --- HTTP Request Helper Function ---
+/**
+ * Make HTTP request to external API
+ * @param {string} url - Target URL
+ * @param {Object} options - Request options including headers
+ * @returns {Promise<Object>} - Response data
+ */
+const makeRequest = (url, options = {}) => {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const requestOptions = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+    };
+
+    const req = https.request(requestOptions, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        try {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            const jsonData = JSON.parse(data);
+            resolve(jsonData);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+          }
+        } catch (error) {
+          reject(new Error(`Failed to parse JSON response: ${error.message}`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      reject(new Error(`Request failed: ${error.message}`));
+    });
+    
+    req.end();
+  });
+};
 
 // --- Middleware for CORS ---
 app.use((req, res, next) => {
@@ -230,12 +282,6 @@ app.use('/cdn', (req, res) => {
 });
 
 
-// --- Fallback for all other routes - return 404 ---
-app.use((req, res) => {
-  logger.warn(`🚫 404 - Route not found: ${req.method} ${req.url}`);
-  res.status(404).json({ error: 'Not Found' });
-});
-
 // --- OpenAIP REST API Endpoints ---
 // These endpoints provide detailed feature information to supplement vector tile data
 
@@ -258,7 +304,7 @@ app.get('/api/openaip/airports', async (req, res) => {
     if (name) queryParams.append('name', name);
     if (country) queryParams.append('country', country);
     
-    const targetUrl = `https://api.openaip.net/api/airports?${queryParams.toString()}`;
+    const targetUrl = `https://api.core.openaip.net/api/airports?${queryParams.toString()}`;
     
     const requestOptions = {
       headers: {
@@ -283,21 +329,26 @@ app.get('/api/openaip/airports', async (req, res) => {
  * GET /api/openaip/navaids?ident=XXX
  */
 app.get('/api/openaip/navaids', async (req, res) => {
-  const { ident, name, type } = req.query;
+  const { ident, name, type, lat, lon, radius } = req.query;
   
-  if (!ident && !name) {
-    return res.status(400).json({ error: 'Identifier or name parameter required' });
+  // Support both identifier/name search and location-based search
+  if (!ident && !name && !lat && !lon) {
+    return res.status(400).json({ error: 'Identifier, name, or location (lat/lon) parameters required' });
   }
 
   try {
-    logger.info(`🔍 Fetching navaid details: ${ident || name}`);
+    const searchType = (lat && lon) ? 'location' : 'identifier/name';
+    logger.info(`🔍 Fetching navaid details via ${searchType}: ${ident || name || `${lat},${lon}`}`);
     
     let queryParams = new URLSearchParams();
     if (ident) queryParams.append('ident', ident);
     if (name) queryParams.append('name', name);
     if (type) queryParams.append('type', type);
+    if (lat) queryParams.append('lat', lat);
+    if (lon) queryParams.append('lon', lon);
+    if (radius) queryParams.append('radius', radius);
     
-    const targetUrl = `https://api.openaip.net/api/navaids?${queryParams.toString()}`;
+    const targetUrl = `https://api.core.openaip.net/api/navaids?${queryParams.toString()}`;
     
     const requestOptions = {
       headers: {
@@ -336,7 +387,7 @@ app.get('/api/openaip/airspaces', async (req, res) => {
     if (country) queryParams.append('country', country);
     if (type) queryParams.append('type', type);
     
-    const targetUrl = `https://api.openaip.net/api/airspaces?${queryParams.toString()}`;
+    const targetUrl = `https://api.core.openaip.net/api/airspaces?${queryParams.toString()}`;
     
     const requestOptions = {
       headers: {
@@ -385,6 +436,12 @@ app.get('/api/openaip/:endpoint', async (req, res) => {
     logger.error(`❌ Error fetching ${endpoint} data: ${error.message}`);
     res.status(500).json({ error: `Failed to fetch ${endpoint} data`, details: error.message });
   }
+});
+
+// --- Fallback for all other routes - return 404 ---
+app.use((req, res) => {
+  logger.warn(`🚫 404 - Route not found: ${req.method} ${req.url}`);
+  res.status(404).json({ error: 'Not Found' });
 });
 
 // --- Start Server ---

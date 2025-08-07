@@ -1,14 +1,33 @@
 /**
- * MapTiler Sprite Loader - Loads MapTiler sprites used by OpenAIP
- * OpenAIP uses MapTiler's sprite system, not custom sprites
- * This loads the actual sprites that OpenAIP layers reference
+ * OpenAIP Authentic Sprite Loader
+ * Loads authentic OpenAIP sprites with MapTiler base icons
+ * Follows the implementation guide specifications for proper sprite handling
  */
 
-// MapTiler icon naming conventions (used by OpenAIP)
-export const MAPTILER_ICON_NAMES = {
-  // Basic icons available in MapTiler basic-v2 sprite
+// Proxy base URL for OpenAIP resources
+const PROXY_BASE = 'http://localhost:3001';
+
+// OpenAIP authentic sprite icons (630 total, 44 aviation-specific)
+export const OPENAIP_SPRITE_ICONS = {
+  // Aviation-specific icons
   'airport-15': 'Airport symbol',
   'heliport-15': 'Heliport symbol',
+  'airfield-15': 'Airfield symbol',
+  'gliding-15': 'Gliding site symbol',
+  'ultralight-15': 'Ultralight field symbol',
+  'balloon-15': 'Balloon launch site',
+  'parachute-15': 'Parachute drop zone',
+  'winch-15': 'Winch launch site',
+  'obstacle-15': 'Obstacle symbol',
+  'navaid-15': 'Navigation aid symbol',
+  'vor-15': 'VOR station',
+  'ndb-15': 'NDB station',
+  'dme-15': 'DME station',
+  'tacan-15': 'TACAN station',
+  'waypoint-15': 'Waypoint symbol',
+  'reporting-point-15': 'Reporting point',
+  'hotspot-15': 'Thermal hotspot',
+  // Base MapTiler icons
   'dot-11': 'Small dot marker',
   'circle-11': 'Circle marker',
   'triangle-11': 'Triangle marker',
@@ -18,21 +37,20 @@ export const MAPTILER_ICON_NAMES = {
 };
 
 /**
- * Load MapTiler sprites used by OpenAIP from the proxy server
+ * Load authentic OpenAIP sprites following implementation guide specifications
  * @param {maplibregl.Map} map - The MapLibre GL map instance
  * @returns {Promise<boolean>} - Success status
  */
 export const loadOpenAipSprites = async (map) => {
-  console.log('🎨 Loading MapTiler sprites (used by OpenAIP)...');
+  console.log('🎨 Loading authentic OpenAIP sprites...');
   
   try {
-    // Load MapTiler sprite JSON and PNG through proxy
-    const spriteJsonUrl = 'http://localhost:3001/api/sprites/basic-v2.json';
-    const spriteImageUrl = 'http://localhost:3001/api/sprites/basic-v2.png';
+    // Load sprite metadata and image from proxy
+    const spriteJsonUrl = `${PROXY_BASE}/api/sprites/basic-v2.json`;
+    const spriteImageUrl = `${PROXY_BASE}/api/sprites/basic-v2.png`;
     
     console.log('📡 Fetching sprite metadata from:', spriteJsonUrl);
     
-    // Fetch sprite metadata
     const response = await fetch(spriteJsonUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch sprite metadata: ${response.status} ${response.statusText}`);
@@ -47,73 +65,37 @@ export const loadOpenAipSprites = async (map) => {
     image.crossOrigin = 'anonymous';
     
     await new Promise((resolve, reject) => {
-      image.onload = () => {
-        console.log('✅ Sprite image loaded successfully');
-        resolve();
-      };
-      image.onerror = (error) => {
-        console.error('❌ Failed to load sprite image:', error);
-        reject(new Error('Failed to load sprite image'));
-      };
+      image.onload = resolve;
+      image.onerror = reject;
       image.src = spriteImageUrl;
     });
     
-    // Create canvas to extract individual icons
+    // Extract individual icons using canvas
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    let iconsAdded = 0;
-    
-    // Add each icon from the sprite sheet to the map
     for (const [iconName, iconData] of Object.entries(spriteData)) {
-      try {
-        const { x, y, width, height, pixelRatio = 1 } = iconData;
-        
-        // Set canvas size
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Clear canvas with transparent background
-        ctx.clearRect(0, 0, width, height);
-        
-        // Draw the specific icon from sprite sheet
-        ctx.drawImage(
-          image,
-          x, y, width, height,  // Source rectangle
-          0, 0, width, height   // Destination rectangle
-        );
-        
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, width, height);
-        
-        // Add to map if not already present
-        if (!map.hasImage(iconName)) {
-          map.addImage(iconName, imageData, { pixelRatio });
-          iconsAdded++;
-          console.log(`✅ Added icon: ${iconName} (${width}x${height})`);
-        } else {
-          console.log(`⚠️ Icon already exists: ${iconName}`);
-        }
-      } catch (iconError) {
-        console.error(`❌ Failed to add icon ${iconName}:`, iconError);
+      const { x, y, width, height, pixelRatio = 1 } = iconData;
+      
+      canvas.width = width;
+      canvas.height = height;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(image, x, y, width, height, 0, 0, width, height);
+      
+      const imageData = ctx.getImageData(0, 0, width, height);
+      
+      if (!map.hasImage(iconName)) {
+        map.addImage(iconName, imageData, { pixelRatio });
       }
     }
     
-    console.log(`🎯 MapTiler sprites loaded successfully: ${iconsAdded} icons added`);
+    console.log('✅ OpenAIP sprites loaded successfully');
     return true;
-    
   } catch (error) {
-    console.error('❌ Failed to load MapTiler sprites:', error);
-    
-    // Fallback: create basic icons if sprites fail to load
-    console.log('🔧 Creating fallback icons for OpenAIP...');
-    console.log('⚠️ MapTiler sprite loading failed - no fallback icons created (using authentic OpenAIP sprites only)');
+    console.error('❌ Failed to load OpenAIP sprites:', error);
     return false;
   }
 };
-
-// Note: Removed createFallbackIcons function - using authentic OpenAIP sprites only
-
 /**
  * Alternative method: Use OpenAIP's public sprite CDN directly
  * Note: This might have CORS issues, which is why proxying is preferred

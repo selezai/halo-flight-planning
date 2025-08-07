@@ -5,8 +5,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useMapInitialization } from './hooks/useMapInitialization';
 import { useSidebar } from './hooks/useSidebar';
 import { OpenAipSidebar } from './sidebar/OpenAipSidebar';
-// Removed over-engineered imports - using simple vector tile properties directly
 import { setupOpenAipZoomBehavior } from './utils/openAipZoomRules';
+import { setupClickHandlers, debugFeatureClick } from './utils/enhancedClickHandler';
 import './sidebar/OpenAipSidebar.css';
 import '../../styles/openaip.css';
 
@@ -46,48 +46,38 @@ const HaloMap = () => {
     console.log('✅ Map loaded with OpenAIP-exact sidebar system');
   }, [mapLoaded, mapRef.current]);
 
-  // Set up direct MapLibre click handlers for sidebar integration
+  // Set up enhanced click handlers following implementation guide specifications
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    const handleMapClick = (e) => {
-      // Query all rendered features at click point (no layer filter to catch all OpenAIP features)
-      const features = map.queryRenderedFeatures(e.point);
-      
-      // Filter for OpenAIP features (those with source 'openaip-data')
-      const openAipFeatures = features.filter(feature => 
-        feature.source === 'openaip-data' || 
-        feature.sourceLayer // OpenAIP vector tile features have sourceLayer
-      );
-
-      if (openAipFeatures.length > 0) {
-        const feature = openAipFeatures[0];
-        console.log('🎯 OpenAIP Feature clicked:', feature);
-        console.log('📊 Feature properties:', feature.properties);
-        console.log('🗂️ Source layer:', feature.sourceLayer);
+    console.log('🎯 Setting up enhanced click handlers following implementation guide...');
+    
+    // Enhanced feature selection handler
+    const enhancedFeatureSelect = (feature) => {
+      if (feature) {
+        console.log('✅ Enhanced feature selected:', feature);
         
-        // SIMPLE APPROACH: Use raw vector tile properties directly (like map labels do)
-        console.log('✅ Using simple vector tile properties directly - no over-engineering!');
+        // Debug feature information
+        debugFeatureClick(feature);
         
-        // Show raw vector tile data directly (same as map labels use)
+        // Update sidebar with enhanced data
         handleFeatureSelect(feature);
         setClickedFeature(feature);
       } else {
-        // Clear sidebar selection if clicking empty area
-        console.log('🔍 No OpenAIP features found at click point');
+        console.log('🔍 Feature selection cleared');
         handleCloseFeature();
         setClickedFeature(null);
       }
     };
 
-    // Add click handler
-    map.on('click', handleMapClick);
+    // Setup enhanced click handlers
+    const cleanup = setupClickHandlers(map, enhancedFeatureSelect);
 
-    // Cleanup
-    return () => {
-      map.off('click', handleMapClick);
-    };
+    console.log('✅ Enhanced click handlers setup complete');
+
+    // Return cleanup function
+    return cleanup;
   }, [mapLoaded, mapRef.current, handleFeatureSelect, handleCloseFeature]);
 
   // Removed legacy handlers - implementing OpenAIP-exact functionality

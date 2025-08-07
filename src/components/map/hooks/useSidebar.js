@@ -20,8 +20,19 @@ export const useSidebar = (map) => {
       return;
     }
 
-    // Extract detailed feature information
-    const featureInfo = extractFeatureInfo(feature);
+    // Preserve enhanced data if available, otherwise extract feature info
+    let featureInfo;
+    if (feature.enhancedData || feature._loading !== undefined) {
+      // Feature already has enhanced data or loading state - preserve it
+      console.log('🔄 useSidebar: Preserving enhanced feature data');
+      featureInfo = feature;
+    } else {
+      // Extract detailed feature information for basic features
+      console.log('🔄 useSidebar: Extracting basic feature info');
+      featureInfo = extractFeatureInfo(feature);
+    }
+    
+    console.log('🔄 useSidebar: Setting selected feature:', featureInfo);
     setSelectedFeature(featureInfo);
     
     // Switch to search tab to show feature info
