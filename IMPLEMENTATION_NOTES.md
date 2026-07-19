@@ -263,6 +263,7 @@ Delivered:
 - Added route NOTAM review UI in the briefing panel.
 - Added NOTAM review source/status/results to briefing text and risk assessment.
 - Added unit coverage and e2e API coverage for the no-credential unavailable state.
+- Preserved prepared route locations in the client review when FAA credentials are missing so pilots can see which route identifiers would be queried after credentials are configured.
 
 Verification:
 
@@ -272,6 +273,7 @@ Verification:
 - `pnpm test`: 38 Vitest tests passed.
 - `pnpm build`: production build passed and included `/api/notams/route`.
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.
+- Follow-up route-location fix verification: `pnpm typecheck`, `pnpm test:e2e`, `pnpm test`, `pnpm lint`, and `pnpm build` passed.
 
 ### Verification
 

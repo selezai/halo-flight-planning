@@ -21,6 +21,8 @@ export default function RouteNotamReviewSync() {
   );
 
   useEffect(() => {
+    const locations = routeLocations(waypoints);
+
     if (waypoints.length < 2) {
       setRouteNotamReview(createNotamReview({
         source: 'unavailable',
@@ -37,7 +39,7 @@ export default function RouteNotamReviewSync() {
       source: 'faa-notam-api',
       status: 'checking',
       message: 'Checking live FAA NOTAMs for route airports and navaids...',
-      locations: routeLocations(waypoints),
+      locations,
     }));
 
     fetch('/api/notams/route', {
@@ -70,7 +72,10 @@ export default function RouteNotamReviewSync() {
       })
       .then((review) => {
         if (currentRequestId !== requestId.current) return;
-        setRouteNotamReview(review);
+        setRouteNotamReview({
+          ...review,
+          locations: review.locations.length > 0 ? review.locations : locations,
+        });
       })
       .catch((error) => {
         if (controller.signal.aborted || currentRequestId !== requestId.current) return;
@@ -81,6 +86,7 @@ export default function RouteNotamReviewSync() {
           message: error instanceof Error
             ? error.message
             : 'FAA NOTAM review failed.',
+          locations,
         }));
       });
 

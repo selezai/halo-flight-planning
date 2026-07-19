@@ -300,6 +300,7 @@ Changes:
 - Added briefing-panel NOTAM review UI, source link, route locations, count/status, and NOTAM rows.
 - Added NOTAM review to risk assessment and exported briefing text.
 - Added NOTAM provider research documentation and setup instructions.
+- Preserved prepared route locations in unavailable NOTAM reviews so missing FAA credentials do not hide the route identifiers that would be queried.
 
 Verification:
 
@@ -309,3 +310,4 @@ Verification:
 - `pnpm test`: 38 Vitest tests passed.
 - `pnpm build`: production build passed and included `/api/notams/route`.
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.
+- Follow-up route-location fix verification: `pnpm typecheck`, `pnpm test:e2e`, `pnpm test`, `pnpm lint`, and `pnpm build` passed.

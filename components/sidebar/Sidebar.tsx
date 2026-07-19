@@ -1070,7 +1070,7 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
 
       <p className="mt-2 text-xs text-slate-500">
         {review.locations.length
-          ? `Route locations: ${review.locations.join(', ')}. Source attribution: FAA NOTAM API.`
+          ? `${review.status === 'complete' || review.status === 'partial' ? 'Route locations checked' : 'Route locations prepared'}: ${review.locations.join(', ')}. Source attribution: FAA NOTAM API.`
           : 'Add route airports or navaids with usable identifiers for live NOTAM lookup.'}
       </p>
 

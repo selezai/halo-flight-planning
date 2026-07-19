@@ -30,6 +30,7 @@ test('creates a route from starter waypoints and generates a briefing package', 
   await expect(page.getByText(/1\. FAOR to FALA:/)).toBeVisible();
   await expect(page.getByText('Route NOTAM review', { exact: true })).toBeVisible();
   await expect(page.locator('body')).toContainText(/FAA NOTAM API credentials are not configured/i);
+  await expect(page.locator('body')).toContainText('Route locations prepared: FAOR, FALA');
   await expect(page.locator('pre')).toContainText('NOTAM REVIEW');
   await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
 });

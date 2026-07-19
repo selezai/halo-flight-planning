@@ -262,9 +262,12 @@ function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
   }
 
   const sourceLine = `Source: ${review.source === 'faa-notam-api' ? 'FAA NOTAM API' : 'Unavailable'} (${review.sourceUrl})`;
+  const locationLabel = review.status === 'complete' || review.status === 'partial'
+    ? 'Route locations checked'
+    : 'Route locations prepared';
   const locationLine = review.locations.length
-    ? `Route locations checked: ${review.locations.join(', ')}`
-    : 'Route locations checked: none';
+    ? `${locationLabel}: ${review.locations.join(', ')}`
+    : `${locationLabel}: none`;
   const statusLine = `Status: ${review.status.toUpperCase()} - ${review.message}`;
 
   if (review.notams.length === 0) {
