@@ -176,6 +176,38 @@ Verification:
 - Production briefing/export text included the Core API corridor review and critical risk item.
 - GitHub PR branch pushed with commit `565479d`: https://github.com/selezai/halo-flight-planning/pull/1
 
+### 2026-07-19 Global OpenAIP Route Search Slice
+
+Halo route search now uses OpenAIP Core for global airport and navaid lookup while preserving instant starter results as a degraded/offline-friendly fallback.
+
+Decisions:
+
+- Use a read-only `GET /api/openaip/search` server route so `OPENAIP_API_KEY` remains server-side.
+- Query OpenAIP Core `GET /airports` and `GET /navaids` with validated `search`, bounded `limit`, optional `country`, and narrow `fields`.
+- Normalize OpenAIP records into Halo `Waypoint` objects instead of binding the UI to raw Core API payloads.
+- Deduplicate by waypoint type and ident before falling back to source/name/coordinate keys so starter `EGLL` and OpenAIP `EGLL` render as one route result.
+
+Delivered:
+
+- Added `lib/openaip/waypointSearch.ts` for OpenAIP airport/navaid normalization.
+- Added `lib/planning/waypointResults.ts` for reusable route-search deduplication.
+- Added `app/api/openaip/search/route.ts` with server-side validation, OpenAIP fetches, cache headers, and partial-warning handling.
+- Updated the route panel with debounced global search, OpenAIP result count, global-source badges, and loading/error/warning/empty states.
+- Added unit tests for OpenAIP waypoint normalization and starter/OpenAIP deduplication.
+
+Verification:
+
+- `pnpm test`: 34 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed and included `/api/openaip/search`.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-fc98v157j-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_6wjLYoToNJdoK7vMGc7PabSDvhJk`
+- Production API: `/api/openaip/search?q=EGLL&limit=6` returned one OpenAIP waypoint for `EGLL` London Heathrow.
+- Production browser: route search for `EGLL` showed one deduped result row, displayed the OpenAIP Core global-search status, and produced no captured page or console errors.
+
 ### Verification
 
 - `pnpm test`: 5 tests passed.

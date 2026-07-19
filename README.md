@@ -13,7 +13,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Server-side OpenAIP Core route-corridor airspace review that compares crossed/nearby airspaces with selected cruise altitude and surfaces critical/caution/info alerts.
 - Rendered OpenAIP map airspace review remains available as a browser fallback while Core API review is checking or unavailable.
 - Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.
-- Route planning with airport/navaid search, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
+- Route planning with global OpenAIP Core airport/navaid search, instant starter fallback results, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
 - Aircraft presets plus editable cruise speed, fuel burn, usable fuel, reserve, contingency, and magnetic variation.
 - Personal minimums for ceiling, visibility, reserve fuel, wind, and crosswind.
@@ -98,6 +98,7 @@ types/              OpenAIP and planning TypeScript models
 - OpenAIP global vector map plan: `docs/superpowers/plans/2026-07-19-openaip-global-vector-map.md`
 - Route airspace review plan: `docs/superpowers/plans/2026-07-19-route-airspace-review.md`
 - Backend airspace corridor review plan: `docs/superpowers/plans/2026-07-19-backend-airspace-corridor-review.md`
+- OpenAIP global route search plan: `docs/superpowers/plans/2026-07-19-openaip-global-route-search.md`
 - Research: `docs/research/competitor-pain-points.md`
 - Setup detail: `SETUP.md`
 - Implementation notes: `IMPLEMENTATION_NOTES.md`

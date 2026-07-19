@@ -218,3 +218,35 @@ Verification:
   - Branch: `agent/complete-halo-flight-planner-20260719`
   - Commit: `565479d`
   - PR: https://github.com/selezai/halo-flight-planning/pull/1
+
+## 2026-07-19 Global OpenAIP Route Search Slice
+
+Objective: remove the starter-only waypoint search limitation by adding global OpenAIP Core airport and navaid search to the route panel.
+
+Research and decisions:
+
+- The live OpenAIP Core schema verifies `GET /airports` and `GET /navaids`; both support search, pagination/limit, field selection, and optional country filtering.
+- OpenAIP supplies global records, but Halo owns the planning function. Search results are converted into Halo waypoints so they can be used by route math, airspace review, weather lookup, briefing, and persistence.
+- The search endpoint is read-only and server-side to keep `OPENAIP_API_KEY` out of the browser.
+- Starter search stays in place as an instant fallback when the query is short or OpenAIP is unavailable.
+
+Changes:
+
+- Added `GET /api/openaip/search`.
+- Added OpenAIP airport/navaid waypoint normalization.
+- Added shared route-search deduplication so starter and OpenAIP versions of the same ICAO/navaid ident display once.
+- Updated the route panel with debounced global search, OpenAIP result counts, global-source badges, and loading/warning/error/empty states.
+- Added tests for normalization and deduplication.
+
+Verification:
+
+- `pnpm test`: 34 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed and included `/api/openaip/search`.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-fc98v157j-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_6wjLYoToNJdoK7vMGc7PabSDvhJk`
+- Production API: `/api/openaip/search?q=EGLL&limit=6` returned one OpenAIP waypoint for `EGLL` London Heathrow.
+- Production browser: route search for `EGLL` showed one deduped result row, displayed the OpenAIP Core global-search status, and produced no captured page or console errors.

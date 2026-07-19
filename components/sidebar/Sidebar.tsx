@@ -44,8 +44,10 @@ import {
 } from '@/lib/planning/navigation';
 import { searchStarterWaypoints } from '@/lib/planning/sampleData';
 import { buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
+import { mergeWaypointResults } from '@/lib/planning/waypointResults';
 import { COMPETITOR_PAIN_POINTS } from '@/lib/research/competitorPainPoints';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
+import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   Coordinates,
@@ -65,6 +67,13 @@ interface RouteWeatherState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+}
+
+interface OpenAipSearchState {
+  waypoints: Waypoint[];
+  loading: boolean;
+  error: string | null;
+  warning: string | null;
 }
 
 const PANEL_META: Array<{ id: Panel; label: string; icon: typeof Plane }> = [
@@ -390,7 +399,12 @@ function RoutePanel() {
   const [manualLat, setManualLat] = useState('');
   const [manualLng, setManualLng] = useState('');
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
-  const results = useMemo(() => searchStarterWaypoints(query), [query]);
+  const starterResults = useMemo(() => searchStarterWaypoints(query), [query]);
+  const openAipSearch = useOpenAipWaypointSearch(query);
+  const results = useMemo(
+    () => mergeWaypointResults(starterResults, openAipSearch.waypoints).slice(0, 12),
+    [openAipSearch.waypoints, starterResults]
+  );
 
   const addManualPoint = () => {
     const latitude = Number(manualLat);
@@ -449,8 +463,26 @@ function RoutePanel() {
           placeholder="ICAO, navaid, or name"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
         />
+        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+          <span>
+            {query.trim().length >= 2
+              ? openAipSearch.loading
+                ? 'Searching OpenAIP Core...'
+                : 'Starter results plus OpenAIP Core global search'
+              : 'Type at least 2 characters for global OpenAIP search'}
+          </span>
+          {openAipSearch.waypoints.length > 0 && (
+            <span>{openAipSearch.waypoints.length} OpenAIP</span>
+          )}
+        </div>
+        {openAipSearch.error && <div className="mt-2"><WarningLine text={openAipSearch.error} /></div>}
+        {openAipSearch.warning && <div className="mt-2"><WarningLine text={openAipSearch.warning} /></div>}
         <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
-          {results.map((waypoint) => (
+          {results.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">
+              No airport or navaid matches found.
+            </div>
+          ) : results.map((waypoint) => (
             <button
               key={waypoint.id}
               type="button"
@@ -460,6 +492,11 @@ function RoutePanel() {
               <span>
                 <span className="block text-sm font-medium text-slate-900">{waypoint.ident}</span>
                 <span className="block text-xs text-slate-500">{waypoint.name}</span>
+                {waypoint.notes?.includes('OpenAIP Core') && (
+                  <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                    OpenAIP global
+                  </span>
+                )}
               </span>
               <Plus className="h-4 w-4 text-slate-500" />
             </button>
@@ -675,6 +712,73 @@ function AirspaceAlertRow({ alert }: { alert: RouteAirspaceAlert }) {
       <p className="mt-1">{alert.reason}</p>
     </div>
   );
+}
+
+function useOpenAipWaypointSearch(query: string): OpenAipSearchState {
+  const [state, setState] = useState<OpenAipSearchState>({
+    waypoints: [],
+    loading: false,
+    error: null,
+    warning: null,
+  });
+  const normalizedQuery = query.trim();
+
+  useEffect(() => {
+    if (normalizedQuery.length < 2) {
+      setState({
+        waypoints: [],
+        loading: false,
+        error: null,
+        warning: null,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setState((current) => ({
+        ...current,
+        loading: true,
+        error: null,
+        warning: null,
+      }));
+
+      fetch(`/api/openaip/search?q=${encodeURIComponent(normalizedQuery)}&limit=10`, {
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload?.error || 'OpenAIP global search failed.');
+          }
+          return payload as OpenAipWaypointSearchResponse;
+        })
+        .then((payload) => {
+          setState({
+            waypoints: payload.waypoints,
+            loading: false,
+            error: null,
+            warning: payload.warning ?? null,
+          });
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setState({
+            waypoints: [],
+            loading: false,
+            error: error instanceof Error ? error.message : 'OpenAIP global search failed.',
+            warning: null,
+          });
+        });
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [normalizedQuery]);
+
+  return state;
 }
 
 function WeatherPanel() {
