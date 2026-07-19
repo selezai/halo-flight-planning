@@ -582,9 +582,10 @@ function AirspaceReviewPanel({
   const criticalCount = review.alerts.filter((alert) => alert.level === 'critical').length;
   const visibleAlerts = review.alerts.slice(0, 6);
   const StatusIcon =
-    criticalCount > 0 || reviewableAlerts.length > 0 || review.status === 'partial'
+    criticalCount > 0 || reviewableAlerts.length > 0 || review.status === 'partial' || review.status === 'rate-limited'
       ? AlertTriangle
       : CheckCircle2;
+  const isCoreReview = review.source === 'openaip-core';
 
   return (
     <PanelBlock title="Route airspace review" icon={<Layers className="h-4 w-4" />}>
@@ -595,7 +596,7 @@ function AirspaceReviewPanel({
             <p className="font-semibold">
               {reviewableAlerts.length > 0
                 ? `${reviewableAlerts.length} item${reviewableAlerts.length === 1 ? '' : 's'} need review`
-                : 'Rendered airspace scan'}
+                : isCoreReview ? 'OpenAIP Core corridor scan' : 'Rendered airspace scan'}
             </p>
             <p className="mt-1">{review.message}</p>
           </div>
@@ -604,19 +605,40 @@ function AirspaceReviewPanel({
 
       <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
         <Metric label="Cruise" value={`${Math.round(cruiseAltitudeFt)} ft`} />
-        <Metric label="Samples" value={String(review.sampledPointCount)} />
-        <Metric label="Layers" value={String(review.visibleLayerCount)} />
+        {isCoreReview ? (
+          <>
+            <Metric label="Queries" value={String(review.queryCount ?? 0)} />
+            <Metric label="Corridor" value={`${review.corridorNm ?? 0} nm`} />
+          </>
+        ) : (
+          <>
+            <Metric label="Samples" value={String(review.sampledPointCount)} />
+            <Metric label="Layers" value={String(review.visibleLayerCount)} />
+          </>
+        )}
       </div>
 
+      {isCoreReview && (
+        <div className="mt-2 rounded bg-slate-50 p-2 text-xs">
+          <Metric label="Candidates" value={String(review.candidateCount ?? 0)} />
+        </div>
+      )}
+
       <p className="mt-2 text-xs text-slate-500">
-        Uses OpenAIP airspaces currently rendered in the browser. Pan/zoom over the full route before final review.
+        {isCoreReview
+          ? 'Uses server-side OpenAIP Core airspace queries over the full route corridor. Continue with official chart and NOTAM review before flight.'
+          : 'Uses OpenAIP airspaces currently rendered in the browser. Pan/zoom over the full route before final review.'}
       </p>
 
       {visibleAlerts.length === 0 ? (
         <div className="mt-3">
           <EmptyState
-            title="No rendered airspace hits"
-            detail={review.status === 'needs-route' ? 'Add a route first.' : 'No intersections were found in the visible rendered samples.'}
+            title={isCoreReview ? 'No Core airspace hits' : 'No rendered airspace hits'}
+            detail={review.status === 'needs-route'
+              ? 'Add a route first.'
+              : isCoreReview
+                ? 'No OpenAIP Core airspaces were found in the selected route corridor.'
+                : 'No intersections were found in the visible rendered samples.'}
           />
         </div>
       ) : (
@@ -1079,10 +1101,20 @@ function getAirspaceReviewTone(review: RouteAirspaceReview): string {
   if (review.alerts.some((alert) => alert.level === 'critical')) {
     return 'bg-rose-50 text-rose-800';
   }
-  if (review.alerts.some((alert) => alert.level === 'caution') || review.status === 'partial') {
+  if (
+    review.alerts.some((alert) => alert.level === 'caution') ||
+    review.status === 'partial' ||
+    review.status === 'rate-limited'
+  ) {
     return 'bg-amber-50 text-amber-900';
   }
-  if (review.status === 'airspace-hidden' || review.status === 'map-loading' || review.status === 'needs-route') {
+  if (
+    review.status === 'airspace-hidden' ||
+    review.status === 'map-loading' ||
+    review.status === 'needs-route' ||
+    review.status === 'checking' ||
+    review.status === 'unavailable'
+  ) {
     return 'bg-slate-50 text-slate-700';
   }
   return 'bg-emerald-50 text-emerald-800';

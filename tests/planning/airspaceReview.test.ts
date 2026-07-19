@@ -50,6 +50,22 @@ describe('route airspace review', () => {
     expect(alert?.level).toBe('caution');
   });
 
+  it('describes airspaces near the route corridor', () => {
+    const alert = buildRouteAirspaceAlert(makeAirspace({
+      name: 'Nearby Training Area',
+      airspaceType: 'TRA',
+      lowerLimitFt: 0,
+      upperLimitFt: 7500,
+    }), 9500, {
+      relationship: 'corridor',
+      distanceNm: 2.4,
+    });
+
+    expect(alert?.relationship).toBe('corridor');
+    expect(alert?.distanceNm).toBe(2.4);
+    expect(alert?.reason).toContain('2.4 nm from the planned route corridor');
+  });
+
   it('sorts critical alerts before caution and information', () => {
     const alerts = sortRouteAirspaceAlerts([
       buildRouteAirspaceAlert(makeAirspace({ name: 'Clear FIR', lowerLimitFt: 11000, upperLimitFt: 19500 }), 6500)!,

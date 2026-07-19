@@ -19,12 +19,12 @@
 - [x] OpenAIP symbol layers restored for aviation icons and labels.
 - [x] Click-to-detail parsing expanded for airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
 - [x] Route-aware rendered OpenAIP airspace review with cruise-altitude conflict classification in route, briefing, status bar, and export text.
+- [x] Backend OpenAIP Core route-corridor airspace review with bounded bbox queries, 5 nm corridor filtering, and rendered-map fallback.
 
 ## Remaining Before Operational Launch
 
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
 - [ ] Add live NOTAM provider integration with route filtering and source attribution.
-- [ ] Replace rendered-viewport airspace review with or supplement it by a backend full-route airspace corridor query before treating it as operationally complete.
 - [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
 - [ ] Add aircraft-specific weight-and-balance envelopes before exposing W&B as operational output.
 - [ ] Add airport detail/search backed by OpenAIP REST search for global coverage beyond starter data.

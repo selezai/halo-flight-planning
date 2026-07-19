@@ -80,8 +80,16 @@ function summarizeAirspaceReview(
     return { label: `${reviewCount} airspace review`, tone: 'text-amber-700' };
   }
 
-  if (status === 'partial') {
+  if (status === 'checking') {
+    return { label: 'Airspace checking', tone: 'text-slate-600' };
+  }
+
+  if (status === 'partial' || status === 'rate-limited') {
     return { label: 'Airspace partial', tone: 'text-amber-700' };
+  }
+
+  if (status === 'unavailable') {
+    return { label: 'Airspace unavailable', tone: 'text-slate-600' };
   }
 
   if (alerts.length > 0) {

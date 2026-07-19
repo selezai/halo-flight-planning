@@ -12,7 +12,11 @@ const LEVEL_RANK: Record<RouteAirspaceAlertLevel, number> = {
 
 export function buildRouteAirspaceAlert(
   feature: ParsedFeature,
-  cruiseAltitudeFt: number
+  cruiseAltitudeFt: number,
+  options: {
+    relationship?: RouteAirspaceAlert['relationship'];
+    distanceNm?: number;
+  } = {}
 ): RouteAirspaceAlert | null {
   if (feature.type !== 'airspace') return null;
 
@@ -26,12 +30,14 @@ export function buildRouteAirspaceAlert(
 
   let level: RouteAirspaceAlertLevel = 'info';
   let requiresReview = false;
-  let reason = `${name} is crossed, but ${formatAltitude(cruiseAltitudeFt)} is outside the parsed vertical limits.`;
+  const relationship = options.relationship ?? 'crossing';
+  const routeText = formatRouteRelationship(name, relationship, options.distanceNm);
+  let reason = `${routeText}, but ${formatAltitude(cruiseAltitudeFt)} is outside the parsed vertical limits.`;
 
   if (!hasVerticalLimits) {
     level = 'caution';
     requiresReview = true;
-    reason = `${name} is crossed and Halo could not parse comparable vertical limits from the rendered OpenAIP feature.`;
+    reason = `${routeText} and Halo could not parse comparable vertical limits from the OpenAIP feature.`;
   } else if (conflict) {
     requiresReview = true;
     level = isControlledOrSpecialUse(feature) ? 'critical' : 'caution';
@@ -53,6 +59,8 @@ export function buildRouteAirspaceAlert(
     requiresReview,
     level,
     reason,
+    relationship,
+    distanceNm: options.distanceNm,
   };
 }
 
@@ -99,4 +107,19 @@ function finiteNumber(value: number | undefined): number | undefined {
 
 function formatAltitude(altitudeFt: number): string {
   return `${Math.round(altitudeFt).toLocaleString('en-US')} ft`;
+}
+
+function formatRouteRelationship(
+  name: string,
+  relationship: RouteAirspaceAlert['relationship'],
+  distanceNm: number | undefined
+): string {
+  if (relationship === 'corridor') {
+    const distance = typeof distanceNm === 'number' && Number.isFinite(distanceNm)
+      ? `${distanceNm.toFixed(1)} nm from`
+      : 'near';
+    return `${name} is ${distance} the planned route corridor`;
+  }
+
+  return `${name} is crossed`;
 }

@@ -140,6 +140,41 @@ Production verification:
 - Sampled Vercel runtime log stream showed no errors after production smoke requests.
 - GitHub PR branch pushed with commit `3ec0d42`: https://github.com/selezai/halo-flight-planning/pull/1
 
+### 2026-07-19 Backend Airspace Corridor Review Slice
+
+Halo now supplements the rendered map review with a server-side OpenAIP Core route-corridor review.
+
+Decisions:
+
+- Use OpenAIP Core API `GET /airspaces` with `bbox`, `limit`, and `fields` from the live Swagger schema.
+- Keep OpenAIP credentials server-side in `POST /api/openaip/airspace-review`.
+- Split long routes into bounded 120 nm query segments and cap requests at 24 segments because OpenAIP documents bbox queries as compute-intensive and rate-limited.
+- Use a 5 nm corridor for this release. Direct polygon crossings and airspaces close to the route corridor are included.
+- Prefer Core API complete/partial/checking results in the UI while retaining the rendered-vector review as fallback when Core review is unavailable.
+
+Delivered:
+
+- Added `lib/planning/airspaceCorridor.ts` for bbox generation, route splitting, polygon intersection, and route-to-polygon corridor distance.
+- Added validated read-only `POST /api/openaip/airspace-review`.
+- Fixed Core API airspace vertical unit parsing so `unit=1` is feet and `unit=6` is flight level for altitude limits.
+- Added `components/planning/RouteAirspaceReviewSync.tsx` to refresh Core API review when route or cruise altitude changes.
+- Expanded route airspace review state with source, corridor width, query count, candidate count, unavailable, checking, partial, and rate-limited states.
+- Updated route panel/status bar/briefing flows to display Core API corridor results while keeping rendered-map fallback behavior.
+
+Verification:
+
+- `pnpm test`: 29 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed and included `/api/openaip/airspace-review`.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-h7r99c6ns-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_FhHKr9zxqQFTeis7AdiCbHCEPxSR`
+- Production API: FAOR→FALA at 6,500 ft returned `source=openaip-core`, `status=complete`, `queryCount=1`, `candidateCount=24`, `alerts=18`, and `critical=4`.
+- Production browser: route panel showed Core API review with 4 critical airspace items (`ATZ FAGC`, `CTR FALA`, `CTR FAOR`, `TMA FALA A`), 1 query, 24 candidates, and 5 nm corridor.
+- Production briefing/export text included the Core API corridor review and critical risk item.
+
 ### Verification
 
 - `pnpm test`: 5 tests passed.

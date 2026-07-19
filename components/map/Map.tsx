@@ -68,7 +68,7 @@ export default function Map({ className = '' }: MapProps) {
     cruiseAltitudeFt,
     planningMode,
     addUserWaypoint,
-    setRouteAirspaceReview,
+    setRenderedRouteAirspaceReview,
   } = useMapStore();
 
   const updateRouteOverlay = useCallback(() => {
@@ -105,7 +105,7 @@ export default function Map({ className = '' }: MapProps) {
 
   const updateRouteAirspaceReview = useCallback(() => {
     if (waypoints.length < 2) {
-      setRouteAirspaceReview(createRouteAirspaceReview({
+      setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'needs-route',
         message: 'Add at least two waypoints to review rendered OpenAIP airspace along the route.',
       }));
@@ -113,7 +113,7 @@ export default function Map({ className = '' }: MapProps) {
     }
 
     if (!map.current || !mapLoaded || !styleLoaded) {
-      setRouteAirspaceReview(createRouteAirspaceReview({
+      setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'map-loading',
         message: 'Aviation map tiles are still loading; airspace review will refresh automatically.',
       }));
@@ -121,7 +121,7 @@ export default function Map({ className = '' }: MapProps) {
     }
 
     if (!visibleLayers.airspaces) {
-      setRouteAirspaceReview(createRouteAirspaceReview({
+      setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'airspace-hidden',
         message: 'Enable the OpenAIP airspace layer to run the rendered route airspace review.',
       }));
@@ -134,7 +134,7 @@ export default function Map({ className = '' }: MapProps) {
     const visibleSamples = allSamples.filter((point) => isPointInsideMapCanvas(mapInstance, point));
 
     if (airspaceLayers.length === 0) {
-      setRouteAirspaceReview(createRouteAirspaceReview({
+      setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'map-loading',
         message: 'No visible OpenAIP airspace layers are available yet; zoom or wait for the style to finish loading.',
         sampledPointCount: visibleSamples.length,
@@ -143,7 +143,7 @@ export default function Map({ className = '' }: MapProps) {
     }
 
     if (visibleSamples.length === 0) {
-      setRouteAirspaceReview(createRouteAirspaceReview({
+      setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'partial',
         message: 'The planned route is outside the current map view. Pan or zoom to the route to refresh the rendered airspace review.',
         visibleLayerCount: airspaceLayers.length,
@@ -175,7 +175,7 @@ export default function Map({ className = '' }: MapProps) {
     const alerts = sortRouteAirspaceAlerts(Array.from(alertsById.values()));
     const status = visibleSamples.length < allSamples.length ? 'partial' : 'complete';
 
-    setRouteAirspaceReview(createRouteAirspaceReview({
+    setRenderedRouteAirspaceReview(createRouteAirspaceReview({
       status,
       message: buildRouteAirspaceReviewMessage({
         alerts,
@@ -190,7 +190,7 @@ export default function Map({ className = '' }: MapProps) {
   }, [
     cruiseAltitudeFt,
     mapLoaded,
-    setRouteAirspaceReview,
+    setRenderedRouteAirspaceReview,
     styleLoaded,
     visibleLayers.airspaces,
     waypoints,
@@ -553,6 +553,7 @@ function createRouteAirspaceReview(
   review: Pick<RouteAirspaceReview, 'status' | 'message'> & Partial<RouteAirspaceReview>
 ): RouteAirspaceReview {
   return {
+    source: 'rendered-vector',
     alerts: [],
     sampledPointCount: 0,
     visibleLayerCount: 0,

@@ -103,6 +103,33 @@ describe('OpenAIP feature parser', () => {
     expect(feature.activity).toBeUndefined();
   });
 
+  it('formats Core API airspace MSL feet limits with Core vertical unit codes', () => {
+    const feature = parseFeature({
+      sourceLayer: 'airspaces',
+      properties: {
+        _id: 'core-feet-airspace',
+        name: 'CTR FAOR',
+        type: 4,
+        icaoClass: 3,
+        lowerLimit: {
+          value: 0,
+          unit: 1,
+          referenceDatum: 0,
+        },
+        upperLimit: {
+          value: 7600,
+          unit: 1,
+          referenceDatum: 1,
+        },
+      },
+    });
+
+    expect(feature.lowerLimit).toBe('GND');
+    expect(feature.upperLimit).toBe('7600 ft MSL');
+    expect(feature.lowerLimitFt).toBe(0);
+    expect(feature.upperLimitFt).toBe(7600);
+  });
+
   it('converts metric airspace limits to feet for route review', () => {
     const feature = parseFeature({
       sourceLayer: 'airspaces',

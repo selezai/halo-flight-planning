@@ -50,6 +50,8 @@ interface MapState {
   activeAircraft: AircraftProfile;
   personalMinimums: PersonalMinimums;
   routeAirspaceReview: RouteAirspaceReview;
+  renderedRouteAirspaceReview: RouteAirspaceReview;
+  coreRouteAirspaceReview: RouteAirspaceReview;
   
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -75,7 +77,8 @@ interface MapState {
   setActiveAircraft: (aircraft: AircraftProfile) => void;
   updateActiveAircraft: (updates: Partial<AircraftProfile>) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
-  setRouteAirspaceReview: (review: RouteAirspaceReview) => void;
+  setRenderedRouteAirspaceReview: (review: RouteAirspaceReview) => void;
+  setCoreRouteAirspaceReview: (review: RouteAirspaceReview) => void;
 }
 
 const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
@@ -90,12 +93,37 @@ const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
 };
 
 const DEFAULT_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
+  source: 'rendered-vector',
   status: 'needs-route',
   message: 'Add at least two waypoints to review rendered OpenAIP airspace along the route.',
   alerts: [],
   sampledPointCount: 0,
   visibleLayerCount: 0,
 };
+
+const DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
+  source: 'openaip-core',
+  status: 'needs-route',
+  message: 'Add at least two waypoints to run the OpenAIP Core route corridor airspace review.',
+  alerts: [],
+  sampledPointCount: 0,
+  visibleLayerCount: 0,
+};
+
+function chooseActiveAirspaceReview(
+  coreReview: RouteAirspaceReview,
+  renderedReview: RouteAirspaceReview
+): RouteAirspaceReview {
+  if (['checking', 'complete', 'partial', 'rate-limited'].includes(coreReview.status)) {
+    return coreReview;
+  }
+
+  if (renderedReview.status !== 'needs-route' && renderedReview.status !== 'map-loading') {
+    return renderedReview;
+  }
+
+  return coreReview.status === 'unavailable' ? coreReview : renderedReview;
+}
 
 export const useMapStore = create<MapState>()(
   persist(
@@ -124,6 +152,8 @@ export const useMapStore = create<MapState>()(
       activeAircraft: DEFAULT_AIRCRAFT,
       personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
       routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+      renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+      coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
       
       // Actions
       setCenter: (center) => set({ center }),
@@ -212,7 +242,12 @@ export const useMapStore = create<MapState>()(
         ),
       })),
 
-      clearRoute: () => set({ waypoints: [], routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW }),
+      clearRoute: () => set({
+        waypoints: [],
+        routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+        renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+        coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+      }),
 
       setActiveAircraft: (aircraft) => set({
         activeAircraft: clampAircraftProfile(aircraft),
@@ -226,7 +261,15 @@ export const useMapStore = create<MapState>()(
         personalMinimums: clampPersonalMinimums({ ...state.personalMinimums, ...updates }),
       })),
 
-      setRouteAirspaceReview: (review) => set({ routeAirspaceReview: review }),
+      setRenderedRouteAirspaceReview: (review) => set((state) => ({
+        renderedRouteAirspaceReview: review,
+        routeAirspaceReview: chooseActiveAirspaceReview(state.coreRouteAirspaceReview, review),
+      })),
+
+      setCoreRouteAirspaceReview: (review) => set((state) => ({
+        coreRouteAirspaceReview: review,
+        routeAirspaceReview: chooseActiveAirspaceReview(review, state.renderedRouteAirspaceReview),
+      })),
     }),
     {
       name: 'halo-map-store',

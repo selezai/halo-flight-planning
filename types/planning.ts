@@ -116,21 +116,33 @@ export interface RouteAirspaceAlert {
   requiresReview: boolean;
   level: RouteAirspaceAlertLevel;
   reason: string;
+  relationship?: 'crossing' | 'corridor';
+  distanceNm?: number;
 }
+
+export type RouteAirspaceReviewSource = 'rendered-vector' | 'openaip-core';
 
 export type RouteAirspaceReviewStatus =
   | 'needs-route'
   | 'map-loading'
   | 'airspace-hidden'
+  | 'checking'
+  | 'unavailable'
+  | 'rate-limited'
   | 'partial'
   | 'complete';
 
 export interface RouteAirspaceReview {
+  source: RouteAirspaceReviewSource;
   status: RouteAirspaceReviewStatus;
   message: string;
   alerts: RouteAirspaceAlert[];
   sampledPointCount: number;
   visibleLayerCount: number;
+  corridorNm?: number;
+  queryCount?: number;
+  candidateCount?: number;
+  routeSignature?: string;
   updatedAt?: string;
 }
 

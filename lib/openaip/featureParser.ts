@@ -541,7 +541,7 @@ function formatAltitudeParts(rawValue: unknown, rawUnit: unknown, rawReference: 
   const numericValue = typeof rawValue === 'number' ? rawValue : Number(rawValue);
   if (!Number.isFinite(numericValue)) return undefined;
 
-  const unit = unitValueFromUnknown(rawUnit) ?? 'ft';
+  const unit = altitudeUnitValueFromUnknown(rawUnit) ?? 'ft';
   const reference = referenceValueFromUnknown(rawReference);
 
   if (reference === 'STD') return `FL${numericValue}`;
@@ -555,7 +555,7 @@ function altitudeFeetFromParts(rawValue: unknown, rawUnit: unknown, rawReference
   const numericValue = typeof rawValue === 'number' ? rawValue : Number(rawValue);
   if (!Number.isFinite(numericValue)) return undefined;
 
-  const unit = unitValueFromUnknown(rawUnit) ?? 'ft';
+  const unit = altitudeUnitValueFromUnknown(rawUnit) ?? 'ft';
   const reference = referenceValueFromUnknown(rawReference);
 
   if (reference === 'GND' && numericValue === 0) return 0;
@@ -749,6 +749,17 @@ function unitValueFromUnknown(raw: unknown): string | undefined {
   if (['ft', 'feet'].includes(text)) return 'ft';
   if (['m', 'meter', 'meters', 'metre', 'metres'].includes(text)) return 'm';
   return text ? text.toUpperCase() : undefined;
+}
+
+function altitudeUnitValueFromUnknown(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'number') {
+    if (raw === 0) return 'm';
+    if (raw === 1) return 'ft';
+    if (raw === 6 || raw === 7) return 'FL';
+  }
+
+  return unitValueFromUnknown(raw);
 }
 
 function referenceValue(record: Record<string, unknown>, ...keys: string[]): string | undefined {
