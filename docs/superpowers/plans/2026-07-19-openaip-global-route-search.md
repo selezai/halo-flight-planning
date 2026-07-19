@@ -59,8 +59,10 @@
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed and included `/api/openaip/search`.
 - Production deployment inspected as Ready:
-  - Deployment URL: https://halo-flight-planning-fc98v157j-pilotmerch-gmailcoms-projects.vercel.app
+  - Deployment URL: https://halo-flight-planning-3fr8tvz7a-pilotmerch-gmailcoms-projects.vercel.app
   - Production alias: https://halo-flight-planning.vercel.app
-  - Deployment ID: `dpl_6wjLYoToNJdoK7vMGc7PabSDvhJk`
+  - Deployment ID: `dpl_Eo6AWb36Npec35v2YruTr7SYE25G`
 - Production API: `/api/openaip/search?q=EGLL&limit=6` returned one OpenAIP waypoint for `EGLL` London Heathrow.
-- Production browser: route search for `EGLL` showed one deduped result row, displayed the OpenAIP Core global-search status, and produced no captured page or console errors.
+- Production API: `/api/openaip/style` returned 96 layers, 50 airspace-named layers, and 22 aviation symbol layers; `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Production browser: route search for `EGLL` showed one deduped result row, route search for `LOWW` showed an OpenAIP-only global result badge, and the page produced no captured console errors.
+- Production browser: map inspection mode selected point feature `FARF` with enriched airport details and airspace `JOHANNESBURG SOUTHWEST` with class, vertical limits, activation flags, source layer/id, and enriched Core API record status.
