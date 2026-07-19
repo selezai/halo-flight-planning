@@ -98,6 +98,22 @@ Verification:
 - Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
 - Production browser: no framework overlay, no degraded-map error, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
 
+Clicked-feature stack follow-up:
+
+- Commit: `f679905 feat: add OpenAIP clicked feature stack`.
+- `pnpm test`: 41 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Vercel production deployment inspected Ready:
+  - Deployment URL: https://halo-flight-planning-qmk9rmzj2-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_DVXvVwLtRyuNXxhVWT2SAVYCM4BQ`
+- Production API checks:
+  - `/api/openaip/style`: HTTP 200, 96 layers, 22 symbol layers.
+  - `/api/openaip/sprites/openaip.json`: HTTP 200, 128 sprite keys.
+  - `/api/openaip/tiles/8/147/147.pbf`: HTTP 200, 50,990 bytes, no stale `Content-Encoding`.
+
 ### 2026-07-19 Route-Aware Airspace Review Slice
 
 Halo now adds a planning layer on top of OpenAIP's browser vector map instead of treating OpenAIP as only a visual chart.

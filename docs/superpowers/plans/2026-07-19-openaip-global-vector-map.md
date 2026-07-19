@@ -215,3 +215,18 @@
   ```
 
   Expected: all commands pass. Manual browser inspection is owned by the user for this slice.
+
+  Result:
+
+  - `pnpm test`: 41 tests passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: no warnings or errors.
+  - `pnpm build`: production build passed.
+  - Vercel production deployment inspected Ready:
+    - Deployment URL: https://halo-flight-planning-qmk9rmzj2-pilotmerch-gmailcoms-projects.vercel.app
+    - Production alias: https://halo-flight-planning.vercel.app
+    - Deployment ID: `dpl_DVXvVwLtRyuNXxhVWT2SAVYCM4BQ`
+  - Production API checks:
+    - `/api/openaip/style`: HTTP 200, 96 layers, 22 symbol layers.
+    - `/api/openaip/sprites/openaip.json`: HTTP 200, 128 sprite keys.
+    - `/api/openaip/tiles/8/147/147.pbf`: HTTP 200, 50,990 bytes, no stale `Content-Encoding`.

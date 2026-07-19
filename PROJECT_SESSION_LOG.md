@@ -135,6 +135,26 @@ Production deployment and verification:
   - Commit: `464c5be`
   - PR: https://github.com/selezai/halo-flight-planning/pull/1
 
+Clicked-feature stack follow-up:
+
+- Added `lib/openaip/featureSelection.ts` and sidebar stack selection so overlapping OpenAIP click results are preserved instead of discarded.
+- GitHub PR branch pushed:
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+  - Commit: `f679905`
+- Verification:
+  - `pnpm test`: 41 tests passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: no warnings or errors.
+  - `pnpm build`: production build passed.
+- Vercel production deployment inspected Ready:
+  - Deployment URL: https://halo-flight-planning-qmk9rmzj2-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_DVXvVwLtRyuNXxhVWT2SAVYCM4BQ`
+- Production API checks:
+  - `/api/openaip/style`: HTTP 200, 96 layers, 22 symbol layers.
+  - `/api/openaip/sprites/openaip.json`: HTTP 200, 128 sprite keys.
+  - `/api/openaip/tiles/8/147/147.pbf`: HTTP 200, 50,990 bytes, no stale `Content-Encoding`.
+
 ## 2026-07-19 Route-Aware Airspace Review Slice
 
 Objective: make Halo use the OpenAIP browser vector map as planning data by reviewing rendered route airspace crossings against the selected cruise altitude.
