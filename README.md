@@ -1,158 +1,92 @@
-# Halo Flight Planning ✈️
-*Professional flight planning application with OpenAIP aeronautical chart integration*
+# Halo Flight Planning
 
-[![Build Status](https://img.shields.io/badge/Build-In%20Progress-yellow)]()
-[![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20Node.js-blue)]()
-[![Integration](https://img.shields.io/badge/Maps-OpenAIP-green)]()
+Browser-first flight planning for pilots. Built with Next.js 14, TypeScript, MapLibre GL, OpenAIP proxies, AviationWeather.gov weather, Zustand, Vitest, and Tailwind CSS.
 
-## 🌟 Project Overview
+## Current Features
 
-Halo Flight Planning is a comprehensive flight planning solution designed for pilots and aviation professionals. It integrates real-time aeronautical data with intuitive planning tools to ensure safe and efficient flight operations.
+- Interactive planning map with OpenAIP server-side proxy support.
+- Graceful fallback base map when OpenAIP credentials or sprites are unavailable.
+- Route planning with airport/navaid search, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
+- Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
+- Aircraft presets plus editable cruise speed, fuel burn, usable fuel, reserve, contingency, and magnetic variation.
+- Personal minimums for ceiling, visibility, reserve fuel, wind, and crosswind.
+- METAR and TAF lookup through validated server API routes using AviationWeather.gov.
+- Weather category display for VFR, MVFR, IFR, LIFR, and UNKNOWN.
+- Briefing generation with risk review, weather, fuel, NOTAM checklist, print, text export, and clipboard copy.
+- Research panel documenting competitor pain points and Halo's product response.
+- Unit tests for navigation and weather logic.
 
-### 🎯 Why Halo Flight Planning?
+## Quick Start
 
-Traditional flight planning tools are often:
-- Expensive and complex
-- Limited in real-time data integration
-- Not user-friendly for modern pilots
-- Lacking mobile optimization
-
-Halo solves these problems by providing a modern, accessible, and feature-rich planning platform.
-
-## ✨ Current Features
-
-- **🗺️ OpenAIP Integration**: Real-time aeronautical charts and airspace data
-- **📍 Route Planning**: Drag-and-drop waypoint creation
-- **🌤️ Weather Integration**: Current and forecast weather conditions
-- **⛽ Fuel Calculations**: Automatic fuel planning with aircraft performance data
-- **📊 Performance Analysis**: Weight & balance calculations
-- **📱 Responsive Design**: Optimized for desktop and tablet use
-
-## 🚧 Features in Development
-
-- [ ] **NOTAM Integration**: Real-time Notice to Airmen
-- [ ] **Flight Plan Filing**: Direct integration with ATC systems
-- [ ] **Aircraft Profiles**: Custom aircraft performance databases
-- [ ] **Offline Mode**: Cached charts for areas without internet
-- [ ] **Multi-leg Planning**: Complex route planning with stops
-- [ ] **Export Options**: PDF flight plans and navigation logs
-
-## 🛠️ Technology Implementation
-
-### Frontend Architecture
-- **React.js**: Component-based UI development
-- **Leaflet.js**: Interactive mapping and chart display
-- **Chart.js**: Performance and weather data visualization
-- **Material-UI**: Professional interface components
-
-### Backend Services
-- **Node.js/Express**: RESTful API development
-- **OpenAIP API**: Aeronautical data integration
-- **Weather APIs**: Meteorological data sources
-- **Database**: Flight plan storage and user management
-
-### Aviation-Specific Technologies
-- **GeoJSON**: Airspace and navigation data handling
-- **Aviation Calculations**: Great circle navigation, fuel planning
-- **ICAO Standards**: Compliant flight plan formatting
-
-## 🔧 Development Setup
-
-### Prerequisites
 ```bash
-Node.js >= 16.0.0
-npm >= 8.0.0
-Git
+pnpm install
+pnpm dev
 ```
 
-### Installation
-```bash
-# Clone repository
-git clone https://github.com/selezai/halo-flight-planning.git
+Open http://localhost:3000.
 
-# Install dependencies
-cd halo-flight-planning
-npm install
+## Environment
 
-# Environment setup
-cp .env.example .env
-# Add your OpenAIP API key and other credentials
+The app works as a local planner without external keys, but live OpenAIP aviation layers require OpenAIP credentials and authentic sprites.
 
-# Start development server
-npm run dev
+```env
+OPENAIP_API_KEY=your_openaip_api_key_here
+NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### API Keys Required
-- OpenAIP API key (for aeronautical data)
-- Weather service API key
-- Mapping service credentials
+Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`. OpenAIP credentials must stay server-side.
 
-## 🎯 Target Users
+## OpenAIP Sprites
 
-- **Private Pilots**: VFR and IFR flight planning
-- **Commercial Pilots**: Professional route optimization
-- **Flight Instructors**: Training and demonstration tool
-- **Aviation Students**: Learning modern flight planning techniques
-- **Charter Operators**: Efficient multi-aircraft planning
+Current sprite files may be placeholders. For visual parity, run:
 
-## 📊 Technical Challenges Solved
+```bash
+./scripts/build-sprites.sh
+```
 
-### Real-time Data Integration
-- Efficient API management for multiple data sources
-- Caching strategies for improved performance
-- Error handling for unreliable aviation data services
+The generated files belong in `public/sprites/`.
 
-### Complex Calculations
-- Great circle navigation mathematics
-- Wind triangle calculations for accurate ETAs
-- Fuel consumption modeling with various aircraft types
+## Commands
 
-### User Experience
-- Intuitive drag-and-drop interface for route creation
-- Responsive design that works across devices
-- Real-time updates without page refreshes
+```bash
+pnpm dev        # Start local development
+pnpm build      # Build production bundle
+pnpm start      # Start production server after build
+pnpm lint       # Run Next.js ESLint checks
+pnpm typecheck  # Run TypeScript checks
+pnpm test       # Run Vitest unit tests
+```
 
-## 🌟 Aviation Domain Expertise
+## Project Structure
 
-This project leverages deep aviation knowledge including:
-- **Regulatory Compliance**: Understanding of ICAO and local aviation regulations
-- **Operational Experience**: Real-world pilot perspective on planning needs
-- **Safety Considerations**: Risk assessment and weather interpretation
-- **Industry Standards**: Integration with existing aviation workflows
+```text
+app/
+  api/openaip/      OpenAIP style, tile, sprite, and detail proxies
+  api/weather/      METAR and TAF proxies
+components/
+  map/              MapLibre map and Halo route overlays
+  planning/         Route status surface
+  sidebar/          Route, weather, aircraft, briefing, and research panels
+lib/
+  openaip/          OpenAIP style conversion and feature parsing
+  planning/         Navigation math, aircraft, weather, briefing, starter data
+  research/         Competitor pain-point mapping
+stores/             Zustand persisted planning/map state
+tests/              Vitest unit tests
+types/              OpenAIP and planning TypeScript models
+```
 
-## 🚀 Deployment Strategy
+## Operational Notes
 
-- **Frontend**: Vercel for fast global CDN
-- **Backend**: Railway/Heroku for API services
-- **Database**: MongoDB Atlas for user data
-- **Monitoring**: Error tracking and performance analytics
+- Supabase auth/account sync is intentionally deferred until the live project schema and RLS policies are verified.
+- Live NOTAM data is not faked; Halo includes an explicit NOTAM review item in each briefing.
+- Weight-and-balance needs aircraft-specific arms/envelopes before it can be operationally useful.
 
-## 👨‍✈️ Developer Background
+## Documentation
 
-Built by **Selez Jumildo Massozi**:
-- **Licensed Pilot**: Private Pilot License (PPL) holder
-- **UAV Operations**: 2,012 hours of unmanned aircraft experience
-- **Aviation Technology**: Deep understanding of aviation systems and regulations
-- **Self-taught Developer**: Passionate about bringing modern technology to aviation
-
-## 🤝 Contributing
-
-Aviation professionals and developers are welcome to contribute:
-1. Fork the repository
-2. Create a feature branch
-3. Test thoroughly (aviation software requires high reliability)
-4. Submit a pull request with detailed description
-
-## 📜 License
-
-MIT License - Open source for the aviation community
-
-## 📞 Contact & Support
-
-- **Email**: selezmj@gmail.com
-- **GitHub**: [@selezai](https://github.com/selezai)
-- **Aviation Background**: Licensed pilot with extensive UAV experience
-
----
-
-*"Modern flight planning tools for the next generation of pilots"*
+- Design: `docs/superpowers/plans/2026-07-19-halo-flight-planning-design.md`
+- Implementation plan: `docs/superpowers/plans/2026-07-19-halo-flight-planning.md`
+- Research: `docs/research/competitor-pain-points.md`
+- Setup detail: `SETUP.md`
+- Implementation notes: `IMPLEMENTATION_NOTES.md`

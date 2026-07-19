@@ -1,0 +1,1086 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  CloudSun,
+  Download,
+  Eye,
+  EyeOff,
+  Gauge,
+  Info,
+  Layers,
+  MapPin,
+  Navigation,
+  Plane,
+  Plus,
+  Printer,
+  RefreshCcw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useMapStore } from '@/stores/mapStore';
+import {
+  formatCoordinatesDMS,
+  formatCoordinatesDecimal,
+} from '@/lib/openaip/featureParser';
+import {
+  PRESET_AIRCRAFT,
+  DEFAULT_PERSONAL_MINIMUMS,
+} from '@/lib/planning/aircraft';
+import {
+  calculateRoute,
+  formatCoordinates,
+  formatCourse,
+  formatDistance,
+  formatDuration,
+  formatFuel,
+} from '@/lib/planning/navigation';
+import { searchStarterWaypoints } from '@/lib/planning/sampleData';
+import { buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
+import { COMPETITOR_PAIN_POINTS } from '@/lib/research/competitorPainPoints';
+import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
+import type { ParsedFeature } from '@/types/openaip';
+import type {
+  Coordinates,
+  FlightCategory,
+  WeatherReport,
+  Waypoint,
+  WaypointType,
+} from '@/types/planning';
+
+type Panel = 'route' | 'weather' | 'aircraft' | 'briefing' | 'research';
+
+interface RouteWeatherState {
+  reports: Record<string, WeatherReport | null>;
+  tafs: Record<string, string | null>;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+}
+
+const PANEL_META: Array<{ id: Panel; label: string; icon: typeof Plane }> = [
+  { id: 'route', label: 'Route', icon: Navigation },
+  { id: 'weather', label: 'Weather', icon: CloudSun },
+  { id: 'aircraft', label: 'Aircraft', icon: Plane },
+  { id: 'briefing', label: 'Briefing', icon: ClipboardCheck },
+  { id: 'research', label: 'Research', icon: Info },
+];
+
+export default function Sidebar() {
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    sidebarPanel,
+    setSidebarPanel,
+    selectedFeature,
+    clearSelection,
+  } = useMapStore();
+
+  if (!sidebarOpen) {
+    return (
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(true)}
+        className="absolute left-4 top-4 z-10 rounded-md border border-slate-200 bg-white p-2 shadow-sm hover:bg-slate-50"
+        aria-label="Open sidebar"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+    );
+  }
+
+  return (
+    <aside className="z-10 flex h-full w-full max-w-[25rem] flex-col overflow-hidden border-r border-slate-200 bg-white shadow-sm sm:w-[25rem]">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div>
+          <h1 className="text-base font-semibold text-slate-950">Halo</h1>
+          <p className="text-xs text-slate-500">Flight planning workspace</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          aria-label="Close sidebar"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {!selectedFeature && (
+        <nav className="grid grid-cols-5 border-b border-slate-200">
+          {PANEL_META.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSidebarPanel(id)}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium ${
+                sidebarPanel === id
+                  ? 'bg-slate-950 text-white'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div className="flex-1 overflow-y-auto">
+        {selectedFeature ? (
+          <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
+        ) : (
+          <div className="p-4">
+            {sidebarPanel === 'route' && <RoutePanel />}
+            {sidebarPanel === 'weather' && <WeatherPanel />}
+            {sidebarPanel === 'aircraft' && <AircraftPanel />}
+            {sidebarPanel === 'briefing' && <BriefingPanel />}
+            {sidebarPanel === 'research' && <ResearchPanel />}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function FeatureDisplay({
+  feature,
+  onClose,
+}: {
+  feature: ParsedFeature;
+  onClose: () => void;
+}) {
+  const { addRouteWaypoint } = useMapStore();
+  const waypoint = makeWaypointFromFeature(feature);
+  const icon =
+    feature.type === 'airport' ? <Plane className="h-5 w-5" /> :
+      feature.type === 'navaid' ? <Navigation className="h-5 w-5" /> :
+        feature.type === 'airspace' ? <Layers className="h-5 w-5" /> :
+          <MapPin className="h-5 w-5" />;
+
+  return (
+    <div className="divide-y divide-slate-200">
+      <div className="bg-slate-950 p-4 text-white">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 text-amber-300">{icon}</span>
+            <div>
+              <h2 className="text-lg font-semibold">
+                {feature.icao || feature.identifier || feature.name || 'Selected feature'}
+              </h2>
+              <p className="text-sm text-slate-300">{feature.name}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-slate-300 hover:bg-white/10 hover:text-white"
+            aria-label="Close feature details"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {waypoint && (
+          <button
+            type="button"
+            onClick={() => addRouteWaypoint(waypoint)}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-amber-400 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300"
+          >
+            <Plus className="h-4 w-4" />
+            Add to route
+          </button>
+        )}
+      </div>
+
+      <Section>
+        {feature.country && <Row label="Country">{feature.country}</Row>}
+        {feature.airportType && <Row label="Type">{feature.airportType}</Row>}
+        {feature.navaidType && <Row label="Type">{feature.navaidType}</Row>}
+        {feature.airspaceType && <Row label="Type">{feature.airspaceType}</Row>}
+        {feature.airspaceClass && <Row label="Class">{feature.airspaceClass}</Row>}
+        {feature.icao && <Row label="ICAO">{feature.icao}</Row>}
+        {feature.iata && <Row label="IATA">{feature.iata}</Row>}
+        {feature.identifier && <Row label="Identifier">{feature.identifier}</Row>}
+        {feature.trafficTypes?.length ? (
+          <Row label="Traffic">{feature.trafficTypes.join(', ')}</Row>
+        ) : null}
+      </Section>
+
+      {feature.coordinates && (
+        <Section title="Location">
+          <Row label="DMS">{formatCoordinatesDMS(feature.coordinates)}</Row>
+          <Row label="Decimals">{formatCoordinatesDecimal(feature.coordinates)}</Row>
+        </Section>
+      )}
+
+      {feature.elevation !== undefined && (
+        <Section>
+          <Row label="Elevation">
+            {feature.elevation} {feature.elevationUnit || 'm'} MSL
+          </Row>
+        </Section>
+      )}
+
+      {(feature.upperLimit || feature.lowerLimit) && (
+        <Section title="Vertical Limits">
+          {feature.upperLimit && <Row label="Upper">{feature.upperLimit}</Row>}
+          {feature.lowerLimit && <Row label="Lower">{feature.lowerLimit}</Row>}
+        </Section>
+      )}
+
+      {(feature.ppr !== undefined || feature.private !== undefined) && (
+        <Section title="Ownership / Restrictions">
+          {feature.ppr !== undefined && <Row label="PPR">{feature.ppr ? 'Yes' : 'No'}</Row>}
+          {feature.private !== undefined && <Row label="Private">{feature.private ? 'Yes' : 'No'}</Row>}
+        </Section>
+      )}
+
+      {feature.frequencies?.length ? (
+        <Section title="Frequencies">
+          {feature.frequencies.map((frequency, index) => (
+            <Row key={`${frequency.type}-${index}`} label={frequency.type}>
+              {frequency.value}
+            </Row>
+          ))}
+        </Section>
+      ) : null}
+
+      {feature.frequency && (
+        <Section title="Frequency / Channel">
+          <Row label="Frequency">{feature.frequency}</Row>
+          {feature.channel && <Row label="Channel">{feature.channel}</Row>}
+        </Section>
+      )}
+
+      {feature.runways?.length ? (
+        <Section title="Runways">
+          {feature.runways.map((runway, index) => (
+            <Row key={`${runway.designator}-${index}`} label={runway.designator || `RWY ${index + 1}`}>
+              {runway.length} x {runway.width} {runway.unit} {runway.surface}
+            </Row>
+          ))}
+        </Section>
+      ) : null}
+
+      {feature.activity && (
+        <Section title="Activity">
+          <p className="text-sm text-slate-600">{feature.activity}</p>
+        </Section>
+      )}
+
+      {(feature.hoursOfOperation || feature.remarks) && (
+        <Section>
+          {feature.hoursOfOperation && <Row label="Hours">{feature.hoursOfOperation}</Row>}
+          {feature.remarks && <Row label="Remarks">{feature.remarks}</Row>}
+        </Section>
+      )}
+
+      {feature.sourceId && (
+        <div className="p-4">
+          <a
+            href={`https://www.openaip.net/${feature.type}View/${feature.sourceId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded border border-slate-300 px-3 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open OpenAIP record
+          </a>
+          {!feature.enriched && (
+            <p className="mt-2 text-center text-xs text-slate-500">Loading extended record...</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RoutePanel() {
+  const {
+    routeName,
+    setRouteName,
+    waypoints,
+    addRouteWaypoint,
+    addUserWaypoint,
+    removeRouteWaypoint,
+    moveRouteWaypoint,
+    updateRouteWaypoint,
+    clearRoute,
+    activeAircraft,
+    planningMode,
+    setPlanningMode,
+    visibleLayers,
+    toggleLayer,
+  } = useMapStore();
+  const [query, setQuery] = useState('');
+  const [manualLat, setManualLat] = useState('');
+  const [manualLng, setManualLng] = useState('');
+  const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const results = useMemo(() => searchStarterWaypoints(query), [query]);
+
+  const addManualPoint = () => {
+    const latitude = Number(manualLat);
+    const longitude = Number(manualLng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    addUserWaypoint([longitude, latitude]);
+    setManualLat('');
+    setManualLng('');
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <Label htmlFor="route-name">Route name</Label>
+        <input
+          id="route-name"
+          value={routeName}
+          onChange={(event) => setRouteName(event.target.value)}
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-950 focus:outline-none"
+        />
+      </div>
+
+      <SummaryGrid
+        items={[
+          ['Distance', formatDistance(route.summary.totalDistanceNm)],
+          ['ETE', formatDuration(route.summary.estimatedTimeMinutes)],
+          ['Fuel', formatFuel(route.summary.totalFuelRequiredGal)],
+          ['Remain', formatFuel(route.summary.fuelRemainingGal)],
+        ]}
+        status={route.summary.fuelStatus}
+      />
+
+      <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+        <div>
+          <p className="text-sm font-medium text-slate-900">Map clicks</p>
+          <p className="text-xs text-slate-500">{planningMode ? 'Add user waypoints' : 'Inspect aviation features'}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPlanningMode(!planningMode)}
+          className={`inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium ${
+            planningMode ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          {planningMode ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          {planningMode ? 'Planning' : 'Inspect'}
+        </button>
+      </div>
+
+      <PanelBlock title="Airport and navaid search" icon={<Search className="h-4 w-4" />}>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="ICAO, navaid, or name"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+        />
+        <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+          {results.map((waypoint) => (
+            <button
+              key={waypoint.id}
+              type="button"
+              onClick={() => addRouteWaypoint(waypoint)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
+            >
+              <span>
+                <span className="block text-sm font-medium text-slate-900">{waypoint.ident}</span>
+                <span className="block text-xs text-slate-500">{waypoint.name}</span>
+              </span>
+              <Plus className="h-4 w-4 text-slate-500" />
+            </button>
+          ))}
+        </div>
+      </PanelBlock>
+
+      <PanelBlock title="Manual coordinate" icon={<MapPin className="h-4 w-4" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            value={manualLat}
+            onChange={(event) => setManualLat(event.target.value)}
+            placeholder="Latitude"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+            inputMode="decimal"
+          />
+          <input
+            value={manualLng}
+            onChange={(event) => setManualLng(event.target.value)}
+            placeholder="Longitude"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+            inputMode="decimal"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={addManualPoint}
+          className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          <Plus className="h-4 w-4" />
+          Add coordinate
+        </button>
+      </PanelBlock>
+
+      <PanelBlock title="Navigation log" icon={<Navigation className="h-4 w-4" />}>
+        {waypoints.length === 0 ? (
+          <EmptyState title="No route yet" detail="Search, select map features, or add a coordinate." />
+        ) : (
+          <div className="space-y-3">
+            {waypoints.map((waypoint, index) => {
+              const nextLeg = route.legs[index];
+              return (
+                <div key={waypoint.id} className="rounded-md border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <input
+                        value={waypoint.name}
+                        onChange={(event) => updateRouteWaypoint(waypoint.id, { name: event.target.value })}
+                        className="w-full rounded border border-transparent text-sm font-semibold text-slate-900 focus:border-slate-300 focus:px-2 focus:py-1 focus:outline-none"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        {waypoint.ident ?? waypoint.type.toUpperCase()} · {formatCoordinates(waypoint.coordinates)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <IconButton label="Move up" onClick={() => moveRouteWaypoint(waypoint.id, 'up')} disabled={index === 0}>
+                        <ArrowUp className="h-4 w-4" />
+                      </IconButton>
+                      <IconButton label="Move down" onClick={() => moveRouteWaypoint(waypoint.id, 'down')} disabled={index === waypoints.length - 1}>
+                        <ArrowDown className="h-4 w-4" />
+                      </IconButton>
+                      <IconButton label="Remove waypoint" onClick={() => removeRouteWaypoint(waypoint.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </IconButton>
+                    </div>
+                  </div>
+                  {nextLeg && (
+                    <div className="mt-3 grid grid-cols-4 gap-2 rounded bg-slate-50 p-2 text-xs">
+                      <Metric label="Dist" value={formatDistance(nextLeg.distanceNm)} />
+                      <Metric label="TC" value={formatCourse(nextLeg.trueCourseDeg)} />
+                      <Metric label="ETE" value={formatDuration(nextLeg.estimatedTimeMinutes)} />
+                      <Metric label="Fuel" value={formatFuel(nextLeg.fuelRequiredGal)} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={clearRoute}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear route
+            </button>
+          </div>
+        )}
+      </PanelBlock>
+
+      <PanelBlock title="Map layers" icon={<Layers className="h-4 w-4" />}>
+        <div className="grid grid-cols-2 gap-2">
+          {Object.entries(visibleLayers).map(([layer, enabled]) => (
+            <button
+              key={layer}
+              type="button"
+              onClick={() => toggleLayer(layer as keyof typeof visibleLayers)}
+              className={`rounded-md border px-3 py-2 text-left text-xs font-medium capitalize ${
+                enabled
+                  ? 'border-slate-950 bg-slate-950 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {layer.replace(/([A-Z])/g, ' $1')}
+            </button>
+          ))}
+        </div>
+      </PanelBlock>
+    </div>
+  );
+}
+
+function WeatherPanel() {
+  const { waypoints, personalMinimums } = useMapStore();
+  const weather = useRouteWeather(true);
+  const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
+
+  return (
+    <div className="space-y-5">
+      <PanelHeader
+        title="Route weather"
+        action={
+          <button
+            type="button"
+            onClick={() => weather.refresh()}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${weather.loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        }
+      />
+
+      {stations.length === 0 ? (
+        <EmptyState title="No airport weather points" detail="Add an airport waypoint to load METAR and TAF data." />
+      ) : (
+        <div className="space-y-3">
+          {stations.map((station) => {
+            const report = weather.reports[station];
+            const taf = weather.tafs[station];
+            return (
+              <div key={station} className="rounded-md border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-slate-950">{station}</p>
+                  <CategoryBadge category={report?.flightCategory ?? 'UNKNOWN'} />
+                </div>
+                {report ? (
+                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                    <p className="font-mono text-xs text-slate-600">{report.raw}</p>
+                    <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+                      <Metric label="Wind" value={formatWind(report)} />
+                      <Metric label="Vis" value={report.visibilitySm ? `${report.visibilitySm} SM` : 'NIL'} />
+                      <Metric label="Ceiling" value={report.ceilingFt ? `${report.ceilingFt} ft` : 'Unlimited'} />
+                      <Metric label="QNH" value={report.altimeterHpa ? `${report.altimeterHpa} hPa` : 'NIL'} />
+                    </div>
+                    {isBelowPersonalMinimums(report, personalMinimums) && (
+                      <WarningLine text="Below selected personal minimums" />
+                    )}
+                    {taf && (
+                      <details className="rounded border border-slate-200 p-2">
+                        <summary className="cursor-pointer text-xs font-semibold text-slate-700">TAF</summary>
+                        <p className="mt-2 font-mono text-xs text-slate-600">{taf}</p>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">
+                    {weather.loading ? 'Loading weather...' : 'No current METAR returned.'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {weather.error && <WarningLine text={weather.error} />}
+    </div>
+  );
+}
+
+function AircraftPanel() {
+  const {
+    activeAircraft,
+    setActiveAircraft,
+    updateActiveAircraft,
+    personalMinimums,
+    updatePersonalMinimums,
+  } = useMapStore();
+
+  return (
+    <div className="space-y-5">
+      <PanelBlock title="Performance profile" icon={<Plane className="h-4 w-4" />}>
+        <Label htmlFor="aircraft-preset">Preset aircraft</Label>
+        <select
+          id="aircraft-preset"
+          value={activeAircraft.id}
+          onChange={(event) => {
+            const preset = PRESET_AIRCRAFT.find((aircraft) => aircraft.id === event.target.value);
+            if (preset) setActiveAircraft(preset);
+          }}
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+        >
+          {PRESET_AIRCRAFT.map((aircraft) => (
+            <option key={aircraft.id} value={aircraft.id}>
+              {aircraft.type} - {aircraft.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <NumberField label="Cruise kts" value={activeAircraft.cruiseSpeedKts} onChange={(value) => updateActiveAircraft({ cruiseSpeedKts: value })} />
+          <NumberField label="Fuel gph" value={activeAircraft.fuelBurnGph} onChange={(value) => updateActiveAircraft({ fuelBurnGph: value })} step="0.1" />
+          <NumberField label="Usable gal" value={activeAircraft.usableFuelGal} onChange={(value) => updateActiveAircraft({ usableFuelGal: value })} step="0.1" />
+          <NumberField label="Reserve min" value={activeAircraft.reserveMinutes} onChange={(value) => updateActiveAircraft({ reserveMinutes: value })} />
+          <NumberField label="Contingency %" value={activeAircraft.contingencyPercent} onChange={(value) => updateActiveAircraft({ contingencyPercent: value })} />
+          <NumberField label="Mag var" value={activeAircraft.magneticVariationDeg} onChange={(value) => updateActiveAircraft({ magneticVariationDeg: value })} />
+        </div>
+      </PanelBlock>
+
+      <PanelBlock title="Personal minimums" icon={<Gauge className="h-4 w-4" />}>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField label="Ceiling ft" value={personalMinimums.minimumCeilingFt} onChange={(value) => updatePersonalMinimums({ minimumCeilingFt: value })} />
+          <NumberField label="Visibility SM" value={personalMinimums.minimumVisibilitySm} onChange={(value) => updatePersonalMinimums({ minimumVisibilitySm: value })} step="0.1" />
+          <NumberField label="Reserve min" value={personalMinimums.minimumFuelReserveMinutes} onChange={(value) => {
+            updatePersonalMinimums({ minimumFuelReserveMinutes: value });
+            updateActiveAircraft({ reserveMinutes: value });
+          }} />
+          <NumberField label="Max wind kt" value={personalMinimums.maxSurfaceWindKts} onChange={(value) => updatePersonalMinimums({ maxSurfaceWindKts: value })} />
+          <NumberField label="Crosswind kt" value={personalMinimums.maxCrosswindKts} onChange={(value) => updatePersonalMinimums({ maxCrosswindKts: value })} />
+          <button
+            type="button"
+            onClick={() => {
+              updatePersonalMinimums(DEFAULT_PERSONAL_MINIMUMS);
+              updateActiveAircraft({ reserveMinutes: DEFAULT_PERSONAL_MINIMUMS.minimumFuelReserveMinutes });
+            }}
+            className="self-end rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Reset
+          </button>
+        </div>
+      </PanelBlock>
+    </div>
+  );
+}
+
+function BriefingPanel() {
+  const {
+    routeName,
+    routeNotes,
+    setRouteNotes,
+    departureTime,
+    setDepartureTime,
+    cruiseAltitudeFt,
+    setCruiseAltitudeFt,
+    waypoints,
+    activeAircraft,
+    personalMinimums,
+  } = useMapStore();
+  const weather = useRouteWeather(false);
+  const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const reports = useMemo(
+    () => Object.values(weather.reports).filter((report): report is WeatherReport => Boolean(report)),
+    [weather.reports]
+  );
+  const risks = useMemo(
+    () => buildRiskAssessment(route, reports, personalMinimums),
+    [route, reports, personalMinimums]
+  );
+  const briefingText = useMemo(
+    () => buildBriefingText({
+      routeName,
+      aircraft: activeAircraft,
+      route,
+      waypoints,
+      weather: reports,
+      risks,
+      departureTime,
+      cruiseAltitudeFt,
+      notes: routeNotes,
+    }),
+    [routeName, activeAircraft, route, waypoints, reports, risks, departureTime, cruiseAltitudeFt, routeNotes]
+  );
+
+  return (
+    <div className="space-y-5">
+      <PanelBlock title="Dispatch details" icon={<ClipboardCheck className="h-4 w-4" />}>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="departure-time">Departure</Label>
+            <input
+              id="departure-time"
+              type="datetime-local"
+              value={departureTime}
+              onChange={(event) => setDepartureTime(event.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+            />
+          </div>
+          <NumberField label="Cruise ft" value={cruiseAltitudeFt} onChange={setCruiseAltitudeFt} />
+        </div>
+        <div className="mt-3">
+          <Label htmlFor="route-notes">Pilot notes</Label>
+          <textarea
+            id="route-notes"
+            value={routeNotes}
+            onChange={(event) => setRouteNotes(event.target.value)}
+            rows={4}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+          />
+        </div>
+      </PanelBlock>
+
+      <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
+        <div className="space-y-2">
+          {risks.map((risk) => (
+            <RiskRow key={risk.id} risk={risk} />
+          ))}
+        </div>
+      </PanelBlock>
+
+      <PanelBlock title="Briefing package" icon={<Printer className="h-4 w-4" />}>
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-1 rounded-md bg-slate-950 px-2 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadBriefing(briefingText, routeName)}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Text
+          </button>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(briefingText)}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            Copy
+          </button>
+        </div>
+        <pre className="mt-3 max-h-[24rem] overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">
+          {briefingText}
+        </pre>
+      </PanelBlock>
+    </div>
+  );
+}
+
+function ResearchPanel() {
+  return (
+    <div className="space-y-4">
+      <PanelHeader title="Pain points solved in Halo" />
+      {COMPETITOR_PAIN_POINTS.map((item) => (
+        <div key={`${item.competitor}-${item.painPoint}`} className="rounded-md border border-slate-200 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">{item.competitor}</p>
+              <p className="mt-1 text-sm text-slate-700">{item.painPoint}</p>
+            </div>
+            <a
+              href={item.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Source
+            </a>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{item.evidence}</p>
+          <p className="mt-3 rounded bg-emerald-50 p-2 text-xs font-medium text-emerald-800">
+            {item.haloResponse}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
+  const { waypoints } = useMapStore();
+  const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
+  const [reports, setReports] = useState<Record<string, WeatherReport | null>>({});
+  const [tafs, setTafs] = useState<Record<string, string | null>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (stations.length === 0) {
+      setReports({});
+      setTafs({});
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const results = await Promise.all(
+        stations.map(async (station) => {
+          const [metarResponse, tafResponse] = await Promise.all([
+            fetch(`/api/weather/metar/${station}`),
+            fetch(`/api/weather/taf/${station}`),
+          ]);
+
+          if (!metarResponse.ok) {
+            throw new Error(`METAR lookup failed for ${station}`);
+          }
+
+          const metarPayload = await metarResponse.json();
+          const tafPayload = tafResponse.ok ? await tafResponse.json() : { taf: null };
+
+          return {
+            station,
+            report: metarPayload.report as WeatherReport | null,
+            taf: tafPayload.taf?.raw as string | null,
+          };
+        })
+      );
+
+      setReports(Object.fromEntries(results.map((result) => [result.station, result.report])));
+      setTafs(Object.fromEntries(results.map((result) => [result.station, result.taf])));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Weather lookup failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [stations]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = window.setInterval(refresh, 15 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [autoRefresh, refresh]);
+
+  return { reports, tafs, loading, error, refresh };
+}
+
+function getRouteStationIds(waypoints: Waypoint[]): string[] {
+  return Array.from(
+    new Set(
+      waypoints
+        .map((waypoint) => waypoint.ident)
+        .filter((ident): ident is string => Boolean(ident && /^[A-Z0-9]{4}$/.test(ident)))
+    )
+  );
+}
+
+function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
+  const raw = feature.raw as Record<string, any> | undefined;
+  const coordinates =
+    feature.coordinates ??
+    (Array.isArray(raw?.geometry?.coordinates) ? raw?.geometry?.coordinates as Coordinates : undefined);
+
+  if (!coordinates) return null;
+
+  const ident = feature.icao ?? feature.identifier ?? raw?.icaoCode ?? raw?.altIdentifier;
+  const name = feature.name ?? raw?.name ?? ident ?? 'Map feature';
+  const waypointType: WaypointType =
+    feature.type === 'airport' || feature.type === 'navaid' ? feature.type : 'user';
+
+  return {
+    id: String(feature.sourceId ?? ident ?? `${coordinates[0]}-${coordinates[1]}`),
+    type: waypointType,
+    name: String(name),
+    ident: ident ? String(ident) : undefined,
+    coordinates,
+    sourceId: feature.sourceId,
+    elevationFt: feature.elevationUnit === 'ft' ? feature.elevation : undefined,
+  };
+}
+
+function SummaryGrid({
+  items,
+  status,
+}: {
+  items: Array<[string, string]>;
+  status: 'ok' | 'caution' | 'critical';
+}) {
+  const tone =
+    status === 'critical'
+      ? 'border-rose-200 bg-rose-50'
+      : status === 'caution'
+        ? 'border-amber-200 bg-amber-50'
+        : 'border-slate-200 bg-slate-50';
+
+  return (
+    <div className={`grid grid-cols-2 gap-2 rounded-md border p-2 ${tone}`}>
+      {items.map(([label, value]) => (
+        <Metric key={label} label={label} value={value} />
+      ))}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <div className="p-4">
+      {title && <h3 className="mb-2 text-sm font-semibold text-slate-950">{title}</h3>}
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[7rem_1fr] gap-3 text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="break-words font-medium text-slate-900">{children}</span>
+    </div>
+  );
+}
+
+function PanelBlock({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-md border border-slate-200 p-3">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-950">
+        {icon}
+        {title}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PanelHeader({
+  title,
+  action,
+}: {
+  title: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
+  return (
+    <label htmlFor={htmlFor} className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      {children}
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  step = '1',
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  step?: string;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <input
+        id={id}
+        type="number"
+        step={step}
+        value={Number.isFinite(value) ? value : 0}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="font-mono text-sm text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30"
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-slate-300 p-4 text-center">
+      <p className="text-sm font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-sm text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function WarningLine({ text }: { text: string }) {
+  return (
+    <div className="inline-flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      {text}
+    </div>
+  );
+}
+
+function CategoryBadge({ category }: { category: FlightCategory }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${getCategoryClassName(category)}`}>
+      {category}
+    </span>
+  );
+}
+
+function RiskRow({ risk }: { risk: ReturnType<typeof buildRiskAssessment>[number] }) {
+  const Icon = risk.level === 'ok' ? CheckCircle2 : AlertTriangle;
+  const tone =
+    risk.level === 'critical'
+      ? 'bg-rose-50 text-rose-800'
+      : risk.level === 'caution'
+        ? 'bg-amber-50 text-amber-900'
+        : 'bg-emerald-50 text-emerald-800';
+
+  return (
+    <div className={`flex items-start gap-2 rounded-md p-2 ${tone}`}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+      <div>
+        <p className="text-sm font-semibold">{risk.title}</p>
+        <p className="text-xs">{risk.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function formatWind(report: WeatherReport): string {
+  if (!report.wind) return 'NIL';
+  const direction = report.wind.variable || report.wind.directionDeg === null
+    ? 'VRB'
+    : String(report.wind.directionDeg).padStart(3, '0');
+  const gust = report.wind.gustKts ? `G${report.wind.gustKts}` : '';
+  return `${direction}/${report.wind.speedKts}${gust} kt`;
+}
+
+function downloadBriefing(text: string, routeName: string) {
+  const safeName = (routeName || 'halo-briefing').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${safeName}.txt`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
