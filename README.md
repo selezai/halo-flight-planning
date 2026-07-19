@@ -8,7 +8,9 @@ Live production deployment: https://halo-flight-planning.vercel.app
 
 - Interactive planning map with OpenAIP server-side proxy support.
 - Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
-- Graceful fallback base map when OpenAIP credentials or sprites are unavailable.
+- Authentic OpenAIP sprites for aviation icons, symbols, and patterned airspace overlays.
+- Click-to-detail inspection for OpenAIP airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.
 - Route planning with airport/navaid search, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
 - Aircraft presets plus editable cruise speed, fuel burn, usable fuel, reserve, contingency, and magnetic variation.
@@ -42,13 +44,13 @@ Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`. OpenAIP credentials must stay server-s
 
 ## OpenAIP Sprites
 
-Current sprite files may be placeholders. For visual parity, run:
+The committed sprite files are generated from OpenAIP's public map resources and validated as part of the map build workflow. To regenerate them:
 
 ```bash
-./scripts/build-sprites.sh
+pnpm build:sprites
 ```
 
-The generated files belong in `public/sprites/`.
+The generated files belong in `public/sprites/`. See `public/sprites/ATTRIBUTION.md` before using these assets commercially; OpenAIP's current public map resources are licensed CC BY-NC-SA 4.0.
 
 ## Commands
 
@@ -91,6 +93,7 @@ types/              OpenAIP and planning TypeScript models
 
 - Design: `docs/superpowers/plans/2026-07-19-halo-flight-planning-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-halo-flight-planning.md`
+- OpenAIP global vector map plan: `docs/superpowers/plans/2026-07-19-openaip-global-vector-map.md`
 - Research: `docs/research/competitor-pain-points.md`
 - Setup detail: `SETUP.md`
 - Implementation notes: `IMPLEMENTATION_NOTES.md`

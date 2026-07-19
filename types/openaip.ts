@@ -233,6 +233,47 @@ export enum AirspaceType {
   TMA_P = 37,
 }
 
+export const AirspaceTypeLabels: Record<AirspaceType, string> = {
+  [AirspaceType.OTHER]: 'Other',
+  [AirspaceType.RESTRICTED]: 'Restricted',
+  [AirspaceType.DANGER]: 'Danger',
+  [AirspaceType.PROHIBITED]: 'Prohibited',
+  [AirspaceType.CTR]: 'CTR',
+  [AirspaceType.TMZ]: 'TMZ',
+  [AirspaceType.RMZ]: 'RMZ',
+  [AirspaceType.TMA]: 'TMA',
+  [AirspaceType.TRA]: 'TRA',
+  [AirspaceType.TSA]: 'TSA',
+  [AirspaceType.FIR]: 'FIR',
+  [AirspaceType.UIR]: 'UIR',
+  [AirspaceType.ADIZ]: 'ADIZ',
+  [AirspaceType.ATZ]: 'ATZ',
+  [AirspaceType.MATZ]: 'MATZ',
+  [AirspaceType.AIRWAY]: 'Airway',
+  [AirspaceType.MTR]: 'Military Training Route',
+  [AirspaceType.ALERT_AREA]: 'Alert Area',
+  [AirspaceType.WARNING_AREA]: 'Warning Area',
+  [AirspaceType.PROTECTED_AREA]: 'Protected Area',
+  [AirspaceType.HTZ]: 'HTZ',
+  [AirspaceType.GLIDING_SECTOR]: 'Gliding Sector',
+  [AirspaceType.TRP]: 'TRP',
+  [AirspaceType.TIZ]: 'TIZ',
+  [AirspaceType.TIA]: 'TIA',
+  [AirspaceType.MTA]: 'MTA',
+  [AirspaceType.CTA]: 'CTA',
+  [AirspaceType.ACC_SECTOR]: 'ACC Sector',
+  [AirspaceType.AERIAL_SPORTING]: 'Aerial Sporting / Recreational',
+  [AirspaceType.OVERFLIGHT_RESTRICTION]: 'Overflight Restriction',
+  [AirspaceType.MRT]: 'MRT',
+  [AirspaceType.TFR]: 'Temporary Flight Restriction',
+  [AirspaceType.VFR_SECTOR]: 'VFR Sector',
+  [AirspaceType.FIS_SECTOR]: 'FIS Sector',
+  [AirspaceType.AWY_LO]: 'Low Airway',
+  [AirspaceType.AWY_HI]: 'High Airway',
+  [AirspaceType.CTR_P]: 'CTR Part',
+  [AirspaceType.TMA_P]: 'TMA Part',
+};
+
 export enum AirspaceClass {
   A = 0,
   B = 1,
@@ -324,11 +365,23 @@ export enum AltitudeReference {
   STD = 2,
 }
 
+export type ParsedFeatureType =
+  | 'airport'
+  | 'navaid'
+  | 'airspace'
+  | 'reportingPoint'
+  | 'obstacle'
+  | 'hotspot'
+  | 'hangGliding'
+  | 'rcAirfield'
+  | 'unknown';
+
 // Parsed feature from vector tiles (for sidebar display)
 export interface ParsedFeature {
-  type: 'airport' | 'navaid' | 'airspace' | 'unknown';
+  type: ParsedFeatureType;
   sourceId?: string;
   sourceLayer?: string;
+  featureType?: string;
   
   // Common fields
   name?: string;
@@ -336,6 +389,8 @@ export interface ParsedFeature {
   coordinates?: [number, number];
   elevation?: number;
   elevationUnit?: string;
+  elevationReference?: string;
+  subtype?: string;
   
   // Airport-specific
   icao?: string;
@@ -352,6 +407,10 @@ export interface ParsedFeature {
   }>;
   ppr?: boolean;
   private?: boolean;
+  runwaySurface?: string;
+  runwayRotation?: number;
+  skydiveActivity?: boolean;
+  winchOnly?: boolean;
   
   // Navaid-specific
   identifier?: string;
@@ -367,6 +426,25 @@ export interface ParsedFeature {
   upperLimit?: string;
   lowerLimit?: string;
   activity?: string;
+  onRequest?: boolean;
+  onDemand?: boolean;
+  byNotam?: boolean;
+  specialAgreement?: boolean;
+  activationFlags?: string[];
+
+  // Obstacle-specific
+  obstacleType?: string;
+  height?: number;
+  heightUnit?: string;
+  elevationTop?: number;
+  elevationTopUnit?: string;
+  osmId?: string | number;
+
+  // Hotspot / hang-gliding / RC-specific
+  reliability?: string;
+  electric?: boolean;
+  combustion?: boolean;
+  turbine?: boolean;
   
   // Metadata
   hoursOfOperation?: string;

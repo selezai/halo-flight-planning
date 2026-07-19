@@ -6,5 +6,5 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  return proxyOpenAipDetail('navaids', params.id);
+  return proxyOpenAipDetail('reporting-points', params.id);
 }

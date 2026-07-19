@@ -17,9 +17,13 @@ Halo should keep OpenAIP as the primary aviation map source for the browser app.
 - The tile proxy strips any legacy source prefix before calling OpenAIP.
 - Airspace boundary layers are preserved because they are core manned-flight planning information.
 - If OpenAIP is unavailable, Halo may degrade, but it must explicitly say the aviation map is degraded rather than silently becoming a ground map.
+- OpenAIP is a data and map-source provider, not Halo's flight-planning engine. It provides global vector tiles and Core API records for aviation objects; Halo provides route planning, click inspection, layer controls, airspace warnings, briefing, and export behavior.
+- Current OpenAIP Core API detail paths verified for airports, airspaces, navaids, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Authentic sprites now come from `openAIP/openaip-map-resources` and are generated with `spreet`. The archived `openAIP/mapstyles` Node build is not reliable on current Node because it depends on obsolete Mapnik tooling.
+- OpenAIP's current public map resources are CC BY-NC-SA 4.0; commercial distribution requires replacement assets or explicit OpenAIP permission.
 
 ## Future Enhancements
 
 - Add an optional FAA VFR sectional raster overlay for US planning.
-- Generate and ship authentic OpenAIP sprites so patterned fills and icons match OpenAIP visual conventions.
 - Add a map-source status panel showing OpenAIP style/tile health and data recency.
+- Add route-aware airspace intersection warnings using the normalized OpenAIP airspace limits.

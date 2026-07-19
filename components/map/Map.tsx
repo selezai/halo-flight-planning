@@ -7,14 +7,43 @@ import { useMapStore } from '@/stores/mapStore';
 import { parseFeature } from '@/lib/openaip/featureParser';
 import { getClickableLayers } from '@/lib/openaip/styleConverter';
 import { formatCoordinates } from '@/lib/planning/navigation';
+import type { ParsedFeature } from '@/types/openaip';
 
 interface MapProps {
   className?: string;
 }
 
+type FeatureGeometry = maplibregl.MapGeoJSONFeature['geometry'];
+
+const OPENAIP_DETAIL_ENDPOINTS: Partial<Record<ParsedFeature['type'], string>> = {
+  airport: 'airports',
+  navaid: 'navaids',
+  airspace: 'airspaces',
+  reportingPoint: 'reporting-points',
+  obstacle: 'obstacles',
+  hotspot: 'hotspots',
+  hangGliding: 'hang-glidings',
+  rcAirfield: 'rc-airfields',
+};
+
+const FEATURE_PRIORITY: Record<string, number> = {
+  airports: 10,
+  navaids: 20,
+  reporting_points: 30,
+  obstacles: 40,
+  hang_glidings: 50,
+  hotspots: 60,
+  rc_airfields: 70,
+  airspaces: 80,
+  airspaces_border_offset: 90,
+  airspaces_border_offset_2x: 91,
+};
+
 export default function Map({ className = '' }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const enrichmentRequestId = useRef(0);
+  const missingSpriteIds = useRef<Set<string>>(new Set());
   const [mapLoaded, setMapLoaded] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +98,9 @@ export default function Map({ className = '' }: MapProps) {
     const initMap = async () => {
       try {
         // Fetch our transformed OpenAIP style
-        const styleResponse = await fetch('/api/openaip/style');
+        const styleResponse = await fetch('/api/openaip/style', {
+          cache: 'no-store',
+        });
         
         if (!styleResponse.ok) {
           throw new Error('Failed to load map style');
@@ -136,8 +167,20 @@ export default function Map({ className = '' }: MapProps) {
           setViewport([newCenter.lng, newCenter.lat], newZoom);
         });
 
-        // Handle missing images (sprites)
-        map.current.on('styleimagemissing', () => undefined);
+        // Handle missing images (sprites) without breaking the map. Missing IDs
+        // are still logged because they indicate style/sprite drift.
+        map.current.on('styleimagemissing', (event) => {
+          if (!map.current || map.current.hasImage(event.id)) return;
+
+          if (!missingSpriteIds.current.has(event.id)) {
+            missingSpriteIds.current.add(event.id);
+            console.warn('Missing OpenAIP sprite image:', event.id);
+          }
+
+          map.current.addImage(event.id, createTransparentImageData(16, 16), {
+            pixelRatio: 1,
+          });
+        });
 
         map.current.on('error', (event) => {
           const mapError = event.error instanceof Error
@@ -180,13 +223,10 @@ export default function Map({ className = '' }: MapProps) {
         : [];
 
       if (features.length > 0) {
-        const feature = features[0];
+        const feature = pickBestFeature(features);
         const parsed = parseFeature({
           properties: feature.properties as Record<string, unknown>,
-          geometry: feature.geometry as {
-            type: string;
-            coordinates: number[] | number[][] | number[][][];
-          },
+          geometry: toParserGeometry(feature.geometry),
           sourceLayer: feature.sourceLayer,
           source: feature.source,
         });
@@ -194,11 +234,13 @@ export default function Map({ className = '' }: MapProps) {
         setSelectedFeature(parsed);
         
         if (parsed.sourceId) {
-          enrichFeature(parsed);
+          enrichFeature(parsed, feature.geometry as FeatureGeometry);
         }
       } else if (planningMode) {
+        enrichmentRequestId.current += 1;
         addUserWaypoint([e.lngLat.lng, e.lngLat.lat]);
       } else {
+        enrichmentRequestId.current += 1;
         setSelectedFeature(null);
       }
     });
@@ -220,23 +262,37 @@ export default function Map({ className = '' }: MapProps) {
   };
 
   // Fetch full feature details from REST API
-  const enrichFeature = async (feature: ReturnType<typeof parseFeature>) => {
+  const enrichFeature = async (
+    feature: ParsedFeature,
+    geometry?: FeatureGeometry
+  ) => {
     if (!feature.sourceId || !feature.type) return;
     
-    const endpoint = feature.type === 'airport' ? 'airports'
-      : feature.type === 'navaid' ? 'navaids'
-      : feature.type === 'airspace' ? 'airspaces'
-      : null;
+    const endpoint = OPENAIP_DETAIL_ENDPOINTS[feature.type];
     
     if (!endpoint) return;
+
+    const requestId = ++enrichmentRequestId.current;
     
     try {
       const response = await fetch(`/api/openaip/${endpoint}/${feature.sourceId}`);
       
       if (response.ok) {
         const fullData = await response.json();
+        const enrichedFeature = parseFeature({
+          properties: fullData as Record<string, unknown>,
+          geometry: toParserGeometry(((fullData as Record<string, unknown>).geometry as FeatureGeometry | undefined) ?? geometry),
+          sourceLayer: feature.sourceLayer,
+        });
+
+        if (requestId !== enrichmentRequestId.current) return;
+
         setSelectedFeature({
           ...feature,
+          ...enrichedFeature,
+          sourceId: feature.sourceId,
+          sourceLayer: feature.sourceLayer,
+          coordinates: feature.coordinates ?? enrichedFeature.coordinates,
           raw: fullData,
           enriched: true,
         });
@@ -257,6 +313,9 @@ export default function Map({ className = '' }: MapProps) {
       airspaces: ['airspace'],
       reportingPoints: ['reporting_point'],
       obstacles: ['obstacle'],
+      hotspots: ['hotspot'],
+      hangGlidings: ['hang_gliding'],
+      rcAirfields: ['rc_airfield'],
     };
 
     Object.entries(visibleLayers).forEach(([key, visible]) => {
@@ -325,6 +384,43 @@ export default function Map({ className = '' }: MapProps) {
       )}
     </div>
   );
+}
+
+function pickBestFeature(features: maplibregl.MapGeoJSONFeature[]): maplibregl.MapGeoJSONFeature {
+  return [...features].sort((a, b) => featurePriority(a) - featurePriority(b))[0];
+}
+
+function featurePriority(feature: maplibregl.MapGeoJSONFeature): number {
+  const sourceLayer = feature.sourceLayer ?? '';
+  const basePriority = FEATURE_PRIORITY[sourceLayer] ?? 100;
+  const layerId = feature.layer.id.toLowerCase();
+
+  if (layerId.includes('clicktarget')) return basePriority;
+  if (feature.layer.type === 'symbol') return basePriority + 1;
+  if (feature.layer.type === 'circle') return basePriority + 2;
+  if (feature.layer.type === 'fill') return basePriority + 3;
+  if (feature.layer.type === 'line') return basePriority + 4;
+
+  return basePriority + 5;
+}
+
+function createTransparentImageData(width: number, height: number) {
+  return {
+    width,
+    height,
+    data: new Uint8Array(width * height * 4),
+  };
+}
+
+function toParserGeometry(geometry: FeatureGeometry | undefined) {
+  if (!geometry || !('coordinates' in geometry) || !Array.isArray(geometry.coordinates)) {
+    return undefined;
+  }
+
+  return geometry as {
+    type: string;
+    coordinates: number[] | number[][] | number[][][] | number[][][][];
+  };
 }
 
 function ensureRouteLayers(mapInstance: maplibregl.Map) {

@@ -1,6 +1,6 @@
-# Sprite Files Location
+# OpenAIP Sprite Files
 
-This directory should contain the OpenAIP sprite files built from the mapstyles repository.
+This directory contains the OpenAIP sprite files served to MapLibre through `/api/openaip/sprites/*`.
 
 ## Required Files
 
@@ -12,21 +12,13 @@ This directory should contain the OpenAIP sprite files built from the mapstyles 
 ## How to Build
 
 ```bash
-# Clone OpenAIP mapstyles repo
-git clone https://github.com/openAIP/mapstyles.git
-cd mapstyles
-
-# Install dependencies
-npm install
-
-# Build sprites
-npm run build:style:default
-
-# Copy to this directory
-cp dist/maps/styles/default/sprite.json ./openaip.json
-cp dist/maps/styles/default/sprite.png ./openaip.png
-cp dist/maps/styles/default/sprite@2x.json ./openaip@2x.json
-cp dist/maps/styles/default/sprite@2x.png ./openaip@2x.png
+pnpm build:sprites
 ```
 
-Without these files, the map will show warnings about missing images and aviation icons won't display correctly.
+The build script clones OpenAIP's public map resource repository in temporary storage, runs `spreet`, copies the generated files here, and fails if any sprite output is empty.
+
+## Source and License
+
+The default sprite source is `openAIP/openaip-map-resources` because it matches the current OpenAIP map style, including newer obstacle, RC airfield, and hang-gliding symbols.
+
+See `ATTRIBUTION.md` before using these assets in a commercial product. The archived `openAIP/mapstyles` repo can be selected with `./scripts/build-sprites.sh --force --source=legacy-mapstyles`, but it does not cover all current OpenAIP style symbols.

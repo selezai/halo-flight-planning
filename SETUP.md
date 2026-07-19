@@ -55,44 +55,17 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 **⚠️ Important:** Replace `your_actual_*_key_here` with your real API keys!
 
-## Step 4: Build OpenAIP Sprites (CRITICAL)
+## Step 4: Build OpenAIP Sprites
 
-The map won't display correctly without authentic OpenAIP sprites. You must build them yourself:
-
-### 4.1 Clone OpenAIP Mapstyles Repository
+The repository includes generated OpenAIP sprite files. Regenerate them after OpenAIP map-resource changes or before validating visual parity:
 
 ```bash
-# Navigate to a temporary directory (outside this project)
-cd /tmp
-
-# Clone the mapstyles repo
-git clone https://github.com/openAIP/mapstyles.git
-cd mapstyles
+pnpm build:sprites
 ```
 
-### 4.2 Install Dependencies and Build
+The script clones OpenAIP's public map resources into temporary storage, downloads the `spreet` sprite generator, writes the four MapLibre sprite files into `public/sprites/`, and fails if any output is empty.
 
-```bash
-# Install dependencies (includes spritezero-cli)
-npm install
-
-# Build the sprites and style
-npm run build:style:default
-```
-
-This will create sprite files in `dist/maps/styles/default/`
-
-### 4.3 Copy Sprites to Halo Project
-
-```bash
-# Copy all sprite files to the Halo project
-cp dist/maps/styles/default/sprite.json /Users/selezmassozi/CascadeProjects/halo/halo-scaffold/public/sprites/openaip.json
-cp dist/maps/styles/default/sprite.png /Users/selezmassozi/CascadeProjects/halo/halo-scaffold/public/sprites/openaip.png
-cp dist/maps/styles/default/sprite@2x.json /Users/selezmassozi/CascadeProjects/halo/halo-scaffold/public/sprites/openaip@2x.json
-cp dist/maps/styles/default/sprite@2x.png /Users/selezmassozi/CascadeProjects/halo/halo-scaffold/public/sprites/openaip@2x.png
-```
-
-### 4.4 Verify Sprites
+### 4.1 Verify Sprites
 
 Check that the files exist:
 
@@ -101,10 +74,14 @@ ls -lh /Users/selezmassozi/CascadeProjects/halo/halo-scaffold/public/sprites/
 ```
 
 You should see:
-- `openaip.json` (~50KB)
-- `openaip.png` (~100KB)
-- `openaip@2x.json` (~50KB)
-- `openaip@2x.png` (~300KB)
+- `openaip.json`
+- `openaip.png`
+- `openaip@2x.json`
+- `openaip@2x.png`
+
+Current generated sprites contain 128 OpenAIP icon/pattern entries.
+
+License note: OpenAIP's current public map resources are CC BY-NC-SA 4.0. See `public/sprites/ATTRIBUTION.md` and obtain permission or replace the assets before commercial use.
 
 ## Step 5: Run Development Server
 

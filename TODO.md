@@ -15,10 +15,12 @@
 - [x] Flight briefing with risk review, weather, fuel, NOTAM checklist, print, copy, and text export.
 - [x] Competitor pain-point research documented and surfaced in-app.
 - [x] Unit tests, typecheck, lint, production build, and browser verification.
+- [x] Authentic OpenAIP sprite assets generated from OpenAIP public map resources.
+- [x] OpenAIP symbol layers restored for aviation icons and labels.
+- [x] Click-to-detail parsing expanded for airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
 
 ## Remaining Before Operational Launch
 
-- [ ] Generate and commit/ship authentic OpenAIP sprite assets or configure a reliable asset deployment path.
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
 - [ ] Add live NOTAM provider integration with route filtering and source attribution.
 - [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
@@ -27,3 +29,4 @@
 - [ ] Add Playwright integration tests against `next build && next start`.
 - [ ] Add CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm build`.
 - [ ] Add error monitoring and analytics after deployment.
+- [ ] Replace OpenAIP CC BY-NC-SA sprites or obtain OpenAIP permission before commercializing the app.

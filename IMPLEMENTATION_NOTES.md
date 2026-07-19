@@ -54,6 +54,49 @@ Fix:
 - Dashed airspace boundary layers are preserved and dasharray values are sanitized for MapLibre.
 - MapLibre render errors now show a degraded-map UI and log the actual error.
 
+### 2026-07-19 Global OpenAIP Vector Map and Sprites Slice
+
+The aviation map now renders OpenAIP as a global vector aviation chart rather than a ground-focused base map with partial overlays.
+
+Decisions:
+
+- OpenAIP remains the primary global/free aviation source because its Tiles API provides Mapbox/MapLibre-compatible vector tiles and its Core API provides detail records by document ID.
+- OpenAIP provides data and style assets; Halo provides product behavior such as click inspection, layer controls, route planning, warnings, and briefing workflows.
+- Authentic current sprites are generated from `openAIP/openaip-map-resources` with `spreet`. The archived `openAIP/mapstyles` build path was not used because it depends on Node 8-era `mapnik` tooling that fails on current Node.
+- OpenAIP's current public map resources are CC BY-NC-SA 4.0. Halo must obtain OpenAIP permission or replace the icon set before commercial use.
+
+Delivered:
+
+- Replaced empty sprite placeholders with validated OpenAIP sprite files containing 128 entries.
+- Added `pnpm build:sprites` as the one-command non-interactive sprite generator.
+- Restored OpenAIP aviation `symbol` layers while continuing to remove Mapbox/composite basemap symbols.
+- Converted OpenAIP token strings such as `{type}-medium` and `{icao_code}` into MapLibre expressions.
+- Added a compatibility mapping for the current style's `airfield-15` RC-airfield icon reference to the available `rc_airfield` sprite.
+- Added click prioritization so airports, navaids, reporting points, obstacles, hang-gliding sites, hotspots, and RC airfields win over decorative airspace border layers when stacked.
+- Expanded feature parsing for snake_case vector-tile fields and camelCase Core API records.
+- Added Core API detail proxies for reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Expanded sidebar details for activation flags, vertical limits, runway hints, navaid alignment, obstacle height/top elevation, RC power types, source layer, and source ID.
+
+Verification:
+
+- `pnpm build:sprites`: generated 128 OpenAIP sprite entries.
+- `pnpm test`: 15 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed and included all added OpenAIP detail routes.
+- Local production API: `/api/openaip/style` returned 96 layers and 22 OpenAIP aviation symbol layers.
+- Local production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Local production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
+- Local browser: no framework overlay, no degraded-map error, aviation symbols/labels visible, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-2k36aug5m-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_FYEx7JLtPWeDPV5XM126dUCTbSid`
+- Production API: `/api/openaip/style` returned 96 layers and 22 OpenAIP aviation symbol layers.
+- Production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
+- Production browser: no framework overlay, no degraded-map error, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
+
 ### Verification
 
 - `pnpm test`: 5 tests passed.
@@ -253,7 +296,7 @@ tiles: [
 
 **Special handling**:
 - 404s return 204 (empty tile) - normal for tiles outside coverage
-- Preserve content-encoding header (gzip)
+- Do not forward stale upstream `Content-Encoding` after server-side fetch has decoded the response body.
 
 ### Sprites Route (`/api/openaip/sprites/[...path]`)
 
@@ -274,13 +317,18 @@ tiles: [
 
 **Airports**: `/api/openaip/airports/[id]`  
 **Navaids**: `/api/openaip/navaids/[id]`  
-**Airspaces**: `/api/openaip/airspaces/[id]`
+**Airspaces**: `/api/openaip/airspaces/[id]`  
+**Reporting points**: `/api/openaip/reporting-points/[id]`  
+**Obstacles**: `/api/openaip/obstacles/[id]`  
+**Hotspots**: `/api/openaip/hotspots/[id]`  
+**Hang-gliding sites**: `/api/openaip/hang-glidings/[id]`  
+**RC airfields**: `/api/openaip/rc-airfields/[id]`
 
 **Purpose**: Proxy REST API requests for full feature details
 
 **Process**:
 1. Forward request to OpenAIP Core API
-2. Add API key as query param
+2. Add API key in the server-side `x-openaip-api-key` header
 3. Cache for 1 hour
 4. Return JSON
 

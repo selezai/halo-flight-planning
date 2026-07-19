@@ -9,7 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:sprites": "echo 'Run this in the mapstyles repo: npm run build:style:default'"
+    "build:sprites": "./scripts/build-sprites.sh --force"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.0",

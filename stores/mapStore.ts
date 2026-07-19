@@ -30,6 +30,9 @@ interface MapState {
     airspaces: boolean;
     reportingPoints: boolean;
     obstacles: boolean;
+    hotspots: boolean;
+    hangGlidings: boolean;
+    rcAirfields: boolean;
   };
   
   // UI state
@@ -72,6 +75,17 @@ interface MapState {
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
 }
 
+const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
+  airports: true,
+  navaids: true,
+  airspaces: true,
+  reportingPoints: true,
+  obstacles: true,
+  hotspots: true,
+  hangGlidings: true,
+  rcAirfields: true,
+};
+
 export const useMapStore = create<MapState>()(
   persist(
     (set) => ({
@@ -83,13 +97,7 @@ export const useMapStore = create<MapState>()(
       selectedFeature: null,
       
       // All layers visible by default
-      visibleLayers: {
-        airports: true,
-        navaids: true,
-        airspaces: true,
-        reportingPoints: true,
-        obstacles: true,
-      },
+      visibleLayers: DEFAULT_VISIBLE_LAYERS,
       
       // Sidebar state
       sidebarOpen: true,
@@ -220,6 +228,18 @@ export const useMapStore = create<MapState>()(
         activeAircraft: state.activeAircraft,
         personalMinimums: state.personalMinimums,
       }),
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<MapState> | undefined;
+
+        return {
+          ...current,
+          ...persistedState,
+          visibleLayers: {
+            ...DEFAULT_VISIBLE_LAYERS,
+            ...persistedState?.visibleLayers,
+          },
+        };
+      },
     }
   )
 );

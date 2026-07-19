@@ -163,7 +163,9 @@ function FeatureDisplay({
     feature.type === 'airport' ? <Plane className="h-5 w-5" /> :
       feature.type === 'navaid' ? <Navigation className="h-5 w-5" /> :
         feature.type === 'airspace' ? <Layers className="h-5 w-5" /> :
+          feature.type === 'obstacle' ? <AlertTriangle className="h-5 w-5" /> :
           <MapPin className="h-5 w-5" />;
+  const openAipRecordPath = getOpenAipRecordPath(feature);
 
   return (
     <div className="divide-y divide-slate-200">
@@ -175,7 +177,9 @@ function FeatureDisplay({
               <h2 className="text-lg font-semibold">
                 {feature.icao || feature.identifier || feature.name || 'Selected feature'}
               </h2>
-              <p className="text-sm text-slate-300">{feature.name}</p>
+              <p className="text-sm text-slate-300">
+                {feature.name || feature.subtype || formatFeatureType(feature.type)}
+              </p>
             </div>
           </div>
           <button
@@ -204,6 +208,8 @@ function FeatureDisplay({
         {feature.airportType && <Row label="Type">{feature.airportType}</Row>}
         {feature.navaidType && <Row label="Type">{feature.navaidType}</Row>}
         {feature.airspaceType && <Row label="Type">{feature.airspaceType}</Row>}
+        {feature.obstacleType && <Row label="Type">{feature.obstacleType}</Row>}
+        {feature.subtype && <Row label="Subtype">{feature.subtype}</Row>}
         {feature.airspaceClass && <Row label="Class">{feature.airspaceClass}</Row>}
         {feature.icao && <Row label="ICAO">{feature.icao}</Row>}
         {feature.iata && <Row label="IATA">{feature.iata}</Row>}
@@ -223,8 +229,24 @@ function FeatureDisplay({
       {feature.elevation !== undefined && (
         <Section>
           <Row label="Elevation">
-            {feature.elevation} {feature.elevationUnit || 'm'} MSL
+            {feature.elevation} {feature.elevationUnit || 'm'} {feature.elevationReference || 'MSL'}
           </Row>
+        </Section>
+      )}
+
+      {(feature.height !== undefined || feature.elevationTop !== undefined || feature.osmId !== undefined) && (
+        <Section title="Obstacle Data">
+          {feature.height !== undefined && (
+            <Row label="Height">
+              {feature.height} {feature.heightUnit || 'm'}
+            </Row>
+          )}
+          {feature.elevationTop !== undefined && (
+            <Row label="Top">
+              {feature.elevationTop} {feature.elevationTopUnit || 'm'} MSL
+            </Row>
+          )}
+          {feature.osmId !== undefined && <Row label="OSM ID">{String(feature.osmId)}</Row>}
         </Section>
       )}
 
@@ -235,10 +257,33 @@ function FeatureDisplay({
         </Section>
       )}
 
+      {(feature.activationFlags?.length || feature.onRequest !== undefined || feature.onDemand !== undefined || feature.byNotam !== undefined || feature.specialAgreement !== undefined) && (
+        <Section title="Activation">
+          {feature.activationFlags?.length ? (
+            <Row label="Flags">{feature.activationFlags.join(', ')}</Row>
+          ) : (
+            <Row label="Flags">No special activation flags in tile data</Row>
+          )}
+          {feature.onRequest !== undefined && <Row label="On request">{feature.onRequest ? 'Yes' : 'No'}</Row>}
+          {feature.onDemand !== undefined && <Row label="On demand">{feature.onDemand ? 'Yes' : 'No'}</Row>}
+          {feature.byNotam !== undefined && <Row label="By NOTAM">{feature.byNotam ? 'Yes' : 'No'}</Row>}
+          {feature.specialAgreement !== undefined && <Row label="Agreement">{feature.specialAgreement ? 'Required' : 'No'}</Row>}
+        </Section>
+      )}
+
       {(feature.ppr !== undefined || feature.private !== undefined) && (
         <Section title="Ownership / Restrictions">
           {feature.ppr !== undefined && <Row label="PPR">{feature.ppr ? 'Yes' : 'No'}</Row>}
           {feature.private !== undefined && <Row label="Private">{feature.private ? 'Yes' : 'No'}</Row>}
+        </Section>
+      )}
+
+      {(feature.runwaySurface || feature.runwayRotation !== undefined || feature.skydiveActivity !== undefined || feature.winchOnly !== undefined) && (
+        <Section title="Airport Hints">
+          {feature.runwaySurface && <Row label="Runway">{feature.runwaySurface}</Row>}
+          {feature.runwayRotation !== undefined && <Row label="Rotation">{feature.runwayRotation}°</Row>}
+          {feature.skydiveActivity !== undefined && <Row label="Skydive">{feature.skydiveActivity ? 'Yes' : 'No'}</Row>}
+          {feature.winchOnly !== undefined && <Row label="Winch only">{feature.winchOnly ? 'Yes' : 'No'}</Row>}
         </Section>
       )}
 
@@ -256,6 +301,12 @@ function FeatureDisplay({
         <Section title="Frequency / Channel">
           <Row label="Frequency">{feature.frequency}</Row>
           {feature.channel && <Row label="Channel">{feature.channel}</Row>}
+          {feature.alignedTrueNorth !== undefined && (
+            <Row label="True north">{feature.alignedTrueNorth ? 'Aligned' : 'Not aligned'}</Row>
+          )}
+          {feature.magneticDeclination !== undefined && (
+            <Row label="Mag var">{feature.magneticDeclination.toFixed(1)}°</Row>
+          )}
         </Section>
       )}
 
@@ -275,6 +326,15 @@ function FeatureDisplay({
         </Section>
       )}
 
+      {(feature.reliability || feature.electric !== undefined || feature.combustion !== undefined || feature.turbine !== undefined) && (
+        <Section title="Site Details">
+          {feature.reliability && <Row label="Reliability">{feature.reliability}</Row>}
+          {feature.electric !== undefined && <Row label="Electric">{feature.electric ? 'Yes' : 'No'}</Row>}
+          {feature.combustion !== undefined && <Row label="Combustion">{feature.combustion ? 'Yes' : 'No'}</Row>}
+          {feature.turbine !== undefined && <Row label="Turbine">{feature.turbine ? 'Yes' : 'No'}</Row>}
+        </Section>
+      )}
+
       {(feature.hoursOfOperation || feature.remarks) && (
         <Section>
           {feature.hoursOfOperation && <Row label="Hours">{feature.hoursOfOperation}</Row>}
@@ -282,19 +342,23 @@ function FeatureDisplay({
         </Section>
       )}
 
-      {feature.sourceId && (
+      <Section title="OpenAIP Source">
+        <Row label="Feature">{formatFeatureType(feature.type)}</Row>
+        {feature.sourceLayer && <Row label="Layer">{feature.sourceLayer}</Row>}
+        {feature.sourceId && <Row label="Source ID">{feature.sourceId}</Row>}
+        <Row label="Record">{feature.enriched ? 'Extended Core API record loaded' : feature.sourceId ? 'Loading extended record...' : 'Tile data only'}</Row>
+      </Section>
+
+      {feature.sourceId && openAipRecordPath && (
         <div className="p-4">
           <a
-            href={`https://www.openaip.net/${feature.type}View/${feature.sourceId}`}
+            href={`https://www.openaip.net/${openAipRecordPath}/${feature.sourceId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="block rounded border border-slate-300 px-3 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Open OpenAIP record
           </a>
-          {!feature.enriched && (
-            <p className="mt-2 text-center text-xs text-slate-500">Loading extended record...</p>
-          )}
         </div>
       )}
     </div>
@@ -492,7 +556,7 @@ function RoutePanel() {
                   : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
             >
-              {layer.replace(/([A-Z])/g, ' $1')}
+              {formatLayerName(layer)}
             </button>
           ))}
         </div>
@@ -855,7 +919,7 @@ function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
 
   if (!coordinates) return null;
 
-  const ident = feature.icao ?? feature.identifier ?? raw?.icaoCode ?? raw?.altIdentifier;
+  const ident = feature.icao ?? feature.identifier ?? raw?.icaoCode ?? raw?.icao_code ?? raw?.altIdentifier;
   const name = feature.name ?? raw?.name ?? ident ?? 'Map feature';
   const waypointType: WaypointType =
     feature.type === 'airport' || feature.type === 'navaid' ? feature.type : 'user';
@@ -869,6 +933,52 @@ function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
     sourceId: feature.sourceId,
     elevationFt: feature.elevationUnit === 'ft' ? feature.elevation : undefined,
   };
+}
+
+function getOpenAipRecordPath(feature: ParsedFeature): string | null {
+  const paths: Partial<Record<ParsedFeature['type'], string>> = {
+    airport: 'airportView',
+    navaid: 'navaidView',
+    airspace: 'airspaceView',
+    reportingPoint: 'reportingPointView',
+    obstacle: 'obstacleView',
+    hotspot: 'hotspotView',
+    hangGliding: 'hangGlidingView',
+    rcAirfield: 'rcAirfieldView',
+  };
+
+  return paths[feature.type] ?? null;
+}
+
+function formatFeatureType(type: ParsedFeature['type']): string {
+  const labels: Record<ParsedFeature['type'], string> = {
+    airport: 'Airport',
+    navaid: 'Navaid',
+    airspace: 'Airspace',
+    reportingPoint: 'Reporting Point',
+    obstacle: 'Obstacle',
+    hotspot: 'Hotspot',
+    hangGliding: 'Hang Gliding',
+    rcAirfield: 'RC Airfield',
+    unknown: 'Unknown',
+  };
+
+  return labels[type];
+}
+
+function formatLayerName(layer: string): string {
+  const labels: Record<string, string> = {
+    airports: 'Airports',
+    navaids: 'Navaids',
+    airspaces: 'Airspaces',
+    reportingPoints: 'Reporting points',
+    obstacles: 'Obstacles',
+    hotspots: 'Hotspots',
+    hangGlidings: 'Hang gliding',
+    rcAirfields: 'RC airfields',
+  };
+
+  return labels[layer] ?? layer.replace(/([A-Z])/g, ' $1');
 }
 
 function SummaryGrid({

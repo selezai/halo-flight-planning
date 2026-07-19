@@ -1,103 +1,153 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Halo Flight Planning - Sprite Build Script
-# This script automates the process of building OpenAIP sprites
+# Halo Flight Planning - OpenAIP Sprite Builder
+#
+# Generates Mapbox/MapLibre sprite sheets from OpenAIP's public SVG resources.
+# The previous OpenAIP mapstyles build uses Node 8-era mapnik tooling; this
+# script uses spreet, a current MapLibre-compatible sprite generator.
 
-set -e
+set -euo pipefail
 
-echo "🚀 Halo Flight Planning - Sprite Builder"
-echo "========================================"
-echo ""
+SOURCE="map-resources"
+FORCE=false
+KEEP_TEMP=false
+TEMP_DIR="${TMPDIR:-/tmp}/halo-openaip-sprite-build"
+SPREET_VERSION="v0.13.1"
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+for arg in "$@"; do
+  case "$arg" in
+    --force)
+      FORCE=true
+      ;;
+    --keep-temp)
+      KEEP_TEMP=true
+      ;;
+    --source=map-resources)
+      SOURCE="map-resources"
+      ;;
+    --source=legacy-mapstyles)
+      SOURCE="legacy-mapstyles"
+      ;;
+    -h|--help)
+      cat <<'HELP'
+Usage: ./scripts/build-sprites.sh [--force] [--keep-temp] [--source=map-resources|legacy-mapstyles]
 
-# Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+Options:
+  --force                   Overwrite existing sprite files.
+  --keep-temp               Keep the cloned OpenAIP repository in /tmp.
+  --source=map-resources    Use current OpenAIP SVG resources. Default.
+  --source=legacy-mapstyles Use archived MIT mapstyles SVGs. Less complete for current OpenAIP style.
+HELP
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SPRITES_DIR="$PROJECT_ROOT/public/sprites"
-TEMP_DIR="/tmp/openaip-mapstyles-build"
+OUTPUT_DIR="$TEMP_DIR/output"
+BIN_DIR="$TEMP_DIR/bin"
 
-echo "📁 Project root: $PROJECT_ROOT"
-echo "📁 Sprites directory: $SPRITES_DIR"
-echo ""
-
-# Check if sprites already exist
-if [ -f "$SPRITES_DIR/openaip.json" ] && [ -f "$SPRITES_DIR/openaip.png" ]; then
-    echo -e "${YELLOW}⚠️  Sprites already exist!${NC}"
-    echo ""
-    read -p "Do you want to rebuild them? (y/N) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping sprite build."
-        exit 0
+if [[ "$FORCE" != true ]]; then
+  for file in openaip.json openaip.png openaip@2x.json openaip@2x.png; do
+    if [[ -s "$SPRITES_DIR/$file" ]]; then
+      echo "Sprite file already exists: $SPRITES_DIR/$file"
+      echo "Re-run with --force to rebuild."
+      exit 0
     fi
+  done
 fi
 
-# Create temp directory
-echo "📦 Creating temporary directory..."
-mkdir -p "$TEMP_DIR"
-cd "$TEMP_DIR"
+rm -rf "$TEMP_DIR"
+mkdir -p "$OUTPUT_DIR" "$SPRITES_DIR" "$BIN_DIR"
 
-# Clone or update mapstyles repo
-if [ -d "mapstyles" ]; then
-    echo "📥 Updating existing mapstyles repository..."
-    cd mapstyles
-    git pull
+if [[ "$SOURCE" == "map-resources" ]]; then
+  REPO_URL="https://github.com/openAIP/openaip-map-resources.git"
+  REPO_DIR="$TEMP_DIR/openaip-map-resources"
+  SVG_DIR="$REPO_DIR/resources/svg"
 else
-    echo "📥 Cloning OpenAIP mapstyles repository..."
-    git clone https://github.com/openAIP/mapstyles.git
-    cd mapstyles
+  REPO_URL="https://github.com/openAIP/mapstyles.git"
+  REPO_DIR="$TEMP_DIR/mapstyles"
+  SVG_DIR="$REPO_DIR/src/default/sprites-src"
 fi
 
-echo ""
-echo "📦 Installing dependencies..."
-npm install
+echo "Building OpenAIP sprites"
+echo "Project root: $PROJECT_ROOT"
+echo "Source: $REPO_URL"
 
-echo ""
-echo "🔨 Building sprites..."
-npm run build:style:default
+git clone --depth 1 "$REPO_URL" "$REPO_DIR"
 
-echo ""
-echo "📋 Copying sprite files to project..."
+if [[ ! -d "$SVG_DIR" ]]; then
+  echo "SVG source directory not found: $SVG_DIR" >&2
+  exit 1
+fi
 
-# Check if build was successful
-if [ ! -f "dist/maps/styles/default/sprite.json" ]; then
-    echo -e "${RED}❌ Build failed! Sprite files not found.${NC}"
+case "$(uname -s)-$(uname -m)" in
+  Darwin-x86_64)
+    SPREET_ASSET="spreet-x86_64-apple-darwin.tar.gz"
+    ;;
+  Darwin-arm64)
+    SPREET_ASSET="spreet-aarch64-apple-darwin.tar.gz"
+    ;;
+  Linux-x86_64)
+    SPREET_ASSET="spreet-x86_64-unknown-linux-musl.tar.gz"
+    ;;
+  Linux-aarch64|Linux-arm64)
+    SPREET_ASSET="spreet-aarch64-unknown-linux-musl.tar.gz"
+    ;;
+  *)
+    echo "Unsupported platform for automatic spreet download: $(uname -s)-$(uname -m)" >&2
     exit 1
+    ;;
+esac
+
+curl -fsSL \
+  "https://github.com/flother/spreet/releases/download/${SPREET_VERSION}/${SPREET_ASSET}" \
+  -o "$TEMP_DIR/spreet.tar.gz"
+LC_ALL=C LANG=C tar -xzf "$TEMP_DIR/spreet.tar.gz" -C "$BIN_DIR"
+
+"$BIN_DIR/spreet" --unique --minify-index-file "$SVG_DIR" "$OUTPUT_DIR/openaip"
+"$BIN_DIR/spreet" --unique --retina --minify-index-file "$SVG_DIR" "$OUTPUT_DIR/openaip@2x"
+
+cp "$OUTPUT_DIR/openaip.json" "$SPRITES_DIR/openaip.json"
+cp "$OUTPUT_DIR/openaip.png" "$SPRITES_DIR/openaip.png"
+cp "$OUTPUT_DIR/openaip@2x.json" "$SPRITES_DIR/openaip@2x.json"
+cp "$OUTPUT_DIR/openaip@2x.png" "$SPRITES_DIR/openaip@2x.png"
+
+node - "$SPRITES_DIR" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+
+const spritesDir = process.argv[2];
+const files = ['openaip.json', 'openaip.png', 'openaip@2x.json', 'openaip@2x.png'];
+
+for (const file of files) {
+  const filePath = path.join(spritesDir, file);
+  const size = fs.statSync(filePath).size;
+  if (size <= 3) {
+    throw new Error(`${file} is empty or still a placeholder`);
+  }
+  console.log(`${file}: ${size} bytes`);
+}
+
+const icons = Object.keys(
+  JSON.parse(fs.readFileSync(path.join(spritesDir, 'openaip.json'), 'utf8'))
+);
+
+if (icons.length < 100) {
+  throw new Error(`Expected at least 100 OpenAIP sprite entries, found ${icons.length}`);
+}
+
+console.log(`OpenAIP sprite entries: ${icons.length}`);
+NODE
+
+if [[ "$KEEP_TEMP" != true ]]; then
+  rm -rf "$TEMP_DIR"
 fi
 
-# Copy files
-cp dist/maps/styles/default/sprite.json "$SPRITES_DIR/openaip.json"
-cp dist/maps/styles/default/sprite.png "$SPRITES_DIR/openaip.png"
-cp dist/maps/styles/default/sprite@2x.json "$SPRITES_DIR/openaip@2x.json"
-cp dist/maps/styles/default/sprite@2x.png "$SPRITES_DIR/openaip@2x.png"
-
-echo ""
-echo "✅ Verifying sprite files..."
-ls -lh "$SPRITES_DIR"
-
-echo ""
-echo -e "${GREEN}✅ Sprites built successfully!${NC}"
-echo ""
-echo "Sprite files:"
-echo "  - openaip.json ($(du -h "$SPRITES_DIR/openaip.json" | cut -f1))"
-echo "  - openaip.png ($(du -h "$SPRITES_DIR/openaip.png" | cut -f1))"
-echo "  - openaip@2x.json ($(du -h "$SPRITES_DIR/openaip@2x.json" | cut -f1))"
-echo "  - openaip@2x.png ($(du -h "$SPRITES_DIR/openaip@2x.png" | cut -f1))"
-echo ""
-echo "🎉 You can now run the development server!"
-echo "   cd $PROJECT_ROOT && pnpm dev"
-echo ""
-
-# Optional: Clean up temp directory
-read -p "Clean up temporary files? (Y/n) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    echo "🧹 Cleaning up..."
-    rm -rf "$TEMP_DIR"
-    echo "✅ Done!"
-fi
+echo "OpenAIP sprites generated in $SPRITES_DIR"

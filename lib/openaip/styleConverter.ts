@@ -60,7 +60,7 @@ export function convertOpenAipStyle(
 
   // 5. Fix layers for MapLibre compatibility and filter out problematic ones
   converted.layers = converted.layers
-    .filter(layer => !isProblematicLayer(layer))
+    .filter(layer => !isProblematicLayer(layer, converted.sources))
     .map(fixLayer);
 
   // 6. Add base map layer at the beginning
@@ -78,16 +78,15 @@ export function convertOpenAipStyle(
 /**
  * Check if a layer has known compatibility issues
  */
-function isProblematicLayer(layer: StyleLayer): boolean {
-  // Remove layers that reference the "composite" source (Mapbox terrain)
-  if (layer.source === 'composite') {
+function isProblematicLayer(layer: StyleLayer, sources: MapStyle['sources']): boolean {
+  // Remove Mapbox basemap/terrain layers. Halo provides its own raster basemap
+  // and keeps OpenAIP aviation data as the interactive vector overlay.
+  if (layer.source === 'composite' || layer.source === 'mapbox-dem') {
     return true;
   }
-  
-  // Keep the aviation geometry layers. Symbol layers depend on OpenAIP sprite
-  // assets that are not yet shipped, so we avoid broken icon/text rendering for
-  // now while keeping airspace, airport, navaid, obstacle, and route geometry.
-  if (layer.type === 'symbol') {
+
+  // Drop layers whose source was removed during source rewriting.
+  if (layer.source && !sources[layer.source]) {
     return true;
   }
   
@@ -181,6 +180,12 @@ function fixProperties(props: Record<string, unknown>, propType: 'layout' | 'pai
     'line-pattern',
     'fill-extrusion-pattern'
   ];
+  const arrayValuedProps = [
+    'text-offset',
+    'icon-offset',
+    'text-translate',
+    'icon-translate',
+  ];
 
   for (const [key, value] of Object.entries(props)) {
     // Check if this property cannot be interpolated
@@ -195,8 +200,12 @@ function fixProperties(props: Record<string, unknown>, propType: 'layout' | 'pai
         // Check if this property can be interpolated
         if (key === 'line-dasharray') {
           fixed[key] = convertStopsToStep(obj, normalizeDasharray);
+        } else if (key === 'text-font') {
+          fixed[key] = convertStopsToStep(obj, wrapAnyArrayValue);
         } else if (nonInterpolatableProps.includes(key)) {
-          fixed[key] = convertStopsToStep(obj);
+          fixed[key] = convertStopsToStep(obj, (item) => normalizePropertyValue(key, item));
+        } else if (arrayValuedProps.includes(key)) {
+          fixed[key] = convertStopsToExpression(obj, wrapLiteralArrayValue);
         } else {
           fixed[key] = convertStopsToExpression(obj);
         }
@@ -206,12 +215,58 @@ function fixProperties(props: Record<string, unknown>, propType: 'layout' | 'pai
     } else if (Array.isArray(value)) {
       // Handle array properties that need fixing
       fixed[key] = fixArrayProperty(key, value);
+    } else if (typeof value === 'string') {
+      fixed[key] = normalizePropertyValue(key, value);
     } else {
       fixed[key] = value;
     }
   }
 
   return fixed;
+}
+
+function normalizePropertyValue(key: string, value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+
+  if (key === 'icon-image' && value === 'airfield-15') {
+    return 'rc_airfield';
+  }
+
+  if (key === 'icon-image' || key === 'text-field' || key === 'fill-pattern' || key === 'line-pattern') {
+    return convertTokenString(value);
+  }
+
+  return value;
+}
+
+function convertTokenString(value: string): string | unknown[] {
+  const tokenMatches = Array.from(value.matchAll(/\{([^}]+)\}/g));
+  if (tokenMatches.length === 0) return value;
+
+  const parts: unknown[] = [];
+  let lastIndex = 0;
+
+  for (const match of tokenMatches) {
+    const index = match.index ?? 0;
+    const propertyName = match[1];
+
+    if (index > lastIndex) {
+      parts.push(value.slice(lastIndex, index));
+    }
+
+    parts.push(['coalesce', ['to-string', ['get', propertyName]], '']);
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    parts.push(value.slice(lastIndex));
+  }
+
+  if (parts.length === 1) {
+    return parts[0] as unknown[];
+  }
+
+  return ['concat', ...parts];
 }
 
 /**
@@ -261,11 +316,15 @@ function convertToStepExpression(value: unknown): unknown {
 function convertStopsToStep(
   obj: Record<string, unknown>,
   normalizeValue: (value: unknown) => unknown = (value) => value
-): unknown[] {
+): unknown {
   const stops = obj.stops as [number, unknown][];
   
   if (stops.length === 0) {
     return ['step', ['zoom'], null];
+  }
+
+  if (stops.length === 1) {
+    return normalizeValue(stops[0][1]) as unknown[];
   }
 
   const expression: unknown[] = ['step', ['zoom'], normalizeValue(stops[0][1])];
@@ -307,28 +366,9 @@ function fixArrayProperty(key: string, value: unknown[]): unknown {
     // It's already an expression, check if it needs fixing
     const operator = value[0] as string;
     
-    // Check if it's an interpolate/step/match expression with array values
-    if (operator === 'interpolate' || operator === 'step' || operator === 'match') {
-      // Recursively fix array values in the expression
-      const fixed = value.map((item, index) => {
-        // Skip operator, interpolation type, and input (first 3 items)
-        if (index < 3) return item;
-        
-        // For step/match, check if this is a value (not a stop/condition)
-        if (Array.isArray(item)) {
-          // Check if it's a nested expression or a literal array
-          const isNestedExpression = item.length > 0 && typeof item[0] === 'string';
-          
-          if (!isNestedExpression) {
-            // It's a literal array value, wrap it
-            return ['literal', item];
-          }
-        }
-        
-        return item;
-      });
-      return fixed;
-    }
+    if (operator === 'step') return fixStepArrayValues(value);
+    if (operator === 'interpolate') return fixInterpolateArrayValues(value);
+    if (operator === 'match') return fixMatchArrayValues(value);
     
     return value;
   }
@@ -352,10 +392,50 @@ function fixArrayProperty(key: string, value: unknown[]): unknown {
   return value;
 }
 
+function fixStepArrayValues(expression: unknown[]): unknown[] {
+  return expression.map((item, index) => {
+    if (index < 2) return item;
+    if (index >= 3 && index % 2 === 1) return item;
+    return wrapLiteralArrayValue(item);
+  });
+}
+
+function fixInterpolateArrayValues(expression: unknown[]): unknown[] {
+  return expression.map((item, index) => {
+    if (index < 3) return item;
+    if (index % 2 === 1) return item;
+    return wrapLiteralArrayValue(item);
+  });
+}
+
+function fixMatchArrayValues(expression: unknown[]): unknown[] {
+  const defaultIndex = expression.length - 1;
+
+  return expression.map((item, index) => {
+    if (index < 2) return item;
+    if (index === defaultIndex) return wrapLiteralArrayValue(item);
+    if (index % 2 === 0) return item;
+    return wrapLiteralArrayValue(item);
+  });
+}
+
+function wrapLiteralArrayValue(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  const isNestedExpression = value.length > 0 && typeof value[0] === 'string';
+  return isNestedExpression ? value : ['literal', value];
+}
+
+function wrapAnyArrayValue(value: unknown): unknown {
+  return Array.isArray(value) ? ['literal', value] : value;
+}
+
 /**
  * Convert legacy stops syntax to MapLibre expression
  */
-function convertStopsToExpression(obj: Record<string, unknown>): unknown[] {
+function convertStopsToExpression(
+  obj: Record<string, unknown>,
+  normalizeValue: (value: unknown) => unknown = (value) => value
+): unknown[] {
   const stops = obj.stops as [number, unknown][];
   const base = (obj.base as number) || 1;
 
@@ -367,7 +447,7 @@ function convertStopsToExpression(obj: Record<string, unknown>): unknown[] {
   ];
 
   for (const [zoom, value] of stops) {
-    expression.push(zoom, value);
+    expression.push(zoom, normalizeValue(value));
   }
 
   return expression;
@@ -420,21 +500,56 @@ function fixFilter(filter: unknown[]): unknown[] {
  * Get list of clickable layer IDs from style
  */
 export function getClickableLayers(style: MapStyle): string[] {
-  const clickablePrefixes = [
-    'airport',
-    'navaid',
-    'airspace',
-    'reporting_point',
-    'hotspot',
-    'obstacle',
-  ];
+  const sourceLayerPriority: Record<string, number> = {
+    airports: 10,
+    navaids: 20,
+    reporting_points: 30,
+    obstacles: 40,
+    hang_glidings: 50,
+    hotspots: 60,
+    rc_airfields: 70,
+    airspaces: 80,
+    airspaces_border_offset: 90,
+    airspaces_border_offset_2x: 91,
+  };
 
   return style.layers
     .filter(layer => {
       const id = layer.id.toLowerCase();
-      return clickablePrefixes.some(prefix => id.includes(prefix));
+      if (id.startsWith('highlighted-') || id.startsWith('selected-')) return false;
+
+      const sourceLayer = layer['source-layer'];
+      if (sourceLayer && sourceLayer in sourceLayerPriority) return true;
+
+      return [
+        'airport',
+        'navaid',
+        'airspace',
+        'reporting_point',
+        'hotspot',
+        'obstacle',
+        'hang_gliding',
+        'rc_airfield',
+      ].some(prefix => id.includes(prefix));
+    })
+    .sort((a, b) => {
+      const sourceLayerA = a['source-layer'] ?? '';
+      const sourceLayerB = b['source-layer'] ?? '';
+      const priorityA = sourceLayerPriority[sourceLayerA] ?? 100;
+      const priorityB = sourceLayerPriority[sourceLayerB] ?? 100;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return clickableLayerPaintPriority(a) - clickableLayerPaintPriority(b);
     })
     .map(layer => layer.id);
+}
+
+function clickableLayerPaintPriority(layer: StyleLayer): number {
+  if (layer.id.toLowerCase().includes('clicktarget')) return 0;
+  if (layer.type === 'symbol') return 1;
+  if (layer.type === 'circle') return 2;
+  if (layer.type === 'fill') return 3;
+  if (layer.type === 'line') return 4;
+  return 5;
 }
 
 /**

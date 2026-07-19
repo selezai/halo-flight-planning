@@ -68,3 +68,60 @@ Verification:
 - Production API: `/api/openaip/style` returned 74 layers and 46 airspace layers.
 - Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without `Content-Encoding`.
 - Production browser: aviation chart rendered and feature inspection opened `AWY G853`.
+
+## 2026-07-19 Global OpenAIP Vector Map and Sprites Slice
+
+Objective: make Halo's browser map behave like a real manned-flight aviation map with global OpenAIP vector data, authentic sprites, and useful click-to-detail inspection.
+
+Research and decisions:
+
+- OpenAIP remains the best free/global primary aviation map source for Halo because it provides MapLibre-compatible vector tiles through the Tiles API and feature detail records through the Core API.
+- OpenAIP is not Halo's flight-planning function layer. It supplies map/data records; Halo supplies route planning, click behavior, filtering, warnings, briefing, and export workflow.
+- OpenAIP Core API schema paths were verified for airports, airspaces, navaids, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- The archived `openAIP/mapstyles` build path fails on current Node because its Node 8-era `@mapbox/spritezero-cli` dependency pulls obsolete `mapnik` tooling.
+- Current authentic sprites are generated from `openAIP/openaip-map-resources` with `spreet`.
+- OpenAIP's current public map resources are CC BY-NC-SA 4.0. Halo needs OpenAIP permission or replacement sprites before commercial use.
+
+Changes:
+
+- Generated real OpenAIP sprite files in `halo-scaffold/public/sprites/` and added attribution.
+- Replaced the interactive sprite builder with a non-interactive `pnpm build:sprites` workflow.
+- Restored OpenAIP aviation symbol layers and kept Mapbox/composite basemap symbol layers filtered out.
+- Added MapLibre token conversion for OpenAIP style values such as `{type}-medium` and `{icao_code}`.
+- Added feature click prioritization so point aviation features beat airspace border/decorative layers when stacked.
+- Expanded parsed feature support for airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Added detail API proxies for reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Expanded sidebar fields for vertical limits, activation flags, runway hints, navaid alignment, obstacle dimensions, RC airfield power types, source layer, and source ID.
+- Added parser/converter regression tests for actual OpenAIP vector-tile property names.
+
+Prevention guidelines:
+
+- Do not deploy empty sprite placeholders; `pnpm build:sprites` validates file sizes and sprite key count.
+- Do not strip all `symbol` layers; filter only incompatible basemap/terrain sources.
+- Normalize OpenAIP snake_case tile properties at the parser boundary before displaying feature information.
+- Keep OpenAIP API keys server-side in route handlers/proxies only.
+- Convert legacy OpenAIP style `stops` carefully for MapLibre: tokenized text/icon strings, array-valued offsets, one-stop functions, and font-stack arrays each need specific handling.
+- Use `cache: 'no-store'` for the client style fetch so a bad browser-cached style does not survive deployment.
+
+Local verification:
+
+- `pnpm build:sprites`: generated 128 OpenAIP sprite entries.
+- `pnpm test`: 15 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed and included all added OpenAIP detail routes.
+- Local production API: `/api/openaip/style` returned 96 layers and 22 OpenAIP aviation symbol layers.
+- Local production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Local production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
+- Local browser: no framework overlay, no degraded-map error, aviation symbols/labels visible, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
+
+Production deployment and verification:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-2k36aug5m-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_FYEx7JLtPWeDPV5XM126dUCTbSid`
+- Production API: `/api/openaip/style` returned 96 layers and 22 OpenAIP aviation symbol layers.
+- Production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
+- Production browser: no framework overlay, no degraded-map error, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
