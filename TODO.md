@@ -23,11 +23,12 @@
 - [x] Global OpenAIP Core airport/navaid route search with starter fallback and deduplication.
 - [x] Playwright integration tests against `next build && next start`.
 - [x] CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, and `pnpm test:e2e`.
+- [x] FAA NOTAM provider integration with route airport/navaid filtering, source attribution, and explicit unavailable states.
 
 ## Remaining Before Operational Launch
 
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
-- [ ] Add live NOTAM provider integration with route filtering and source attribution.
+- [ ] Configure production FAA NOTAM API credentials after FAA API Portal access is granted.
 - [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
 - [ ] Add aircraft-specific weight-and-balance envelopes before exposing W&B as operational output.
 - [ ] Add error monitoring and analytics after deployment.

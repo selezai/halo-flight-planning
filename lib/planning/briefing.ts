@@ -4,6 +4,8 @@ import type {
   PersonalMinimums,
   RouteAirspaceAlert,
   RouteAnalysis,
+  RouteNotam,
+  RouteNotamReview,
   Waypoint,
   WeatherReport,
 } from '@/types/planning';
@@ -14,7 +16,8 @@ export function buildRiskAssessment(
   route: RouteAnalysis,
   weather: WeatherReport[],
   minimums: PersonalMinimums,
-  routeAirspaceAlerts: RouteAirspaceAlert[] = []
+  routeAirspaceAlerts: RouteAirspaceAlert[] = [],
+  routeNotamReview?: RouteNotamReview
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -86,23 +89,15 @@ export function buildRiskAssessment(
     });
   }
 
-  risks.push({
-    id: 'notam-review',
-    level: 'caution',
-    title: 'NOTAM review required',
-    detail: 'Halo highlights the check, but a validated live NOTAM feed is not configured in this local release.',
-  });
+  addNotamRisks(risks, routeNotamReview);
 
-  if (risks.length === 1 && risks[0].id === 'notam-review') {
-    return [
-      {
-        id: 'route-ready',
-        level: 'ok',
-        title: 'Planning data consistent',
-        detail: 'Route, fuel, and available weather are internally consistent. Complete the external NOTAM check.',
-      },
-      risks[0],
-    ];
+  if (risks.length === 0) {
+    risks.push({
+      id: 'route-ready',
+      level: 'ok',
+      title: 'Planning data consistent',
+      detail: 'Route, fuel, available weather, airspace review, and live NOTAM review are internally consistent. Continue official preflight review before flight.',
+    });
   }
 
   return risks;
@@ -116,6 +111,7 @@ export function buildBriefingText(params: {
   weather: WeatherReport[];
   risks: BriefingRisk[];
   routeAirspaceAlerts?: RouteAirspaceAlert[];
+  routeNotamReview?: RouteNotamReview;
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -128,6 +124,7 @@ export function buildBriefingText(params: {
     weather,
     risks,
     routeAirspaceAlerts = [],
+    routeNotamReview,
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -170,7 +167,7 @@ export function buildBriefingText(params: {
     ...risks.map((risk) => `${risk.level.toUpperCase()}: ${risk.title} - ${risk.detail}`),
     '',
     'NOTAM REVIEW',
-    'Check the official NOTAM source for departure, destination, alternates, FIRs, route corridor, procedures, and temporary airspace before flight.',
+    ...formatBriefingNotamReview(routeNotamReview),
     '',
     'NOTES',
     notes || 'No pilot notes entered.',
@@ -197,4 +194,104 @@ function formatBriefingAirspaceAlert(alert: RouteAirspaceAlert): string {
   const category = [alert.airspaceType, alert.airspaceClass].filter(Boolean).join(' ');
   const vertical = [alert.lowerLimit ?? 'lower unknown', alert.upperLimit ?? 'upper unknown'].join(' to ');
   return `${alert.level.toUpperCase()}: ${alert.name}${category ? ` (${category})` : ''}, ${vertical} - ${alert.reason}`;
+}
+
+function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
+  if (!review || review.status === 'needs-route') {
+    risks.push({
+      id: 'notam-review',
+      level: 'caution',
+      title: 'NOTAM review required',
+      detail: 'Add a route and complete live NOTAM review before treating the briefing as usable.',
+    });
+    return;
+  }
+
+  if (review.status === 'checking') {
+    risks.push({
+      id: 'notam-checking',
+      level: 'caution',
+      title: 'NOTAM review still checking',
+      detail: 'Wait for live NOTAM review to finish before dispatch.',
+    });
+    return;
+  }
+
+  if (review.status === 'unavailable') {
+    risks.push({
+      id: 'notam-unavailable',
+      level: 'caution',
+      title: 'Live NOTAM review unavailable',
+      detail: review.message,
+    });
+    return;
+  }
+
+  if (review.status === 'partial') {
+    risks.push({
+      id: 'notam-partial',
+      level: 'caution',
+      title: 'Partial NOTAM review',
+      detail: review.message,
+    });
+  }
+
+  const criticalNotams = review.notams.filter((notam) => notam.severity === 'critical');
+  const cautionNotams = review.notams.filter((notam) => notam.severity === 'caution');
+
+  if (criticalNotams.length > 0) {
+    risks.push({
+      id: 'notam-critical',
+      level: 'critical',
+      title: 'Critical route NOTAMs found',
+      detail: formatNotamSummary(criticalNotams),
+    });
+  } else if (cautionNotams.length > 0) {
+    risks.push({
+      id: 'notam-caution',
+      level: 'caution',
+      title: 'Route NOTAMs require review',
+      detail: formatNotamSummary(cautionNotams),
+    });
+  }
+}
+
+function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
+  if (!review) {
+    return ['Live NOTAM review has not run. Check the official NOTAM source before flight.'];
+  }
+
+  const sourceLine = `Source: ${review.source === 'faa-notam-api' ? 'FAA NOTAM API' : 'Unavailable'} (${review.sourceUrl})`;
+  const locationLine = review.locations.length
+    ? `Route locations checked: ${review.locations.join(', ')}`
+    : 'Route locations checked: none';
+  const statusLine = `Status: ${review.status.toUpperCase()} - ${review.message}`;
+
+  if (review.notams.length === 0) {
+    return [
+      sourceLine,
+      locationLine,
+      statusLine,
+      'No route-location NOTAM records are available in Halo for this briefing. Continue official preflight NOTAM review.',
+    ];
+  }
+
+  return [
+    sourceLine,
+    locationLine,
+    statusLine,
+    ...review.notams.slice(0, 12).map(formatBriefingNotam),
+    ...(review.notams.length > 12 ? [`+${review.notams.length - 12} more NOTAMs hidden in exported summary.`] : []),
+  ];
+}
+
+function formatBriefingNotam(notam: RouteNotam): string {
+  const period = [notam.effectiveFrom, notam.effectiveTo].filter(Boolean).join(' to ');
+  return `${notam.severity.toUpperCase()}: ${notam.location} ${notam.id} ${notam.category}${period ? ` (${period})` : ''} - ${notam.text}`;
+}
+
+function formatNotamSummary(notams: RouteNotam[]): string {
+  const visible = notams.slice(0, 5).map((notam) => `${notam.location} ${notam.category}`);
+  const extra = notams.length > visible.length ? `; +${notams.length - visible.length} more` : '';
+  return `${visible.join('; ')}${extra}`;
 }

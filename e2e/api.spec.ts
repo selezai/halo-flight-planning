@@ -35,4 +35,18 @@ test('server APIs validate input and degrade safely without aviation credentials
     source: 'openaip-core',
     status: 'unavailable',
   });
+
+  const notamReviewResponse = await request.post('/api/notams/route', {
+    data: {
+      waypoints: [
+        { type: 'airport', ident: 'FAOR' },
+        { type: 'airport', ident: 'FALA' },
+      ],
+    },
+  });
+  expect(notamReviewResponse.status()).toBe(503);
+  await expect(notamReviewResponse.json()).resolves.toMatchObject({
+    source: 'unavailable',
+    status: 'unavailable',
+  });
 });

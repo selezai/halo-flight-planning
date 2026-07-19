@@ -1,6 +1,7 @@
 import dynamic from 'next/dynamic';
 import Sidebar from '@/components/sidebar/Sidebar';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
+import RouteNotamReviewSync from '@/components/planning/RouteNotamReviewSync';
 import RouteStatusBar from '@/components/planning/RouteStatusBar';
 
 // Dynamic import for Map to avoid SSR issues with MapLibre
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <RouteAirspaceReviewSync />
+      <RouteNotamReviewSync />
       <Sidebar />
       <div className="flex-1 relative">
         <Map />

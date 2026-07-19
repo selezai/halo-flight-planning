@@ -54,6 +54,8 @@ import type {
   FlightCategory,
   RouteAirspaceAlert,
   RouteAirspaceReview,
+  RouteNotam,
+  RouteNotamReview,
   WeatherReport,
   Waypoint,
   WaypointType,
@@ -928,6 +930,7 @@ function BriefingPanel() {
     activeAircraft,
     personalMinimums,
     routeAirspaceReview,
+    routeNotamReview,
   } = useMapStore();
   const weather = useRouteWeather(false);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
@@ -936,8 +939,8 @@ function BriefingPanel() {
     [weather.reports]
   );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts),
-    [route, reports, personalMinimums, routeAirspaceReview.alerts]
+    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview),
+    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -948,11 +951,12 @@ function BriefingPanel() {
       weather: reports,
       risks,
       routeAirspaceAlerts: routeAirspaceReview.alerts,
+      routeNotamReview,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, routeNotamReview, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -984,6 +988,8 @@ function BriefingPanel() {
       </PanelBlock>
 
       <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
+
+      <NotamReviewPanel review={routeNotamReview} />
 
       <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
         <div className="space-y-2">
@@ -1024,6 +1030,103 @@ function BriefingPanel() {
           {briefingText}
         </pre>
       </PanelBlock>
+    </div>
+  );
+}
+
+function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
+  const criticalCount = review.notams.filter((notam) => notam.severity === 'critical').length;
+  const cautionCount = review.notams.filter((notam) => notam.severity === 'caution').length;
+  const visibleNotams = review.notams.slice(0, 6);
+  const StatusIcon = criticalCount > 0 || cautionCount > 0 || review.status !== 'complete'
+    ? AlertTriangle
+    : CheckCircle2;
+
+  return (
+    <PanelBlock title="Route NOTAM review" icon={<AlertTriangle className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getNotamReviewTone(review)}`}>
+        <div className="flex items-start gap-2">
+          <StatusIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              {criticalCount > 0
+                ? `${criticalCount} critical NOTAM${criticalCount === 1 ? '' : 's'}`
+                : cautionCount > 0
+                  ? `${cautionCount} NOTAM${cautionCount === 1 ? '' : 's'} need review`
+                  : review.status === 'complete'
+                    ? 'FAA NOTAM route scan'
+                    : 'Live NOTAM review unavailable'}
+            </p>
+            <p className="mt-1">{review.message}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Source" value={review.source === 'faa-notam-api' ? 'FAA' : 'Offline'} />
+        <Metric label="Queries" value={String(review.queryCount)} />
+        <Metric label="NOTAMs" value={String(review.notams.length)} />
+      </div>
+
+      <p className="mt-2 text-xs text-slate-500">
+        {review.locations.length
+          ? `Route locations: ${review.locations.join(', ')}. Source attribution: FAA NOTAM API.`
+          : 'Add route airports or navaids with usable identifiers for live NOTAM lookup.'}
+      </p>
+
+      {visibleNotams.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState
+            title={review.status === 'complete' ? 'No NOTAMs returned' : 'No live NOTAM data'}
+            detail={review.status === 'complete'
+              ? 'No route-location NOTAMs were returned by the configured FAA provider. Continue official preflight review.'
+              : 'Configure FAA NOTAM API credentials to enable live route NOTAM review.'}
+          />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {visibleNotams.map((notam) => (
+            <NotamRow key={notam.id} notam={notam} />
+          ))}
+          {review.notams.length > visibleNotams.length && (
+            <p className="text-xs font-medium text-slate-500">
+              +{review.notams.length - visibleNotams.length} more NOTAM{review.notams.length - visibleNotams.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+      )}
+
+      <a
+        href={review.sourceUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 block rounded border border-slate-300 px-3 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Open official NOTAM search
+      </a>
+    </PanelBlock>
+  );
+}
+
+function NotamRow({ notam }: { notam: RouteNotam }) {
+  return (
+    <div className={`rounded-md border p-2 text-xs ${getNotamTone(notam.severity)}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{notam.location} · {notam.category}</p>
+          <p className="mt-0.5">{notam.id}</p>
+        </div>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase">
+          {notam.severity}
+        </span>
+      </div>
+      {(notam.effectiveFrom || notam.effectiveTo) && (
+        <p className="mt-1 font-mono">
+          {[notam.effectiveFrom, notam.effectiveTo].filter(Boolean).join(' → ')}
+        </p>
+      )}
+      <p className="mt-1">{notam.text}</p>
+      <p className="mt-1 text-[10px] uppercase tracking-wide">Source: {notam.source}</p>
     </div>
   );
 }
@@ -1227,6 +1330,25 @@ function getAirspaceReviewTone(review: RouteAirspaceReview): string {
 function getAirspaceAlertTone(level: RouteAirspaceAlert['level']): string {
   if (level === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
   if (level === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
+  return 'border-slate-200 bg-white text-slate-700';
+}
+
+function getNotamReviewTone(review: RouteNotamReview): string {
+  if (review.notams.some((notam) => notam.severity === 'critical')) {
+    return 'bg-rose-50 text-rose-800';
+  }
+  if (review.notams.some((notam) => notam.severity === 'caution') || review.status === 'partial') {
+    return 'bg-amber-50 text-amber-900';
+  }
+  if (review.status === 'complete') {
+    return 'bg-emerald-50 text-emerald-800';
+  }
+  return 'bg-slate-50 text-slate-700';
+}
+
+function getNotamTone(severity: RouteNotam['severity']): string {
+  if (severity === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (severity === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
   return 'border-slate-200 bg-white text-slate-700';
 }
 

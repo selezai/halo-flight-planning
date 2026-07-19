@@ -99,6 +99,52 @@ export interface BriefingRisk {
   detail: string;
 }
 
+export type NotamSeverity = 'info' | 'caution' | 'critical';
+
+export type NotamCategory =
+  | 'runway'
+  | 'approach'
+  | 'navaid'
+  | 'airspace'
+  | 'taxiway'
+  | 'lighting'
+  | 'obstacle'
+  | 'services'
+  | 'wildlife'
+  | 'other';
+
+export interface RouteNotam {
+  id: string;
+  location: string;
+  type?: string;
+  category: NotamCategory;
+  severity: NotamSeverity;
+  text: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  source: string;
+  sourceUrl: string;
+  appliesToRoute: boolean;
+}
+
+export type RouteNotamReviewStatus =
+  | 'needs-route'
+  | 'checking'
+  | 'unavailable'
+  | 'partial'
+  | 'complete';
+
+export interface RouteNotamReview {
+  source: 'faa-notam-api' | 'unavailable';
+  status: RouteNotamReviewStatus;
+  message: string;
+  notams: RouteNotam[];
+  locations: string[];
+  queryCount: number;
+  sourceUrl: string;
+  updatedAt?: string;
+}
+
 export type RouteAirspaceAlertLevel = 'info' | 'caution' | 'critical';
 
 export interface RouteAirspaceAlert {

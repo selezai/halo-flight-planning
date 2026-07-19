@@ -6,6 +6,7 @@ import type {
   Coordinates,
   PersonalMinimums,
   RouteAirspaceReview,
+  RouteNotamReview,
   Waypoint,
 } from '@/types/planning';
 import {
@@ -52,6 +53,7 @@ interface MapState {
   routeAirspaceReview: RouteAirspaceReview;
   renderedRouteAirspaceReview: RouteAirspaceReview;
   coreRouteAirspaceReview: RouteAirspaceReview;
+  routeNotamReview: RouteNotamReview;
   
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -79,6 +81,7 @@ interface MapState {
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
   setRenderedRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setCoreRouteAirspaceReview: (review: RouteAirspaceReview) => void;
+  setRouteNotamReview: (review: RouteNotamReview) => void;
 }
 
 const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
@@ -108,6 +111,16 @@ const DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
   alerts: [],
   sampledPointCount: 0,
   visibleLayerCount: 0,
+};
+
+const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
+  source: 'unavailable',
+  status: 'needs-route',
+  message: 'Add at least two route waypoints to run live FAA NOTAM review.',
+  notams: [],
+  locations: [],
+  queryCount: 0,
+  sourceUrl: 'https://notams.aim.faa.gov/notamSearch/',
 };
 
 function chooseActiveAirspaceReview(
@@ -154,6 +167,7 @@ export const useMapStore = create<MapState>()(
       routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+      routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
       
       // Actions
       setCenter: (center) => set({ center }),
@@ -247,6 +261,7 @@ export const useMapStore = create<MapState>()(
         routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
         renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
         coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+        routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
       }),
 
       setActiveAircraft: (aircraft) => set({
@@ -270,6 +285,10 @@ export const useMapStore = create<MapState>()(
         coreRouteAirspaceReview: review,
         routeAirspaceReview: chooseActiveAirspaceReview(review, state.renderedRouteAirspaceReview),
       })),
+
+      setRouteNotamReview: (review) => set({
+        routeNotamReview: review,
+      }),
     }),
     {
       name: 'halo-map-store',

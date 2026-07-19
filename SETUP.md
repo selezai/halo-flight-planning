@@ -38,6 +38,14 @@ pnpm install
 3. Go to Account → Keys
 4. Copy your default API key (free tier is sufficient)
 
+### FAA NOTAM API Credentials (Required for live NOTAM route review)
+
+1. Go to the FAA API Portal at [api.faa.gov](https://api.faa.gov/notamapi/)
+2. Request/enable access to the NOTAM API
+3. Copy the issued client ID and client secret
+
+Without these credentials Halo will still run, but the briefing will show live NOTAM review as unavailable and link the official FAA NOTAM Search page.
+
 ## Step 3: Configure Environment Variables
 
 Open `.env.local` and add your API keys:
@@ -48,6 +56,10 @@ OPENAIP_API_KEY=your_actual_openaip_key_here
 
 # MapTiler (for glyphs/fonts)
 NEXT_PUBLIC_MAPTILER_KEY=your_actual_maptiler_key_here
+
+# FAA NOTAM API (server-side only)
+FAA_NOTAM_CLIENT_ID=your_actual_faa_notam_client_id_here
+FAA_NOTAM_CLIENT_SECRET=your_actual_faa_notam_client_secret_here
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -98,6 +110,7 @@ The application will start at [http://localhost:3000](http://localhost:3000)
 2. **Aviation data visible**: Airports, navaids, and airspaces should be visible
 3. **No sprite warnings**: Check browser console - there should be no "missing sprite image" warnings
 4. **Click functionality**: Click on an airport/navaid - sidebar should show details
+5. **NOTAM state**: Build a route and open Briefing. If FAA credentials are absent, Halo should show live NOTAM review unavailable with a link to official NOTAM Search.
 
 ## Troubleshooting
 

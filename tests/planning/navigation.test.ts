@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AIRCRAFT } from '@/lib/planning/aircraft';
+import { DEFAULT_AIRCRAFT, DEFAULT_PERSONAL_MINIMUMS } from '@/lib/planning/aircraft';
+import { buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
 import {
   calculateDistanceNm,
   calculateRoute,
   calculateTrueBearingDeg,
 } from '@/lib/planning/navigation';
 import { categorizeFlightConditions, parseRawMetar } from '@/lib/planning/weather';
-import type { Waypoint } from '@/types/planning';
+import type { RouteNotamReview, Waypoint } from '@/types/planning';
 
 const jfk: Waypoint = {
   id: 'kjfk',
@@ -61,5 +62,34 @@ describe('weather categorization', () => {
     expect(report.temperatureC).toBe(22);
     expect(report.altimeterHpa).toBe(1024);
     expect(report.flightCategory).toBe('VFR');
+  });
+});
+
+describe('briefing risk review', () => {
+  it('surfaces unavailable live NOTAM review in risks and briefing text', () => {
+    const route = calculateRoute([], DEFAULT_AIRCRAFT);
+    const notamReview: RouteNotamReview = {
+      source: 'unavailable',
+      status: 'unavailable',
+      message: 'FAA NOTAM API credentials are not configured.',
+      notams: [],
+      locations: [],
+      queryCount: 0,
+      sourceUrl: 'https://notams.aim.faa.gov/notamSearch/',
+    };
+    const risks = buildRiskAssessment(route, [], DEFAULT_PERSONAL_MINIMUMS, [], notamReview);
+    const briefing = buildBriefingText({
+      routeName: 'Test route',
+      aircraft: DEFAULT_AIRCRAFT,
+      route,
+      waypoints: [],
+      weather: [],
+      risks,
+      routeNotamReview: notamReview,
+    });
+
+    expect(risks.some((risk) => risk.id === 'notam-unavailable')).toBe(true);
+    expect(briefing).toContain('NOTAM REVIEW');
+    expect(briefing).toContain('FAA NOTAM API credentials are not configured.');
   });
 });

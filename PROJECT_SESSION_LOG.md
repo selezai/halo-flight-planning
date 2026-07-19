@@ -280,3 +280,32 @@ Verification:
 - `pnpm lint`: no ESLint warnings or errors.
 - `pnpm build`: production build passed.
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`.
+
+## 2026-07-19 Route NOTAM Review Slice
+
+Objective: replace the static NOTAM checklist with a credential-gated live-provider integration path that filters by route airport/navaid identifiers and clearly attributes source/status.
+
+Research and decisions:
+
+- FAA NOTAM API is available behind FAA API Portal credentials and is cataloged with base URL `https://external-api.faa.gov/notamapi/v1`.
+- Unauthenticated FAA NOTAM API probe returned HTTP 401.
+- AviationWeather.gov Data API does not provide NOTAM products.
+- Halo must not say "no NOTAMs" when the provider is unavailable. Missing credentials, authentication failure, or provider errors produce unavailable/partial states.
+
+Changes:
+
+- Added NOTAM planning types and helper functions.
+- Added `POST /api/notams/route`.
+- Added route NOTAM sync/state to the app.
+- Added briefing-panel NOTAM review UI, source link, route locations, count/status, and NOTAM rows.
+- Added NOTAM review to risk assessment and exported briefing text.
+- Added NOTAM provider research documentation and setup instructions.
+
+Verification:
+
+- `pnpm test tests/planning/notams.test.ts tests/planning/navigation.test.ts`: 9 targeted tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no ESLint warnings or errors.
+- `pnpm test`: 38 Vitest tests passed.
+- `pnpm build`: production build passed and included `/api/notams/route`.
+- `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.

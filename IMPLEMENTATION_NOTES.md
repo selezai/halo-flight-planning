@@ -238,6 +238,41 @@ Verification:
 - `pnpm build`: production build passed.
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`.
 
+### 2026-07-19 Route NOTAM Review Slice
+
+Halo now has a server-side FAA NOTAM provider integration path with route airport/navaid filtering, source attribution, and explicit unavailable/partial states.
+
+Research:
+
+- FAA NOTAM API is documented through the FAA API Portal and cataloged with base URL `https://external-api.faa.gov/notamapi/v1`.
+- Unauthenticated `GET /notams?icaoLocation=KJFK` returned HTTP 401, confirming provider credentials are required.
+- AviationWeather.gov Data API does not list NOTAM as a public product; it remains useful for METAR, TAF, PIREP/AIREP, SIGMET, G-AIRMET, station, airport, navaid/fix/feature, and obstacle data.
+
+Decisions:
+
+- Use `FAA_NOTAM_CLIENT_ID` and `FAA_NOTAM_CLIENT_SECRET` server-side only.
+- Query route airport/navaid identifiers from the active route; full geospatial NOTAM corridor matching is deferred until provider geometry/schema can be verified with credentials.
+- Normalize payloads defensively because the FAA API Portal requires credentials for live schema/response validation.
+- Never treat missing credentials or provider failures as "no NOTAMs." Halo returns an unavailable/partial state and links official FAA NOTAM Search.
+
+Delivered:
+
+- Added route NOTAM planning types, normalization, category/severity classification, sorting, and route-location filtering.
+- Added `POST /api/notams/route`.
+- Added route NOTAM review Zustand state and `RouteNotamReviewSync`.
+- Added route NOTAM review UI in the briefing panel.
+- Added NOTAM review source/status/results to briefing text and risk assessment.
+- Added unit coverage and e2e API coverage for the no-credential unavailable state.
+
+Verification:
+
+- `pnpm test tests/planning/notams.test.ts tests/planning/navigation.test.ts`: 9 targeted tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no ESLint warnings or errors.
+- `pnpm test`: 38 Vitest tests passed.
+- `pnpm build`: production build passed and included `/api/notams/route`.
+- `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.
+
 ### Verification
 
 - `pnpm test`: 5 tests passed.

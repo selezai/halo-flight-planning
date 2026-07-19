@@ -19,7 +19,8 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Personal minimums for ceiling, visibility, reserve fuel, wind, and crosswind.
 - METAR and TAF lookup through validated server API routes using AviationWeather.gov.
 - Weather category display for VFR, MVFR, IFR, LIFR, and UNKNOWN.
-- Briefing generation with risk review, weather, fuel, NOTAM checklist, print, text export, and clipboard copy.
+- Route NOTAM review with FAA provider integration when credentials are configured, route airport/navaid filtering, source attribution, and explicit unavailable states.
+- Briefing generation with risk review, weather, fuel, airspace, NOTAM status/results, print, text export, and clipboard copy.
 - Research panel documenting competitor pain points and Halo's product response.
 - Unit tests for navigation and weather logic.
 
@@ -39,10 +40,12 @@ The app works as a local planner without external keys, but live OpenAIP aviatio
 ```env
 OPENAIP_API_KEY=your_openaip_api_key_here
 NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
+FAA_NOTAM_CLIENT_ID=your_faa_notam_client_id_here
+FAA_NOTAM_CLIENT_SECRET=your_faa_notam_client_secret_here
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`. OpenAIP credentials must stay server-side.
+Do not add `NEXT_PUBLIC_OPENAIP_API_KEY` or any public FAA NOTAM credential. Aviation credentials must stay server-side.
 
 ## OpenAIP Sprites
 
@@ -90,7 +93,7 @@ types/              OpenAIP and planning TypeScript models
 
 - Production is deployed on Vercel. `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` are configured for the production deployment.
 - Supabase auth/account sync is intentionally deferred until the live project schema and RLS policies are verified.
-- Live NOTAM data is not faked; Halo includes an explicit NOTAM review item in each briefing.
+- Live NOTAM data is not faked. Halo supports FAA NOTAM API route review when `FAA_NOTAM_CLIENT_ID` and `FAA_NOTAM_CLIENT_SECRET` are configured; otherwise it shows a source-attributed unavailable state and links official NOTAM Search.
 - Weight-and-balance needs aircraft-specific arms/envelopes before it can be operationally useful.
 
 ## Documentation
@@ -102,6 +105,8 @@ types/              OpenAIP and planning TypeScript models
 - Backend airspace corridor review plan: `docs/superpowers/plans/2026-07-19-backend-airspace-corridor-review.md`
 - OpenAIP global route search plan: `docs/superpowers/plans/2026-07-19-openaip-global-route-search.md`
 - Integration tests and CI plan: `docs/superpowers/plans/2026-07-19-integration-tests-ci.md`
+- Route NOTAM review plan: `docs/superpowers/plans/2026-07-19-route-notam-review.md`
 - Research: `docs/research/competitor-pain-points.md`
+- NOTAM provider research: `docs/research/notam-provider-research.md`
 - Setup detail: `SETUP.md`
 - Implementation notes: `IMPLEMENTATION_NOTES.md`
