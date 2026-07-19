@@ -22,8 +22,16 @@ The app is now a working browser-first flight planner rather than only an OpenAI
 - OpenAIP credentials remain server-side only. The old `SimpleMap` component was removed because it referenced a public OpenAIP key path.
 - OpenAIP style, tile, sprite, and REST proxy routes now validate path/id inputs.
 - Missing OpenAIP credentials or failed OpenAIP style fetches return a fallback planning map instead of breaking the app.
+- Stale Supabase dependencies and env placeholders were removed from the implemented release because the current app has no database runtime path.
 - Supabase writes were not implemented because database schema, RLS policies, and live project credentials must be verified before production mutations.
 - NOTAM data is not represented as live operational data until a vetted provider or official API is configured.
+
+### Release and Deployment
+
+- Production alias: https://halo-flight-planning.vercel.app
+- Final inspected deployment: https://halo-flight-planning-pcmjzhdlk-pilotmerch-gmailcoms-projects.vercel.app
+- GitHub branch: `agent/complete-halo-flight-planner-20260719`
+- Draft PR: https://github.com/selezai/halo-flight-planning/pull/1
 
 ### Verification
 
@@ -32,6 +40,7 @@ The app is now a working browser-first flight planner rather than only an OpenAI
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed.
 - Browser verification against `next start`: content rendered, no framework error overlay, no captured console errors, route creation and briefing flow verified.
+- Production Vercel smoke checks: deployment status Ready, OpenAIP style endpoint HTTP 200, FAOR METAR endpoint returned current JSON, and production browser verification confirmed FAOR→FACT route flow.
 
 ## Architecture Overview
 

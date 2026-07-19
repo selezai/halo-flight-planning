@@ -21,3 +21,12 @@ Verification:
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed.
 - Browser verification against `next start`: content rendered, no framework overlay, no captured console errors, route creation and briefing flow verified.
+- Vercel production deployment inspected as Ready:
+  - Primary alias: https://halo-flight-planning.vercel.app
+  - Deployment URL: https://halo-flight-planning-pcmjzhdlk-pilotmerch-gmailcoms-projects.vercel.app
+- Production smoke checks passed:
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/weather/metar/FAOR` returned current METAR JSON.
+  - Browser verification on the production alias showed content, no Next.js overlay, no captured console errors, and FAOR→FACT route planning with expected metrics.
+- GitHub branch pushed: `agent/complete-halo-flight-planner-20260719`.
+- Draft PR opened: https://github.com/selezai/halo-flight-planning/pull/1.

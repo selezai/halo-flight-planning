@@ -2,6 +2,8 @@
 
 Browser-first flight planning for pilots. Built with Next.js 14, TypeScript, MapLibre GL, OpenAIP proxies, AviationWeather.gov weather, Zustand, Vitest, and Tailwind CSS.
 
+Live production deployment: https://halo-flight-planning.vercel.app
+
 ## Current Features
 
 - Interactive planning map with OpenAIP server-side proxy support.
@@ -79,6 +81,7 @@ types/              OpenAIP and planning TypeScript models
 
 ## Operational Notes
 
+- Production is deployed on Vercel. Optional `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` variables can be added there for richer OpenAIP aviation layer fidelity.
 - Supabase auth/account sync is intentionally deferred until the live project schema and RLS policies are verified.
 - Live NOTAM data is not faked; Halo includes an explicit NOTAM review item in each briefing.
 - Weight-and-balance needs aircraft-specific arms/envelopes before it can be operationally useful.
