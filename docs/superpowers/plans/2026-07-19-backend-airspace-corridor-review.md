@@ -55,7 +55,7 @@
 - [x] Run `pnpm build`.
 - [x] Verify local/prod API route behavior.
 - [x] Verify production browser route review and briefing output.
-- [ ] Deploy to Vercel and push the PR branch.
+- [x] Deploy to Vercel and push the PR branch.
 
 ## Verification Evidence
 

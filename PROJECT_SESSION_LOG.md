@@ -214,3 +214,7 @@ Verification:
 - Production API: FAOR→FALA at 6,500 ft returned `source=openaip-core`, `status=complete`, `queryCount=1`, `candidateCount=24`, `alerts=18`, and `critical=4`.
 - Production browser: route panel showed Core API review with 4 critical airspace items (`ATZ FAGC`, `CTR FALA`, `CTR FAOR`, `TMA FALA A`), 1 query, 24 candidates, and 5 nm corridor.
 - Production briefing/export text included the Core API corridor review and critical risk item.
+- GitHub PR branch pushed:
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+  - Commit: `565479d`
+  - PR: https://github.com/selezai/halo-flight-planning/pull/1
