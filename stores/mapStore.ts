@@ -16,6 +16,10 @@ import {
   clampPersonalMinimums,
 } from '@/lib/planning/aircraft';
 import { createUserWaypoint } from '@/lib/planning/navigation';
+import {
+  mergeAccountSnapshotIntoPlannerState,
+  type HaloAccountSnapshot,
+} from '@/lib/supabase/accountSnapshot';
 
 interface MapState {
   // Map viewport
@@ -80,6 +84,7 @@ interface MapState {
   setActiveAircraft: (aircraft: AircraftProfile) => void;
   updateActiveAircraft: (updates: Partial<AircraftProfile>) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
+  loadAccountSnapshot: (snapshot: HaloAccountSnapshot) => void;
   setRenderedRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setCoreRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setRouteNotamReview: (review: RouteNotamReview) => void;
@@ -115,13 +120,13 @@ const DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
 };
 
 const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
-  source: 'unavailable',
+  source: 'south-africa-official',
   status: 'needs-route',
-  message: 'Add at least two route waypoints to run live FAA NOTAM review.',
+  message: 'Add at least two route waypoints to prepare the official NOTAM briefing checklist.',
   notams: [],
   locations: [],
   queryCount: 0,
-  sourceUrl: 'https://notams.aim.faa.gov/notamSearch/',
+  sourceUrl: 'https://file2fly.atns.co.za/aes/login.jsp',
 };
 
 function chooseActiveAirspaceReview(
@@ -283,6 +288,23 @@ export const useMapStore = create<MapState>()(
       updatePersonalMinimums: (updates) => set((state) => ({
         personalMinimums: clampPersonalMinimums({ ...state.personalMinimums, ...updates }),
       })),
+
+      loadAccountSnapshot: (snapshot) => set(() => {
+        const next = mergeAccountSnapshotIntoPlannerState(snapshot);
+
+        return {
+          ...next,
+          activeAircraft: clampAircraftProfile(next.activeAircraft),
+          personalMinimums: clampPersonalMinimums(next.personalMinimums),
+          routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+          renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+          coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+          routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
+          selectedFeature: null,
+          selectedFeatureCandidates: [],
+          sidebarPanel: 'route',
+        };
+      }),
 
       setRenderedRouteAirspaceReview: (review) => set((state) => ({
         renderedRouteAirspaceReview: review,

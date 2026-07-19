@@ -1,4 +1,9 @@
-import type { AircraftProfile, PersonalMinimums } from '@/types/planning';
+import type {
+  AircraftProfile,
+  AircraftWeightBalanceConfig,
+  PersonalMinimums,
+  WeightBalanceLoading,
+} from '@/types/planning';
 
 export const DEFAULT_PERSONAL_MINIMUMS: PersonalMinimums = {
   minimumCeilingFt: 2500,
@@ -134,6 +139,8 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
 export const DEFAULT_AIRCRAFT = PRESET_AIRCRAFT[0];
 
 export function clampAircraftProfile(profile: AircraftProfile): AircraftProfile {
+  const weightBalance = profile.weightBalance ? clampWeightBalanceConfig(profile.weightBalance) : undefined;
+
   return {
     ...profile,
     cruiseSpeedKts: clampNumber(profile.cruiseSpeedKts, 40, 450),
@@ -142,6 +149,10 @@ export function clampAircraftProfile(profile: AircraftProfile): AircraftProfile 
     reserveMinutes: clampNumber(profile.reserveMinutes, 30, 180),
     contingencyPercent: clampNumber(profile.contingencyPercent, 0, 40),
     magneticVariationDeg: clampNumber(profile.magneticVariationDeg, -40, 40),
+    weightBalance,
+    weightBalanceLoading: weightBalance
+      ? clampWeightBalanceLoading(profile.weightBalanceLoading, weightBalance)
+      : undefined,
   };
 }
 
@@ -158,4 +169,50 @@ export function clampPersonalMinimums(minimums: PersonalMinimums): PersonalMinim
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
+}
+
+function clampOptionalNumber(value: number | undefined, min: number, max: number): number | undefined {
+  if (value === undefined) return undefined;
+  return clampNumber(value, min, max);
+}
+
+function clampWeightBalanceConfig(config: AircraftWeightBalanceConfig): AircraftWeightBalanceConfig {
+  return {
+    ...config,
+    emptyWeightLb: clampNumber(config.emptyWeightLb, 0, 100000),
+    emptyArmIn: clampNumber(config.emptyArmIn, 0, 1000),
+    maxRampWeightLb: clampOptionalNumber(config.maxRampWeightLb, 0, 100000),
+    maxTakeoffWeightLb: clampNumber(config.maxTakeoffWeightLb, 0, 100000),
+    maxLandingWeightLb: clampOptionalNumber(config.maxLandingWeightLb, 0, 100000),
+    fuelArmIn: clampNumber(config.fuelArmIn, 0, 1000),
+    fuelWeightLbPerGal: clampNumber(config.fuelWeightLbPerGal, 1, 10),
+    stations: config.stations.map((station) => ({
+      ...station,
+      label: station.label.slice(0, 80),
+      armIn: clampNumber(station.armIn, 0, 1000),
+      maxWeightLb: clampOptionalNumber(station.maxWeightLb, 0, 10000),
+    })),
+    envelope: config.envelope.map((point) => ({
+      weightLb: clampNumber(point.weightLb, 0, 100000),
+      forwardArmIn: clampNumber(point.forwardArmIn, 0, 1000),
+      aftArmIn: clampNumber(point.aftArmIn, 0, 1000),
+    })),
+    notes: config.notes?.slice(0, 1000),
+  };
+}
+
+function clampWeightBalanceLoading(
+  loading: WeightBalanceLoading | undefined,
+  config: AircraftWeightBalanceConfig
+): WeightBalanceLoading {
+  return {
+    fuelGallons: clampNumber(loading?.fuelGallons ?? 0, 0, 1000),
+    taxiFuelGallons: clampNumber(loading?.taxiFuelGallons ?? 0, 0, 1000),
+    stationWeightsLb: Object.fromEntries(
+      config.stations.map((station) => [
+        station.id,
+        clampNumber(loading?.stationWeightsLb?.[station.id] ?? 0, 0, 10000),
+      ])
+    ),
+  };
 }

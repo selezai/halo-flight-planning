@@ -1,10 +1,12 @@
 import { proxyOpenAipDetail } from '@/lib/openaip/detailProxy';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return proxyOpenAipDetail('rc-airfields', params.id);
+  const { id } = await params;
+  return withApiLogging(request, '/api/openaip/rc-airfields/[id]', () => proxyOpenAipDetail('rc-airfields', id));
 }

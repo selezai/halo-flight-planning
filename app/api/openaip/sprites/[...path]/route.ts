@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 
 const SPRITE_RE = /^openaip(@2x)?(\.(json|png))?$/;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return withApiLogging(request, '/api/openaip/sprites/[...path]', async () => handleGet(request, await params));
+}
+
+async function handleGet(
+  request: NextRequest,
+  params: { path: string[] }
 ) {
   try {
     // Reconstruct sprite path: openaip.json, openaip.png, openaip@2x.json, etc.

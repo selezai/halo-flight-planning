@@ -38,13 +38,27 @@ pnpm install
 3. Go to Account → Keys
 4. Copy your default API key (free tier is sufficient)
 
-### FAA NOTAM API Credentials (Required for live NOTAM route review)
+### Supabase Auth (Optional for account sync)
 
-1. Go to the FAA API Portal at [api.faa.gov](https://api.faa.gov/notamapi/)
-2. Request/enable access to the NOTAM API
-3. Copy the issued client ID and client secret
+1. Create or select a Supabase project.
+2. Enable email magic links.
+3. Configure Google OAuth in Supabase and Google Cloud if Google sign-in is needed.
+4. Add the production and local callback URL to Supabase redirect allow-list:
+   - `http://localhost:3000/auth/callback`
+   - `https://halo-flight-planning.vercel.app/auth/callback`
+5. Apply `supabase/migrations/20260719163343_launch_readiness_account_sync.sql` only after inspecting the live schema/RLS target.
+6. Configure `SUPABASE_SERVICE_ROLE_KEY` server-side only after the migration is applied and verified. This lets `/api/account/snapshot` own validated writes while browser clients have no direct table DML grants.
 
-Without these credentials Halo will still run, but the briefing will show live NOTAM review as unavailable and link the official FAA NOTAM Search page.
+Account sync stays disabled if the public Supabase environment variables are absent. Never expose a service-role key to the browser.
+
+### NOTAM Provider
+
+Halo launches in South Africa with manual official briefing mode:
+
+- ATNS File2Fly: https://file2fly.atns.co.za/aes/login.jsp
+- SACAA NOTAM summaries: https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/
+
+Do not scrape or fake live SACAA/ATNS NOTAM data. FAA NOTAM API credentials are only needed later when `NOTAM_PROVIDER=faa` is selected for international rollout.
 
 ## Step 3: Configure Environment Variables
 
@@ -57,9 +71,13 @@ OPENAIP_API_KEY=your_actual_openaip_key_here
 # MapTiler (for glyphs/fonts)
 NEXT_PUBLIC_MAPTILER_KEY=your_actual_maptiler_key_here
 
-# FAA NOTAM API (server-side only)
-FAA_NOTAM_CLIENT_ID=your_actual_faa_notam_client_id_here
-FAA_NOTAM_CLIENT_SECRET=your_actual_faa_notam_client_secret_here
+# Supabase account sync (public browser keys only)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+
+# NOTAM launch provider
+NOTAM_PROVIDER=south-africa-manual
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -110,7 +128,9 @@ The application will start at [http://localhost:3000](http://localhost:3000)
 2. **Aviation data visible**: Airports, navaids, and airspaces should be visible
 3. **No sprite warnings**: Check browser console - there should be no "missing sprite image" warnings
 4. **Click functionality**: Click on an airport/navaid - sidebar should show details
-5. **NOTAM state**: Build a route and open Briefing. If FAA credentials are absent, Halo should show live NOTAM review unavailable with a link to official NOTAM Search.
+5. **NOTAM state**: Build a route and open Briefing. Halo should show South Africa official manual NOTAM briefing required, preserve route locations, and link the official source.
+6. **W&B state**: Open Aircraft. Presets should show W&B as “Needs POH setup” until real POH/AFM data is entered.
+7. **Account state**: If Supabase env vars are absent, the account panel should say sync is disabled. If configured, magic link and Google sign-in should be available.
 
 ## Troubleshooting
 

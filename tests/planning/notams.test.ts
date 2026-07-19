@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRouteNotamLocations,
   categorizeNotam,
+  createNotamReview,
+  getConfiguredNotamProvider,
   normalizeFaaNotamPayload,
   sortRouteNotams,
+  SOUTH_AFRICA_ATNS_FILE2FLY_URL,
 } from '@/lib/planning/notams';
 
 describe('route NOTAM planning helpers', () => {
@@ -42,6 +45,20 @@ describe('route NOTAM planning helpers', () => {
       appliesToRoute: true,
       source: 'FAA NOTAM API',
     });
+  });
+
+  it('defaults launch NOTAM provider to South Africa manual official briefing', () => {
+    expect(getConfiguredNotamProvider(undefined)).toBe('south-africa-manual');
+    expect(getConfiguredNotamProvider('faa')).toBe('faa');
+
+    const review = createNotamReview({
+      source: 'south-africa-official',
+      status: 'manual-required',
+      message: 'Manual official briefing required.',
+    });
+
+    expect(review.sourceUrl).toBe(SOUTH_AFRICA_ATNS_FILE2FLY_URL);
+    expect(review.status).toBe('manual-required');
   });
 
   it('categorizes and sorts higher-risk NOTAMs first', () => {

@@ -44,9 +44,9 @@ test('server APIs validate input and degrade safely without aviation credentials
       ],
     },
   });
-  expect(notamReviewResponse.status()).toBe(503);
+  expect(notamReviewResponse.status()).toBe(200);
   await expect(notamReviewResponse.json()).resolves.toMatchObject({
-    source: 'unavailable',
-    status: 'unavailable',
+    source: 'south-africa-official',
+    status: 'manual-required',
   });
 });

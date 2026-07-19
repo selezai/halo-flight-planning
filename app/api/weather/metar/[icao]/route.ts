@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 import { normalizeMetarPayload } from '@/lib/planning/weather';
 
 export const dynamic = 'force-dynamic';
@@ -6,9 +7,13 @@ export const dynamic = 'force-dynamic';
 const ICAO_RE = /^[A-Z0-9]{4}$/;
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { icao: string } }
+  request: Request,
+  { params }: { params: Promise<{ icao: string }> }
 ) {
+  return withApiLogging(request, '/api/weather/metar/[icao]', async () => handleGet(await params));
+}
+
+async function handleGet(params: { icao: string }) {
   const icao = params.icao.toUpperCase();
 
   if (!ICAO_RE.test(icao)) {

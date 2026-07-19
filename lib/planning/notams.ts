@@ -8,9 +8,14 @@ import type {
 
 export const FAA_NOTAM_SOURCE = 'FAA NOTAM API';
 export const FAA_NOTAM_SOURCE_URL = 'https://notams.aim.faa.gov/notamSearch/';
+export const SOUTH_AFRICA_NOTAM_SOURCE = 'South Africa official briefing';
+export const SOUTH_AFRICA_ATNS_FILE2FLY_URL = 'https://file2fly.atns.co.za/aes/login.jsp';
+export const SOUTH_AFRICA_SACAA_NOTAM_SUMMARIES_URL = 'https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/';
 
 const NOTAM_LOCATION_RE = /^[A-Z0-9]{2,5}$/;
 const DEFAULT_MAX_LOCATIONS = 12;
+
+export type NotamProvider = 'south-africa-manual' | 'faa';
 
 export function buildRouteNotamLocations(
   waypoints: Pick<Waypoint, 'ident' | 'type'>[],
@@ -39,10 +44,20 @@ export function createNotamReview(
     notams: [],
     locations: [],
     queryCount: 0,
-    sourceUrl: FAA_NOTAM_SOURCE_URL,
+    sourceUrl: getNotamSourceUrl(review.source),
     updatedAt: new Date().toISOString(),
     ...review,
   };
+}
+
+export function getConfiguredNotamProvider(value = process.env.NOTAM_PROVIDER): NotamProvider {
+  return value?.trim().toLowerCase() === 'faa' ? 'faa' : 'south-africa-manual';
+}
+
+export function getNotamSourceUrl(source: RouteNotamReview['source']): string {
+  if (source === 'faa-notam-api') return FAA_NOTAM_SOURCE_URL;
+  if (source === 'south-africa-official') return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
+  return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
 }
 
 export function normalizeFaaNotamPayload(

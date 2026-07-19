@@ -24,6 +24,65 @@ export interface AircraftProfile {
   reserveMinutes: number;
   contingencyPercent: number;
   magneticVariationDeg: number;
+  weightBalance?: AircraftWeightBalanceConfig;
+  weightBalanceLoading?: WeightBalanceLoading;
+}
+
+export type WeightBalanceStatus =
+  | 'unconfigured'
+  | 'incomplete'
+  | 'within-limits'
+  | 'caution'
+  | 'out-of-limits';
+
+export interface WeightBalanceEnvelopePoint {
+  weightLb: number;
+  forwardArmIn: number;
+  aftArmIn: number;
+}
+
+export interface WeightBalanceStation {
+  id: string;
+  label: string;
+  armIn: number;
+  maxWeightLb?: number;
+}
+
+export interface AircraftWeightBalanceConfig {
+  emptyWeightLb: number;
+  emptyArmIn: number;
+  maxRampWeightLb?: number;
+  maxTakeoffWeightLb: number;
+  maxLandingWeightLb?: number;
+  fuelArmIn: number;
+  fuelWeightLbPerGal: number;
+  stations: WeightBalanceStation[];
+  envelope: WeightBalanceEnvelopePoint[];
+  notes?: string;
+}
+
+export interface WeightBalanceLoading {
+  fuelGallons: number;
+  taxiFuelGallons: number;
+  stationWeightsLb: Record<string, number>;
+}
+
+export interface WeightBalancePhaseResult {
+  phase: 'ramp' | 'takeoff' | 'landing';
+  status: WeightBalanceStatus;
+  weightLb: number;
+  armIn?: number;
+  momentLbIn?: number;
+  forwardLimitIn?: number;
+  aftLimitIn?: number;
+  maxWeightLb?: number;
+  messages: string[];
+}
+
+export interface WeightBalanceResult {
+  status: WeightBalanceStatus;
+  phases: WeightBalancePhaseResult[];
+  messages: string[];
 }
 
 export interface PersonalMinimums {
@@ -55,6 +114,9 @@ export interface RouteSummary {
   contingencyFuelGal: number;
   totalFuelRequiredGal: number;
   usableFuelGal: number;
+  loadedFuelGal?: number;
+  taxiFuelGal?: number;
+  dispatchFuelGal?: number;
   fuelRemainingGal: number;
   fuelStatus: 'ok' | 'caution' | 'critical';
 }
@@ -130,12 +192,13 @@ export interface RouteNotam {
 export type RouteNotamReviewStatus =
   | 'needs-route'
   | 'checking'
+  | 'manual-required'
   | 'unavailable'
   | 'partial'
   | 'complete';
 
 export interface RouteNotamReview {
-  source: 'faa-notam-api' | 'unavailable';
+  source: 'south-africa-official' | 'faa-notam-api' | 'unavailable';
   status: RouteNotamReviewStatus;
   message: string;
   notams: RouteNotam[];

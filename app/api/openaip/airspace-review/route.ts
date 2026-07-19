@@ -8,6 +8,7 @@ import {
   type GeoJsonPolygon,
 } from '@/lib/planning/airspaceCorridor';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 import type { Coordinates, RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
 
 const OPENAIP_API_BASE = 'https://api.core.openaip.net/api';
@@ -39,6 +40,10 @@ const AIRSPACE_FIELDS = [
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  return withApiLogging(request, '/api/openaip/airspace-review', () => handlePost(request));
+}
+
+async function handlePost(request: NextRequest) {
   const apiKey = process.env.OPENAIP_API_KEY;
 
   if (!apiKey) {

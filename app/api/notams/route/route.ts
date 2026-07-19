@@ -3,9 +3,13 @@ import {
   buildRouteNotamLocations,
   createNotamReview,
   FAA_NOTAM_SOURCE_URL,
+  getConfiguredNotamProvider,
   normalizeFaaNotamPayload,
   sortRouteNotams,
+  SOUTH_AFRICA_ATNS_FILE2FLY_URL,
+  SOUTH_AFRICA_SACAA_NOTAM_SUMMARIES_URL,
 } from '@/lib/planning/notams';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 import type { RouteNotam, WaypointType } from '@/types/planning';
 
 const FAA_NOTAM_API_BASE = 'https://external-api.faa.gov/notamapi/v1';
@@ -16,19 +20,10 @@ const NOTAM_LOCATION_RE = /^[A-Z0-9]{2,5}$/;
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  const credentials = getFaaCredentials();
+  return withApiLogging(request, '/api/notams/route', () => handlePost(request));
+}
 
-  if (!credentials) {
-    return NextResponse.json(
-      createNotamReview({
-        source: 'unavailable',
-        status: 'unavailable',
-        message: 'FAA NOTAM API credentials are not configured; live route NOTAM review is unavailable.',
-      }),
-      { status: 503 }
-    );
-  }
-
+async function handlePost(request: NextRequest) {
   const validation = await validateRequest(request);
   if (!validation.ok) {
     return NextResponse.json(
@@ -37,22 +32,48 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const provider = getConfiguredNotamProvider();
   const locations = buildRouteNotamLocations(validation.value.waypoints, MAX_LOCATIONS);
 
   if (validation.value.waypoints.length < 2) {
     return NextResponse.json(createNotamReview({
-      source: 'faa-notam-api',
+      source: provider === 'faa' ? 'faa-notam-api' : 'south-africa-official',
       status: 'needs-route',
-      message: 'Add at least two route waypoints to run live FAA NOTAM review.',
+      message: provider === 'faa'
+        ? 'Add at least two route waypoints to run live FAA NOTAM review.'
+        : 'Add at least two route waypoints to prepare the South Africa official NOTAM briefing checklist.',
       locations,
     }));
+  }
+
+  if (provider === 'south-africa-manual') {
+    return NextResponse.json(createSouthAfricaManualReview(locations), {
+      headers: {
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  }
+
+  const credentials = getFaaCredentials();
+
+  if (!credentials) {
+    return NextResponse.json(
+      createNotamReview({
+        source: 'unavailable',
+        status: 'unavailable',
+        message: 'FAA NOTAM provider is selected, but FAA_NOTAM_CLIENT_ID and FAA_NOTAM_CLIENT_SECRET are not configured.',
+        locations,
+        sourceUrl: FAA_NOTAM_SOURCE_URL,
+      }),
+      { status: 503 }
+    );
   }
 
   if (locations.length === 0) {
     return NextResponse.json(createNotamReview({
       source: 'faa-notam-api',
       status: 'unavailable',
-    message: 'No airport or navaid identifiers are available for route NOTAM lookup.',
+      message: 'No airport or navaid identifiers are available for route NOTAM lookup.',
       locations,
     }), { status: 422 });
   }
@@ -74,6 +95,7 @@ export async function POST(request: NextRequest) {
         message: 'FAA NOTAM API rejected the configured credentials; check FAA_NOTAM_CLIENT_ID and FAA_NOTAM_CLIENT_SECRET.',
         locations,
         queryCount: results.length,
+        sourceUrl: FAA_NOTAM_SOURCE_URL,
       }),
       { status: 503 }
     );
@@ -93,6 +115,24 @@ export async function POST(request: NextRequest) {
     headers: {
       'Cache-Control': 'private, max-age=300',
     },
+  });
+}
+
+function createSouthAfricaManualReview(locations: string[]) {
+  const locationText = locations.length > 0
+    ? locations.join(', ')
+    : 'the route waypoints entered in Halo';
+
+  return createNotamReview({
+    source: 'south-africa-official',
+    status: 'manual-required',
+    message: [
+      `South Africa launch mode uses official manual NOTAM briefing. Halo prepared ${locationText} for review.`,
+      'Open ATNS File2Fly and SACAA NOTAM summaries/current briefing; Halo does not scrape or fabricate live SACAA/ATNS NOTAMs.',
+      `Sources: ${SOUTH_AFRICA_ATNS_FILE2FLY_URL} and ${SOUTH_AFRICA_SACAA_NOTAM_SUMMARIES_URL}`,
+    ].join(' '),
+    locations,
+    sourceUrl: SOUTH_AFRICA_ATNS_FILE2FLY_URL,
   });
 }
 

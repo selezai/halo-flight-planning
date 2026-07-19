@@ -36,6 +36,12 @@ import {
   DEFAULT_PERSONAL_MINIMUMS,
 } from '@/lib/planning/aircraft';
 import {
+  calculateWeightBalance,
+  createDefaultWeightBalanceConfig,
+  createDefaultWeightBalanceLoading,
+  formatWeightBalanceStatus,
+} from '@/lib/planning/weightBalance';
+import {
   calculateRoute,
   formatCoordinates,
   formatCourse,
@@ -48,6 +54,7 @@ import { buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing'
 import { mergeWaypointResults } from '@/lib/planning/waypointResults';
 import { COMPETITOR_PAIN_POINTS } from '@/lib/research/competitorPainPoints';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
+import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
@@ -58,6 +65,9 @@ import type {
   RouteNotam,
   RouteNotamReview,
   WeatherReport,
+  WeightBalanceEnvelopePoint,
+  WeightBalanceResult,
+  WeightBalanceStation,
   Waypoint,
   WaypointType,
 } from '@/types/planning';
@@ -126,6 +136,8 @@ export default function Sidebar() {
           <X className="h-5 w-5" />
         </button>
       </div>
+
+      <AccountSyncPanel />
 
       {!selectedFeature && (
         <nav className="grid grid-cols-5 border-b border-slate-200">
@@ -894,11 +906,127 @@ function WeatherPanel() {
 function AircraftPanel() {
   const {
     activeAircraft,
+    waypoints,
     setActiveAircraft,
     updateActiveAircraft,
     personalMinimums,
     updatePersonalMinimums,
   } = useMapStore();
+  const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [activeAircraft, waypoints]);
+  const weightBalance = useMemo(
+    () => calculateWeightBalance(activeAircraft, route),
+    [activeAircraft, route]
+  );
+  const weightBalanceConfig = activeAircraft.weightBalance;
+  const weightBalanceLoading = weightBalanceConfig
+    ? activeAircraft.weightBalanceLoading ?? createDefaultWeightBalanceLoading(weightBalanceConfig)
+    : undefined;
+
+  const startWeightBalanceSetup = () => {
+    const config = createDefaultWeightBalanceConfig();
+    updateActiveAircraft({
+      weightBalance: config,
+      weightBalanceLoading: createDefaultWeightBalanceLoading(config),
+    });
+  };
+
+  const updateWeightBalanceConfig = (updates: Partial<NonNullable<typeof weightBalanceConfig>>) => {
+    if (!weightBalanceConfig) return;
+    const config = { ...weightBalanceConfig, ...updates };
+    updateActiveAircraft({
+      weightBalance: config,
+      weightBalanceLoading: activeAircraft.weightBalanceLoading ?? createDefaultWeightBalanceLoading(config),
+    });
+  };
+
+  const updateWeightBalanceLoading = (updates: Partial<NonNullable<typeof weightBalanceLoading>>) => {
+    if (!weightBalanceConfig || !weightBalanceLoading) return;
+    updateActiveAircraft({
+      weightBalanceLoading: {
+        ...weightBalanceLoading,
+        ...updates,
+      },
+    });
+  };
+
+  const updateStation = (id: string, updates: Partial<WeightBalanceStation>) => {
+    if (!weightBalanceConfig) return;
+    updateWeightBalanceConfig({
+      stations: weightBalanceConfig.stations.map((station) =>
+        station.id === id ? { ...station, ...updates } : station
+      ),
+    });
+  };
+
+  const updateStationWeight = (stationId: string, weightLb: number) => {
+    if (!weightBalanceLoading) return;
+    updateWeightBalanceLoading({
+      stationWeightsLb: {
+        ...weightBalanceLoading.stationWeightsLb,
+        [stationId]: weightLb,
+      },
+    });
+  };
+
+  const addStation = () => {
+    if (!weightBalanceConfig || !weightBalanceLoading) return;
+    const id = `station-${Date.now()}`;
+    updateWeightBalanceConfig({
+      stations: [
+        ...weightBalanceConfig.stations,
+        { id, label: `Station ${weightBalanceConfig.stations.length + 1}`, armIn: 0 },
+      ],
+    });
+    updateWeightBalanceLoading({
+      stationWeightsLb: {
+        ...weightBalanceLoading.stationWeightsLb,
+        [id]: 0,
+      },
+    });
+  };
+
+  const removeStation = (stationId: string) => {
+    if (!weightBalanceConfig || !weightBalanceLoading || weightBalanceConfig.stations.length <= 1) return;
+    const remainingWeights = { ...weightBalanceLoading.stationWeightsLb };
+    delete remainingWeights[stationId];
+    updateWeightBalanceConfig({
+      stations: weightBalanceConfig.stations.filter((station) => station.id !== stationId),
+    });
+    updateWeightBalanceLoading({
+      stationWeightsLb: remainingWeights,
+    });
+  };
+
+  const updateEnvelopePoint = (index: number, updates: Partial<WeightBalanceEnvelopePoint>) => {
+    if (!weightBalanceConfig) return;
+    updateWeightBalanceConfig({
+      envelope: weightBalanceConfig.envelope.map((point, pointIndex) =>
+        pointIndex === index ? { ...point, ...updates } : point
+      ),
+    });
+  };
+
+  const addEnvelopePoint = () => {
+    if (!weightBalanceConfig) return;
+    const last = weightBalanceConfig.envelope[weightBalanceConfig.envelope.length - 1] ?? {
+      weightLb: 0,
+      forwardArmIn: 0,
+      aftArmIn: 0,
+    };
+    updateWeightBalanceConfig({
+      envelope: [
+        ...weightBalanceConfig.envelope,
+        { ...last, weightLb: last.weightLb + 100 },
+      ],
+    });
+  };
+
+  const removeEnvelopePoint = (index: number) => {
+    if (!weightBalanceConfig || weightBalanceConfig.envelope.length <= 2) return;
+    updateWeightBalanceConfig({
+      envelope: weightBalanceConfig.envelope.filter((_, pointIndex) => pointIndex !== index),
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -928,6 +1056,126 @@ function AircraftPanel() {
           <NumberField label="Contingency %" value={activeAircraft.contingencyPercent} onChange={(value) => updateActiveAircraft({ contingencyPercent: value })} />
           <NumberField label="Mag var" value={activeAircraft.magneticVariationDeg} onChange={(value) => updateActiveAircraft({ magneticVariationDeg: value })} />
         </div>
+      </PanelBlock>
+
+      <PanelBlock title="Weight and balance" icon={<Gauge className="h-4 w-4" />}>
+        <div className={`rounded-md border p-3 text-sm ${getWeightBalanceTone(weightBalance.status)}`}>
+          <p className="font-semibold">{formatWeightBalanceStatus(weightBalance.status)}</p>
+          <p className="mt-1 text-xs">
+            {weightBalance.messages[0] ?? 'Ramp, takeoff, and landing CG are within the configured aircraft envelope.'}
+          </p>
+        </div>
+
+        {!weightBalanceConfig ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-slate-600">
+              Preset aircraft performance is available, but operational W&B needs your POH/AFM empty weight, arms, station limits, and CG envelope.
+            </p>
+            <button
+              type="button"
+              onClick={startWeightBalanceSetup}
+              className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Start POH W&B setup
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <NumberField label="Empty wt lb" value={weightBalanceConfig.emptyWeightLb} onChange={(value) => updateWeightBalanceConfig({ emptyWeightLb: value })} />
+              <NumberField label="Empty arm in" value={weightBalanceConfig.emptyArmIn} onChange={(value) => updateWeightBalanceConfig({ emptyArmIn: value })} step="0.01" />
+              <NumberField label="Max ramp lb" value={weightBalanceConfig.maxRampWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxRampWeightLb: value })} />
+              <NumberField label="MTOW lb" value={weightBalanceConfig.maxTakeoffWeightLb} onChange={(value) => updateWeightBalanceConfig({ maxTakeoffWeightLb: value })} />
+              <NumberField label="Max land lb" value={weightBalanceConfig.maxLandingWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxLandingWeightLb: value })} />
+              <NumberField label="Fuel arm in" value={weightBalanceConfig.fuelArmIn} onChange={(value) => updateWeightBalanceConfig({ fuelArmIn: value })} step="0.01" />
+              <NumberField label="Fuel lb/gal" value={weightBalanceConfig.fuelWeightLbPerGal} onChange={(value) => updateWeightBalanceConfig({ fuelWeightLbPerGal: value })} step="0.1" />
+              <NumberField label="Fuel gal" value={weightBalanceLoading?.fuelGallons ?? 0} onChange={(value) => updateWeightBalanceLoading({ fuelGallons: value })} step="0.1" />
+              <NumberField label="Taxi fuel gal" value={weightBalanceLoading?.taxiFuelGallons ?? 0} onChange={(value) => updateWeightBalanceLoading({ taxiFuelGallons: value })} step="0.1" />
+            </div>
+
+            <div>
+              <PanelHeader
+                title="Loading stations"
+                action={
+                  <button type="button" onClick={addStation} className="text-xs font-semibold text-slate-700 hover:text-slate-950">
+                    Add station
+                  </button>
+                }
+              />
+              <div className="mt-2 space-y-3">
+                {weightBalanceConfig.stations.map((station) => (
+                  <div key={station.id} className="rounded border border-slate-200 p-2">
+                    <input
+                      aria-label={`${station.label} label`}
+                      value={station.label}
+                      onChange={(event) => updateStation(station.id, { label: event.target.value })}
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm font-medium"
+                    />
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <NumberField id={`station-${station.id}-arm`} label="Arm in" value={station.armIn} onChange={(value) => updateStation(station.id, { armIn: value })} step="0.01" />
+                      <NumberField id={`station-${station.id}-limit`} label="Limit lb" value={station.maxWeightLb ?? 0} onChange={(value) => updateStation(station.id, { maxWeightLb: value })} />
+                      <NumberField id={`station-${station.id}-load`} label="Load lb" value={weightBalanceLoading?.stationWeightsLb[station.id] ?? 0} onChange={(value) => updateStationWeight(station.id, value)} />
+                    </div>
+                    {weightBalanceConfig.stations.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeStation(station.id)}
+                        className="mt-2 text-xs font-semibold text-rose-700 hover:text-rose-900"
+                      >
+                        Remove station
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <PanelHeader
+                title="CG envelope"
+                action={
+                  <button type="button" onClick={addEnvelopePoint} className="text-xs font-semibold text-slate-700 hover:text-slate-950">
+                    Add point
+                  </button>
+                }
+              />
+              <div className="mt-2 space-y-2">
+                {weightBalanceConfig.envelope.map((point, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 rounded border border-slate-200 p-2">
+                    <NumberField id={`envelope-${index}-weight`} label="Wt lb" value={point.weightLb} onChange={(value) => updateEnvelopePoint(index, { weightLb: value })} />
+                    <NumberField id={`envelope-${index}-forward`} label="Fwd in" value={point.forwardArmIn} onChange={(value) => updateEnvelopePoint(index, { forwardArmIn: value })} step="0.01" />
+                    <NumberField id={`envelope-${index}-aft`} label="Aft in" value={point.aftArmIn} onChange={(value) => updateEnvelopePoint(index, { aftArmIn: value })} step="0.01" />
+                    <button
+                      type="button"
+                      onClick={() => removeEnvelopePoint(index)}
+                      disabled={weightBalanceConfig.envelope.length <= 2}
+                      className="self-end rounded border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={`Remove envelope point ${index + 1}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {weightBalance.phases.length > 0 && (
+              <div className="space-y-2">
+                {weightBalance.phases.map((phase) => (
+                  <div key={phase.phase} className={`rounded border p-2 text-xs ${getWeightBalanceTone(phase.status)}`}>
+                    <p className="font-semibold uppercase">{phase.phase} · {formatWeightBalanceStatus(phase.status)}</p>
+                    <p>
+                      {Math.round(phase.weightLb)} lb · CG {phase.armIn?.toFixed(2) ?? 'unknown'} in
+                      {phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
+                        ? ` · Limits ${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
+                        : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </PanelBlock>
 
       <PanelBlock title="Personal minimums" icon={<Gauge className="h-4 w-4" />}>
@@ -973,13 +1221,17 @@ function BriefingPanel() {
   } = useMapStore();
   const weather = useRouteWeather(false);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const weightBalance = useMemo(
+    () => calculateWeightBalance(activeAircraft, route),
+    [activeAircraft, route]
+  );
   const reports = useMemo(
     () => Object.values(weather.reports).filter((report): report is WeatherReport => Boolean(report)),
     [weather.reports]
   );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview),
-    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview]
+    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalance),
+    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalance]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -991,11 +1243,12 @@ function BriefingPanel() {
       risks,
       routeAirspaceAlerts: routeAirspaceReview.alerts,
       routeNotamReview,
+      weightBalanceResult: weightBalance,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, routeNotamReview, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, routeNotamReview, weightBalance, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -1029,6 +1282,8 @@ function BriefingPanel() {
       <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
 
       <NotamReviewPanel review={routeNotamReview} />
+
+      <WeightBalanceSummaryPanel result={weightBalance} />
 
       <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
         <div className="space-y-2">
@@ -1092,9 +1347,11 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
                 ? `${criticalCount} critical NOTAM${criticalCount === 1 ? '' : 's'}`
                 : cautionCount > 0
                   ? `${cautionCount} NOTAM${cautionCount === 1 ? '' : 's'} need review`
+                  : review.status === 'manual-required'
+                    ? 'Official NOTAM briefing required'
                   : review.status === 'complete'
-                    ? 'FAA NOTAM route scan'
-                    : 'Live NOTAM review unavailable'}
+                    ? 'Route NOTAM scan complete'
+                    : 'Route NOTAM review unavailable'}
             </p>
             <p className="mt-1">{review.message}</p>
           </div>
@@ -1102,24 +1359,26 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
-        <Metric label="Source" value={review.source === 'faa-notam-api' ? 'FAA' : 'Offline'} />
+        <Metric label="Source" value={formatNotamSourceShort(review.source)} />
         <Metric label="Queries" value={String(review.queryCount)} />
         <Metric label="NOTAMs" value={String(review.notams.length)} />
       </div>
 
       <p className="mt-2 text-xs text-slate-500">
         {review.locations.length
-          ? `${review.status === 'complete' || review.status === 'partial' ? 'Route locations checked' : 'Route locations prepared'}: ${review.locations.join(', ')}. Source attribution: FAA NOTAM API.`
-          : 'Add route airports or navaids with usable identifiers for live NOTAM lookup.'}
+          ? `${review.status === 'complete' || review.status === 'partial' ? 'Route locations checked' : 'Route locations prepared'}: ${review.locations.join(', ')}. Source attribution: ${formatNotamSourceLong(review.source)}.`
+          : 'Add route airports or navaids with usable identifiers for NOTAM briefing.'}
       </p>
 
       {visibleNotams.length === 0 ? (
         <div className="mt-3">
           <EmptyState
-            title={review.status === 'complete' ? 'No NOTAMs returned' : 'No live NOTAM data'}
+            title={review.status === 'complete' ? 'No NOTAMs returned' : review.status === 'manual-required' ? 'Manual briefing required' : 'No live NOTAM data'}
             detail={review.status === 'complete'
-              ? 'No route-location NOTAMs were returned by the configured FAA provider. Continue official preflight review.'
-              : 'Configure FAA NOTAM API credentials to enable live route NOTAM review.'}
+              ? 'No route-location NOTAMs were returned by the configured provider. Continue official preflight review.'
+              : review.status === 'manual-required'
+                ? 'Use ATNS File2Fly and SACAA official NOTAM briefing sources. Halo does not scrape or fake live South Africa NOTAMs.'
+                : 'The configured NOTAM provider is unavailable. Continue with the official preflight briefing source.'}
           />
         </div>
       ) : (
@@ -1141,8 +1400,74 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
         rel="noopener noreferrer"
         className="mt-3 block rounded border border-slate-300 px-3 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
       >
-        Open official NOTAM search
+        Open official NOTAM source
       </a>
+    </PanelBlock>
+  );
+}
+
+function WeightBalanceSummaryPanel({ result }: { result: WeightBalanceResult }) {
+  const visibleMessages = result.messages.slice(0, 4);
+
+  return (
+    <PanelBlock title="Weight and balance" icon={<Gauge className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getWeightBalanceTone(result.status)}`}>
+        <div className="flex items-start gap-2">
+          {result.status === 'within-limits' ? (
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          )}
+          <div>
+            <p className="font-semibold">{formatWeightBalanceStatus(result.status)}</p>
+            <p className="mt-1">
+              {visibleMessages[0] ?? 'Ramp, takeoff, and landing CG are within the configured aircraft envelope.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {result.phases.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState
+            title="POH setup required"
+            detail="Enter real aircraft empty weight, arms, station limits, and CG envelope in the Aircraft tab before relying on W&B."
+          />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {result.phases.map((phase) => (
+            <div key={phase.phase} className={`rounded border p-2 text-xs ${getWeightBalanceTone(phase.status)}`}>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-semibold uppercase">{phase.phase}</p>
+                <span>{formatWeightBalanceStatus(phase.status)}</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Metric label="Weight" value={`${Math.round(phase.weightLb)} lb`} />
+                <Metric label="CG" value={`${phase.armIn?.toFixed(2) ?? 'unknown'} in`} />
+                <Metric
+                  label="Envelope"
+                  value={phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
+                    ? `${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
+                    : 'outside range'}
+                />
+                <Metric
+                  label="Max"
+                  value={phase.maxWeightLb ? `${Math.round(phase.maxWeightLb)} lb` : 'not set'}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {visibleMessages.length > 1 && (
+        <div className="mt-3 space-y-1">
+          {visibleMessages.slice(1).map((message) => (
+            <WarningLine key={message} text={message} />
+          ))}
+        </div>
+      )}
     </PanelBlock>
   );
 }
@@ -1397,7 +1722,11 @@ function getNotamReviewTone(review: RouteNotamReview): string {
   if (review.notams.some((notam) => notam.severity === 'critical')) {
     return 'bg-rose-50 text-rose-800';
   }
-  if (review.notams.some((notam) => notam.severity === 'caution') || review.status === 'partial') {
+  if (
+    review.notams.some((notam) => notam.severity === 'caution') ||
+    review.status === 'partial' ||
+    review.status === 'manual-required'
+  ) {
     return 'bg-amber-50 text-amber-900';
   }
   if (review.status === 'complete') {
@@ -1406,10 +1735,29 @@ function getNotamReviewTone(review: RouteNotamReview): string {
   return 'bg-slate-50 text-slate-700';
 }
 
+function formatNotamSourceShort(source: RouteNotamReview['source']): string {
+  if (source === 'south-africa-official') return 'SA official';
+  if (source === 'faa-notam-api') return 'FAA';
+  return 'Offline';
+}
+
+function formatNotamSourceLong(source: RouteNotamReview['source']): string {
+  if (source === 'south-africa-official') return 'ATNS File2Fly / SACAA official briefing';
+  if (source === 'faa-notam-api') return 'FAA NOTAM API';
+  return 'Unavailable';
+}
+
 function getNotamTone(severity: RouteNotam['severity']): string {
   if (severity === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
   if (severity === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
   return 'border-slate-200 bg-white text-slate-700';
+}
+
+function getWeightBalanceTone(status: WeightBalanceResult['status']): string {
+  if (status === 'out-of-limits') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (status === 'caution' || status === 'incomplete') return 'border-amber-200 bg-amber-50 text-amber-900';
+  if (status === 'within-limits') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
 function formatAirspaceVertical(alert: RouteAirspaceAlert): string {
@@ -1501,23 +1849,25 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 }
 
 function NumberField({
+  id,
   label,
   value,
   onChange,
   step = '1',
 }: {
+  id?: string;
   label: string;
   value: number;
   onChange: (value: number) => void;
   step?: string;
 }) {
-  const id = label.toLowerCase().replace(/\W+/g, '-');
+  const inputId = id ?? label.toLowerCase().replace(/\W+/g, '-');
 
   return (
     <div>
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={inputId}>{label}</Label>
       <input
-        id={id}
+        id={inputId}
         type="number"
         step={step}
         value={Number.isFinite(value) ? value : 0}

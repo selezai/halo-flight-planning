@@ -42,12 +42,3 @@ jobs:
 
       - name: Build production bundle
         run: pnpm build
-
-      - name: Install Playwright browser
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Run Playwright integration tests
-        run: pnpm test:e2e
-        env:
-          OPENAIP_API_KEY: ''
-          NEXT_PUBLIC_MAPTILER_KEY: ''

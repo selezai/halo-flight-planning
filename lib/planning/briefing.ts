@@ -8,16 +8,19 @@ import type {
   RouteNotamReview,
   Waypoint,
   WeatherReport,
+  WeightBalanceResult,
 } from '@/types/planning';
 import { formatCourse, formatDistance, formatDuration, formatFuel } from './navigation';
 import { isBelowPersonalMinimums } from './weather';
+import { formatWeightBalanceStatus } from './weightBalance';
 
 export function buildRiskAssessment(
   route: RouteAnalysis,
   weather: WeatherReport[],
   minimums: PersonalMinimums,
   routeAirspaceAlerts: RouteAirspaceAlert[] = [],
-  routeNotamReview?: RouteNotamReview
+  routeNotamReview?: RouteNotamReview,
+  weightBalanceResult?: WeightBalanceResult
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -34,8 +37,12 @@ export function buildRiskAssessment(
     risks.push({
       id: 'fuel-critical',
       level: 'critical',
-      title: 'Fuel exceeds usable capacity',
-      detail: 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
+      title: route.summary.loadedFuelGal !== undefined
+        ? 'Fuel exceeds loaded dispatch fuel'
+        : 'Fuel exceeds usable capacity',
+      detail: route.summary.loadedFuelGal !== undefined
+        ? `Trip, reserve, and contingency fuel require ${formatFuel(route.summary.totalFuelRequiredGal)}, but loaded fuel after taxi is ${formatFuel(route.summary.dispatchFuelGal ?? 0)}.`
+        : 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
     });
   } else if (route.summary.fuelStatus === 'caution') {
     risks.push({
@@ -90,13 +97,14 @@ export function buildRiskAssessment(
   }
 
   addNotamRisks(risks, routeNotamReview);
+  addWeightBalanceRisks(risks, weightBalanceResult);
 
   if (risks.length === 0) {
     risks.push({
       id: 'route-ready',
       level: 'ok',
       title: 'Planning data consistent',
-      detail: 'Route, fuel, available weather, airspace review, and live NOTAM review are internally consistent. Continue official preflight review before flight.',
+      detail: 'Route, fuel, available weather, airspace review, NOTAM review, and W&B review are internally consistent. Continue official preflight review before flight.',
     });
   }
 
@@ -112,6 +120,7 @@ export function buildBriefingText(params: {
   risks: BriefingRisk[];
   routeAirspaceAlerts?: RouteAirspaceAlert[];
   routeNotamReview?: RouteNotamReview;
+  weightBalanceResult?: WeightBalanceResult;
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -125,6 +134,7 @@ export function buildBriefingText(params: {
     risks,
     routeAirspaceAlerts = [],
     routeNotamReview,
+    weightBalanceResult,
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -142,6 +152,12 @@ export function buildBriefingText(params: {
     `Distance: ${formatDistance(route.summary.totalDistanceNm)}`,
     `ETE: ${formatDuration(route.summary.estimatedTimeMinutes)}`,
     `Fuel required: ${formatFuel(route.summary.totalFuelRequiredGal)}`,
+    ...(route.summary.loadedFuelGal !== undefined
+      ? [
+          `Fuel loaded: ${formatFuel(route.summary.loadedFuelGal)}`,
+          `Fuel after taxi: ${formatFuel(route.summary.dispatchFuelGal ?? 0)}`,
+        ]
+      : []),
     `Fuel remaining: ${formatFuel(route.summary.fuelRemainingGal)}`,
     '',
     'NAVIGATION LOG',
@@ -162,6 +178,9 @@ export function buildBriefingText(params: {
     ...(routeAirspaceAlerts.length
       ? routeAirspaceAlerts.map(formatBriefingAirspaceAlert)
       : ['No rendered OpenAIP airspace intersections recorded for the visible route samples. Continue with official chart and NOTAM review.']),
+    '',
+    'WEIGHT AND BALANCE',
+    ...formatBriefingWeightBalance(weightBalanceResult),
     '',
     'RISK REVIEW',
     ...risks.map((risk) => `${risk.level.toUpperCase()}: ${risk.title} - ${risk.detail}`),
@@ -202,7 +221,7 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
       id: 'notam-review',
       level: 'caution',
       title: 'NOTAM review required',
-      detail: 'Add a route and complete live NOTAM review before treating the briefing as usable.',
+      detail: 'Add a route and complete official NOTAM review before treating the briefing as usable.',
     });
     return;
   }
@@ -212,7 +231,17 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
       id: 'notam-checking',
       level: 'caution',
       title: 'NOTAM review still checking',
-      detail: 'Wait for live NOTAM review to finish before dispatch.',
+      detail: 'Wait for route NOTAM review to finish before dispatch.',
+    });
+    return;
+  }
+
+  if (review.status === 'manual-required') {
+    risks.push({
+      id: 'notam-manual-required',
+      level: 'caution',
+      title: 'Official NOTAM briefing required',
+      detail: review.message,
     });
     return;
   }
@@ -221,7 +250,7 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
     risks.push({
       id: 'notam-unavailable',
       level: 'caution',
-      title: 'Live NOTAM review unavailable',
+      title: 'NOTAM review unavailable',
       detail: review.message,
     });
     return;
@@ -256,12 +285,53 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
   }
 }
 
+function addWeightBalanceRisks(risks: BriefingRisk[], result?: WeightBalanceResult) {
+  if (!result) {
+    risks.push({
+      id: 'wb-review',
+      level: 'caution',
+      title: 'Weight and balance review required',
+      detail: 'Complete aircraft-specific weight and balance before treating the briefing as usable.',
+    });
+    return;
+  }
+
+  if (result.status === 'unconfigured' || result.status === 'incomplete') {
+    risks.push({
+      id: 'wb-incomplete',
+      level: 'caution',
+      title: 'Weight and balance not operational',
+      detail: result.messages[0] ?? 'Enter aircraft-specific POH/AFM data before using W&B operationally.',
+    });
+    return;
+  }
+
+  if (result.status === 'out-of-limits') {
+    risks.push({
+      id: 'wb-critical',
+      level: 'critical',
+      title: 'Weight and balance out of limits',
+      detail: result.messages[0] ?? 'One or more W&B phases are outside configured limits.',
+    });
+    return;
+  }
+
+  if (result.status === 'caution') {
+    risks.push({
+      id: 'wb-caution',
+      level: 'caution',
+      title: 'Weight and balance margin is tight',
+      detail: result.messages[0] ?? 'One or more W&B phases are close to configured limits.',
+    });
+  }
+}
+
 function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
   if (!review) {
     return ['Live NOTAM review has not run. Check the official NOTAM source before flight.'];
   }
 
-  const sourceLine = `Source: ${review.source === 'faa-notam-api' ? 'FAA NOTAM API' : 'Unavailable'} (${review.sourceUrl})`;
+  const sourceLine = `Source: ${formatNotamSource(review.source)} (${review.sourceUrl})`;
   const locationLabel = review.status === 'complete' || review.status === 'partial'
     ? 'Route locations checked'
     : 'Route locations prepared';
@@ -286,6 +356,32 @@ function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
     ...review.notams.slice(0, 12).map(formatBriefingNotam),
     ...(review.notams.length > 12 ? [`+${review.notams.length - 12} more NOTAMs hidden in exported summary.`] : []),
   ];
+}
+
+function formatBriefingWeightBalance(result?: WeightBalanceResult): string[] {
+  if (!result) {
+    return ['Weight and balance has not been calculated.'];
+  }
+
+  const lines = [
+    `Status: ${formatWeightBalanceStatus(result.status)}`,
+    ...result.phases.map((phase) => {
+      const arm = phase.armIn !== undefined ? `${phase.armIn.toFixed(2)} in` : 'unknown arm';
+      const limits = phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
+        ? `limits ${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
+        : 'limits unavailable';
+      return `${phase.phase.toUpperCase()}: ${Math.round(phase.weightLb)} lb, CG ${arm}, ${limits}, ${formatWeightBalanceStatus(phase.status)}`;
+    }),
+    ...result.messages.slice(0, 5),
+  ];
+
+  return lines;
+}
+
+function formatNotamSource(source: RouteNotamReview['source']): string {
+  if (source === 'faa-notam-api') return 'FAA NOTAM API';
+  if (source === 'south-africa-official') return 'South Africa official briefing';
+  return 'Unavailable';
 }
 
 function formatBriefingNotam(notam: RouteNotam): string {

@@ -143,9 +143,20 @@ function calculateRouteSummary(
   const reserveFuelGal = (aircraft.reserveMinutes / 60) * aircraft.fuelBurnGph;
   const contingencyFuelGal = tripFuelGal * (aircraft.contingencyPercent / 100);
   const totalFuelRequiredGal = tripFuelGal + reserveFuelGal + contingencyFuelGal;
-  const fuelRemainingGal = aircraft.usableFuelGal - totalFuelRequiredGal;
+  const loadedFuelGal = aircraft.weightBalance
+    ? aircraft.weightBalanceLoading?.fuelGallons ?? 0
+    : undefined;
+  const taxiFuelGal = aircraft.weightBalance
+    ? Math.min(aircraft.weightBalanceLoading?.taxiFuelGallons ?? 0, loadedFuelGal ?? 0)
+    : undefined;
+  const dispatchFuelGal = loadedFuelGal === undefined
+    ? aircraft.usableFuelGal
+    : Math.max(0, Math.min(loadedFuelGal, aircraft.usableFuelGal) - (taxiFuelGal ?? 0));
+  const fuelRemainingGal = dispatchFuelGal - totalFuelRequiredGal;
   const fuelStatus =
-    totalFuelRequiredGal > aircraft.usableFuelGal
+    loadedFuelGal !== undefined && loadedFuelGal > aircraft.usableFuelGal
+      ? 'critical'
+      : totalFuelRequiredGal > dispatchFuelGal
       ? 'critical'
       : fuelRemainingGal < reserveFuelGal * 0.5
         ? 'caution'
@@ -161,6 +172,9 @@ function calculateRouteSummary(
     contingencyFuelGal,
     totalFuelRequiredGal,
     usableFuelGal: aircraft.usableFuelGal,
+    loadedFuelGal,
+    taxiFuelGal,
+    dispatchFuelGal,
     fuelRemainingGal,
     fuelStatus,
   };

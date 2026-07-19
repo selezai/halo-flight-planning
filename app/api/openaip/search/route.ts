@@ -3,6 +3,7 @@ import {
   normalizeOpenAipWaypointSearchResults,
   type OpenAipWaypointSearchResponse,
 } from '@/lib/openaip/waypointSearch';
+import { withApiLogging } from '@/lib/observability/apiLogger';
 
 const OPENAIP_API_BASE = 'https://api.core.openaip.net/api';
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
@@ -15,6 +16,10 @@ const NAVAID_FIELDS = '_id,name,identifier,geometry,elevation,type,country';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  return withApiLogging(request, '/api/openaip/search', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   const apiKey = process.env.OPENAIP_API_KEY;
 
   if (!apiKey) {

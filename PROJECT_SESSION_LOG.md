@@ -333,3 +333,64 @@ Verification:
 - `pnpm build`: production build passed and included `/api/notams/route`.
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.
 - Follow-up route-location fix verification: `pnpm typecheck`, `pnpm test:e2e`, `pnpm test`, `pnpm lint`, and `pnpm build` passed.
+
+## 2026-07-19 Launch Readiness: Auth, W&B, South Africa NOTAM, Observability
+
+Objective: implement the remaining launch-readiness batch without using Playwright/E2E as a completion gate.
+
+Decisions:
+
+- Halo launches South Africa-first, so the default NOTAM provider is official manual briefing mode, not FAA.
+- SACAA/ATNS live NOTAM scraping is deferred until an authorized data path exists.
+- FAA NOTAM integration remains available only behind `NOTAM_PROVIDER=faa`.
+- W&B presets remain available for performance, but operational W&B requires user-entered aircraft-specific POH/AFM data.
+- Supabase account sync code can ship, but production database mutation is blocked until the live schema and RLS policies are inspected, migration is applied, and authenticated RLS smoke tests pass.
+- Authentic OpenAIP sprites remain active/default, but commercial/paid launch is blocked until written OpenAIP permission is obtained or replacement assets are used.
+- Manual E2E/browser testing is owned outside this implementation batch; automated gate is unit tests, typecheck, lint, and build.
+
+Changes:
+
+- Added optional W&B configuration/loading to `AircraftProfile`.
+- Added W&B calculation for ramp, takeoff, and landing with `unconfigured`, `incomplete`, `within-limits`, `caution`, and `out-of-limits` statuses.
+- Added Aircraft tab W&B setup UI for POH/AFM empty weight/arm, aircraft limits, fuel config, loading stations, and CG envelope.
+- Added W&B status to Briefing, risk review, and exported briefing text.
+- Refactored NOTAM review to provider-neutral source/status types.
+- Added South Africa official/manual NOTAM provider with ATNS File2Fly/SACAA source links and route-location preparation.
+- Kept FAA provider path behind `NOTAM_PROVIDER=faa`.
+- Added Supabase SSR/browser clients, auth callback route, magic link/Google sign-in UI, account sync panel, API-only snapshot persistence, and local/cloud merge controls.
+- Added local Supabase migration for `saved_routes`, `aircraft_profiles`, and `user_preferences` with owner-scoped RLS policies using `TO authenticated` and `auth.uid() = user_id`.
+- Added Vercel Analytics and Speed Insights.
+- Added app/global error boundaries that log non-secret failure metadata.
+- Added structured API request logging with route, method, status, duration, and Vercel request id.
+- Removed Playwright from CI launch verification path.
+- Strengthened OpenAIP sprite attribution and added commercial permission checklist.
+
+Local verification so far:
+
+- `pnpm test -- tests/planning/weightBalance.test.ts`: passed.
+- `pnpm test -- tests/planning/notams.test.ts tests/planning/navigation.test.ts`: passed.
+- `pnpm test -- tests/supabase/accountSnapshot.test.ts`: passed.
+- `pnpm typecheck`: passed after the Supabase/auth/account snapshot slice.
+
+Review-driven hardening:
+
+- Upgraded Next.js from 14.2.0 to 15.5.18 after `pnpm audit --prod --audit-level high` identified launch-blocking Next advisories.
+- Migrated dashboard client boundary and dynamic route params for Next 15 build compatibility.
+- Removed global wildcard API CORS headers.
+- Restricted Supabase middleware to app/auth/account paths.
+- Fixed auth callback redirect handling to allow same-origin relative paths only.
+- Changed Supabase persistence to require server-only `SUPABASE_SERVICE_ROLE_KEY`, revoke direct browser DML grants, and save through an atomic `save_account_snapshot` RPC in the migration.
+- Restricted account snapshot route id to `primary`.
+- Connected W&B loaded fuel after taxi to route fuel status/risk/briefing.
+- Preserved station overloads through aircraft-profile sanitization and added regression coverage.
+- Fixed NOTAM client location fallback to avoid user waypoint pseudo-idents.
+- Fixed FAA-provider unavailable source URL.
+- Updated stale Playwright specs for the new South Africa manual default even though Playwright is not part of this batch gate.
+
+Final local verification:
+
+- `pnpm audit --prod --audit-level high`: passed; remaining audit output is moderate-only.
+- `pnpm test`: 11 files / 59 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no ESLint warnings or errors. Next 15 reports `next lint` deprecation for future migration.
+- `pnpm build`: passed on Next.js 15.5.18.

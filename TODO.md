@@ -22,15 +22,19 @@
 - [x] Route-aware rendered OpenAIP airspace review with cruise-altitude conflict classification in route, briefing, status bar, and export text.
 - [x] Backend OpenAIP Core route-corridor airspace review with bounded bbox queries, 5 nm corridor filtering, and rendered-map fallback.
 - [x] Global OpenAIP Core airport/navaid route search with starter fallback and deduplication.
-- [x] Playwright integration tests against `next build && next start`.
-- [x] CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, and `pnpm test:e2e`.
-- [x] FAA NOTAM provider integration with route airport/navaid filtering, source attribution, and explicit unavailable states.
+- [x] Playwright integration tests exist, but are not part of the current launch implementation verification gate.
+- [x] CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm build`.
+- [x] South Africa official manual NOTAM launch provider with route airport/navaid preparation and ATNS/SACAA source links.
+- [x] FAA NOTAM provider integration retained behind `NOTAM_PROVIDER=faa`.
+- [x] Hybrid W&B setup with POH/AFM configuration, loading stations, CG envelope checks, and briefing/risk/export surfacing.
+- [x] Supabase auth/account sync code with magic link, Google OAuth, owner-scoped API persistence, and local/cloud merge controls.
+- [x] Vercel Analytics, Speed Insights, structured API logging, and app/global error boundaries.
 
 ## Remaining Before Operational Launch
 
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
-- [ ] Configure production FAA NOTAM API credentials after FAA API Portal access is granted.
-- [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
-- [ ] Add aircraft-specific weight-and-balance envelopes before exposing W&B as operational output.
-- [ ] Add error monitoring and analytics after deployment.
+- [ ] Configure production Supabase public env vars plus server-only service-role key, apply/verify account-sync migration, and smoke-test RLS/API sync before enabling sync for users.
+- [ ] Configure production FAA NOTAM API credentials only when international FAA rollout is enabled with `NOTAM_PROVIDER=faa`.
+- [ ] Add real aircraft-specific W&B envelopes per aircraft before exposing W&B as operational output for that aircraft.
+- [ ] Scan Vercel post-deploy runtime logs for errors and structured `api_request` entries.
 - [ ] Replace OpenAIP CC BY-NC-SA sprites or obtain OpenAIP permission before commercializing the app.

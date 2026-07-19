@@ -1,3 +1,5 @@
+'use client';
+
 import dynamic from 'next/dynamic';
 import Sidebar from '@/components/sidebar/Sidebar';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
