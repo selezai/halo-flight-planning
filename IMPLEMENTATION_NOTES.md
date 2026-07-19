@@ -211,6 +211,33 @@ Verification:
 - Production browser: map inspection mode selected point feature `FARF` with enriched airport details and airspace `JOHANNESBURG SOUTHWEST` with class, vertical limits, activation flags, source layer/id, and enriched Core API record status.
 - Vercel CLI returned `Not authorized` after creating the deployment URL, but inspection showed the deployment completed as Ready and assigned the production alias; no second deployment was started.
 
+### 2026-07-19 Integration Tests and CI Slice
+
+Halo now has production-server integration coverage and a GitHub Actions verification pipeline.
+
+Decisions:
+
+- Keep Vitest and Playwright separate: Vitest owns pure unit tests under `tests/**/*.test.ts`, while Playwright owns integration specs under `e2e/**/*.spec.ts`.
+- Run Playwright against `next build && next start`, not `next dev`, to avoid lazy route compilation and dev-server-only instability.
+- Start Playwright with empty OpenAIP/MapTiler env vars so CI verifies Halo's deterministic degraded behavior without depending on external aviation credentials.
+- Cover third-party-facing API behavior with Playwright's request fixture instead of browser automation against provider UIs.
+
+Delivered:
+
+- Added `@playwright/test`, `playwright.config.ts`, and `pnpm test:e2e`.
+- Added a UI integration test for starter waypoint search, route creation, navigation-log output, and briefing generation.
+- Added API integration checks for OpenAIP style fallback, weather ICAO validation, OpenAIP search credential protection, and Core airspace-review unavailable state.
+- Added `.github/workflows/ci.yml` to run dependency install, unit tests, typecheck, lint, production build, Playwright browser install, and integration tests.
+
+Verification:
+
+- `pnpm install --frozen-lockfile`: passed.
+- `pnpm test`: 34 Vitest tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no ESLint warnings or errors.
+- `pnpm build`: production build passed.
+- `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`.
+
 ### Verification
 
 - `pnpm test`: 5 tests passed.

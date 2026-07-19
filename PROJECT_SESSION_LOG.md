@@ -253,3 +253,30 @@ Verification:
 - Production browser: route search for `EGLL` showed one deduped result row, and route search for `LOWW` showed an OpenAIP-only global result badge.
 - Production browser: map inspection mode selected point feature `FARF` with enriched airport details and airspace `JOHANNESBURG SOUTHWEST` with class, vertical limits, activation flags, source layer/id, and enriched Core API record status.
 - Vercel CLI returned `Not authorized` after creating the deployment URL, but inspection showed the deployment completed as Ready and assigned the production alias; no second deployment was started.
+
+## 2026-07-19 Integration Tests and CI Slice
+
+Objective: add production-build integration coverage and GitHub Actions gates before continuing into deeper launch features.
+
+Decisions:
+
+- Playwright must run against `next build && next start`, not `next dev`.
+- CI should not depend on OpenAIP/MapTiler credentials; Halo's degraded OpenAIP style/search/airspace-review behavior is now a tested contract.
+- Keep unit tests and integration tests separated by runner and filename pattern.
+
+Changes:
+
+- Added `@playwright/test` and `pnpm test:e2e`.
+- Added `playwright.config.ts` with a production Next.js web server and deterministic no-credential env.
+- Added UI integration coverage for route creation and briefing generation.
+- Added API integration coverage for route-handler validation/degraded states.
+- Added `.github/workflows/ci.yml` for install, unit tests, typecheck, lint, production build, Playwright Chromium install, and e2e tests.
+
+Verification:
+
+- `pnpm install --frozen-lockfile`: passed.
+- `pnpm test`: 34 Vitest tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no ESLint warnings or errors.
+- `pnpm build`: production build passed.
+- `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`.

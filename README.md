@@ -63,6 +63,7 @@ pnpm start      # Start production server after build
 pnpm lint       # Run Next.js ESLint checks
 pnpm typecheck  # Run TypeScript checks
 pnpm test       # Run Vitest unit tests
+pnpm test:e2e   # Run Playwright integration tests against next build && next start
 ```
 
 ## Project Structure
@@ -75,6 +76,7 @@ components/
   map/              MapLibre map and Halo route overlays
   planning/         Route status surface
   sidebar/          Route, weather, aircraft, briefing, and research panels
+e2e/                Playwright integration tests against a production server
 lib/
   openaip/          OpenAIP style conversion and feature parsing
   planning/         Navigation math, aircraft, weather, briefing, starter data
@@ -99,6 +101,7 @@ types/              OpenAIP and planning TypeScript models
 - Route airspace review plan: `docs/superpowers/plans/2026-07-19-route-airspace-review.md`
 - Backend airspace corridor review plan: `docs/superpowers/plans/2026-07-19-backend-airspace-corridor-review.md`
 - OpenAIP global route search plan: `docs/superpowers/plans/2026-07-19-openaip-global-route-search.md`
+- Integration tests and CI plan: `docs/superpowers/plans/2026-07-19-integration-tests-ci.md`
 - Research: `docs/research/competitor-pain-points.md`
 - Setup detail: `SETUP.md`
 - Implementation notes: `IMPLEMENTATION_NOTES.md`
