@@ -394,3 +394,15 @@ Final local verification:
 - `pnpm typecheck`: passed.
 - `pnpm lint`: no ESLint warnings or errors. Next 15 reports `next lint` deprecation for future migration.
 - `pnpm build`: passed on Next.js 15.5.18.
+
+GitHub and production deployment:
+
+- Committed and pushed branch `agent/complete-halo-flight-planner-20260719`.
+- Commit: `8aba0a5`.
+- Added Vercel Production env `NOTAM_PROVIDER=south-africa-manual`.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-d1uv960qo-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_CaYcr7LucjNAP8dPZZVdvqrzwVDX`
+- Production NOTAM smoke request for FAOR→FALA returned HTTP 200 with `source=south-africa-official` and `status=manual-required`.
+- Vercel live JSON logs showed the structured `/api/notams/route` `api_request` log with `status=200` and no error-level output for the smoke request.
