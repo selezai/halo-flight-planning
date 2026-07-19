@@ -138,6 +138,7 @@ Production verification:
 - Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 and a 50,990-byte vector tile.
 - Production browser: FAOR→FALA at 6,500 ft showed 3 critical rendered OpenAIP airspace overlaps and the same briefing/risk output as local.
 - Sampled Vercel runtime log stream showed no errors after production smoke requests.
+- GitHub PR branch pushed with commit `3ec0d42`: https://github.com/selezai/halo-flight-planning/pull/1
 
 ### Verification
 

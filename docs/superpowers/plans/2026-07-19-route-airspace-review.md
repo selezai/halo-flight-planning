@@ -61,4 +61,4 @@
 - [x] Run `pnpm build`.
 - [x] Run a production server and verify the route-airspace review in a browser.
 - [x] Deploy to Vercel production.
-- [ ] Verify production behavior and push the PR branch.
+- [x] Verify production behavior and push the PR branch.
