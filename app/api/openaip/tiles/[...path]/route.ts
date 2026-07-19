@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { normalizeOpenAipTilePath } from '@/lib/openaip/tilePath';
 
 const OPENAIP_TILES_BASE = 'https://api.tiles.openaip.net/api/data/openaip';
 const OPENAIP_API_KEY = process.env.OPENAIP_API_KEY;
-const TILE_PATH_RE = /^[a-z0-9_-]+\/\d{1,2}\/\d+\/\d+\.pbf$/i;
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +18,8 @@ export async function GET(
   }
 
   try {
-    // Reconstruct the tile path: z/x/y.pbf
-    const tilePath = params.path.join('/');
-    if (!TILE_PATH_RE.test(tilePath)) {
+    const tilePath = normalizeOpenAipTilePath(params.path);
+    if (!tilePath) {
       return NextResponse.json(
         { error: 'Invalid tile path' },
         { status: 400 }
@@ -56,7 +55,6 @@ export async function GET(
     return new NextResponse(tileData, {
       headers: {
         'Content-Type': 'application/x-protobuf',
-        'Content-Encoding': response.headers.get('content-encoding') || 'gzip',
         'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
         'Access-Control-Allow-Origin': '*',
       },

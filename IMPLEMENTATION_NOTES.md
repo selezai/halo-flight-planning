@@ -29,9 +29,30 @@ The app is now a working browser-first flight planner rather than only an OpenAI
 ### Release and Deployment
 
 - Production alias: https://halo-flight-planning.vercel.app
-- Final inspected deployment: https://halo-flight-planning-pcmjzhdlk-pilotmerch-gmailcoms-projects.vercel.app
+- Final inspected deployment: https://halo-flight-planning-5pvu1gz5y-pilotmerch-gmailcoms-projects.vercel.app
 - GitHub branch: `agent/complete-halo-flight-planner-20260719`
 - Draft PR: https://github.com/selezai/halo-flight-planning/pull/1
+
+### 2026-07-19 Aviation Map Fix
+
+The deployed map was not acceptable for a manned-flight planning app because it showed the fallback/base map instead of aviation airspace data.
+
+Root causes:
+
+- Vercel production lacked `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY`, forcing `/api/openaip/style` to return the fallback map.
+- The OpenAIP style converter generated proxied tile URLs as `/api/openaip/tiles/openaip-data/{z}/{x}/{y}.pbf`, then the proxy forwarded `openaip-data/{z}/{x}/{y}.pbf` upstream. OpenAIP expects `/api/data/openaip/{z}/{x}/{y}.pbf`.
+- The tile proxy forwarded the upstream `Content-Encoding` header after reading the response body through server-side fetch, which can make browsers double-decode the vector tile.
+- Dashed airspace boundaries were filtered out during style conversion.
+- MapLibre errors were swallowed, making this hard to see from the UI.
+
+Fix:
+
+- Production Vercel env vars are now configured.
+- `normalizeOpenAipTilePath` accepts legacy prefixed and current coordinate-only tile paths but strips source prefixes before calling OpenAIP.
+- Converted style sources now point to `/api/openaip/tiles/{z}/{x}/{y}.pbf`.
+- Proxied vector tile responses no longer include stale `Content-Encoding`.
+- Dashed airspace boundary layers are preserved and dasharray values are sanitized for MapLibre.
+- MapLibre render errors now show a degraded-map UI and log the actual error.
 
 ### Verification
 
@@ -41,6 +62,7 @@ The app is now a working browser-first flight planner rather than only an OpenAI
 - `pnpm build`: production build passed.
 - Browser verification against `next start`: content rendered, no framework error overlay, no captured console errors, route creation and briefing flow verified.
 - Production Vercel smoke checks: deployment status Ready, OpenAIP style endpoint HTTP 200, FAOR METAR endpoint returned current JSON, and production browser verification confirmed FAOR→FACT route flow.
+- Aviation map fix verification: `pnpm test` now passes 9 tests; local and production `/api/openaip/style` return 74 layers with 46 airspace layers; `/api/openaip/tiles/8/147/147.pbf` returns HTTP 200; local and production browser checks show visible aviation airspace/airway overlays and feature inspection for `AWY G853`.
 
 ## Architecture Overview
 

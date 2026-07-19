@@ -7,6 +7,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 ## Current Features
 
 - Interactive planning map with OpenAIP server-side proxy support.
+- Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
 - Graceful fallback base map when OpenAIP credentials or sprites are unavailable.
 - Route planning with airport/navaid search, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
@@ -81,7 +82,7 @@ types/              OpenAIP and planning TypeScript models
 
 ## Operational Notes
 
-- Production is deployed on Vercel. Optional `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` variables can be added there for richer OpenAIP aviation layer fidelity.
+- Production is deployed on Vercel. `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` are configured for the production deployment.
 - Supabase auth/account sync is intentionally deferred until the live project schema and RLS policies are verified.
 - Live NOTAM data is not faked; Halo includes an explicit NOTAM review item in each briefing.
 - Weight-and-balance needs aircraft-specific arms/envelopes before it can be operationally useful.

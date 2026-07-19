@@ -84,18 +84,11 @@ function isProblematicLayer(layer: StyleLayer): boolean {
     return true;
   }
   
-  // Remove layers with complex expressions that cause errors
-  // Keep only fill, line, and circle layers - remove all symbol layers
+  // Keep the aviation geometry layers. Symbol layers depend on OpenAIP sprite
+  // assets that are not yet shipped, so we avoid broken icon/text rendering for
+  // now while keeping airspace, airport, navaid, obstacle, and route geometry.
   if (layer.type === 'symbol') {
-    return true; // Remove all symbol layers (text/icons)
-  }
-  
-  // Remove line layers with dasharray issues (airspace boundaries)
-  if (layer.type === 'line' && layer.paint) {
-    const paint = layer.paint as Record<string, unknown>;
-    if (paint['line-dasharray']) {
-      return true; // Remove lines with dasharray for now
-    }
+    return true;
   }
   
   return false;
@@ -126,7 +119,7 @@ function rewriteSources(
         rewritten[name] = {
           ...rest,
           type: 'vector',
-          tiles: [`${proxyUrl}/${name}/{z}/{x}/{y}.pbf`],
+          tiles: [`${proxyUrl}/{z}/{x}/{y}.pbf`],
         };
       } else if (Array.isArray(src.tiles)) {
         // Handle tiles array format
@@ -134,7 +127,7 @@ function rewriteSources(
         if (tiles.some(tile => tile.includes('tiles.openaip.net'))) {
           rewritten[name] = {
             ...src,
-            tiles: [`${proxyUrl}/${name}/{z}/{x}/{y}.pbf`],
+            tiles: [`${proxyUrl}/{z}/{x}/{y}.pbf`],
           };
         } else {
           rewritten[name] = src;
@@ -200,7 +193,9 @@ function fixProperties(props: Record<string, unknown>, propType: 'layout' | 'pai
       // Convert legacy "stops" syntax to interpolate expression
       if ('stops' in obj && Array.isArray(obj.stops)) {
         // Check if this property can be interpolated
-        if (nonInterpolatableProps.includes(key)) {
+        if (key === 'line-dasharray') {
+          fixed[key] = convertStopsToStep(obj, normalizeDasharray);
+        } else if (nonInterpolatableProps.includes(key)) {
           fixed[key] = convertStopsToStep(obj);
         } else {
           fixed[key] = convertStopsToExpression(obj);
@@ -263,20 +258,32 @@ function convertToStepExpression(value: unknown): unknown {
 /**
  * Convert stops to step expression instead of interpolate
  */
-function convertStopsToStep(obj: Record<string, unknown>): unknown[] {
+function convertStopsToStep(
+  obj: Record<string, unknown>,
+  normalizeValue: (value: unknown) => unknown = (value) => value
+): unknown[] {
   const stops = obj.stops as [number, unknown][];
   
   if (stops.length === 0) {
     return ['step', ['zoom'], null];
   }
 
-  const expression: unknown[] = ['step', ['zoom'], stops[0][1]];
+  const expression: unknown[] = ['step', ['zoom'], normalizeValue(stops[0][1])];
   
   for (let i = 1; i < stops.length; i++) {
-    expression.push(stops[i][0], stops[i][1]);
+    expression.push(stops[i][0], normalizeValue(stops[i][1]));
   }
 
   return expression;
+}
+
+function normalizeDasharray(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+
+  const numbers = value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+  if (numbers.length === 0) return ['literal', [1, 1]];
+  if (numbers.length === 1) return ['literal', [numbers[0], numbers[0]]];
+  return ['literal', numbers];
 }
 
 /**
@@ -327,6 +334,11 @@ function fixArrayProperty(key: string, value: unknown[]): unknown {
   }
   
   // Not an expression - check if it needs literal wrapping
+  if (key === 'line-dasharray') {
+    const normalized = normalizeDasharray(value);
+    return Array.isArray(normalized) && normalized[0] === 'literal' ? normalized[1] : normalized;
+  }
+
   if (literalProperties.includes(key)) {
     // Simple array value for a property that can't be interpolated
     return value;

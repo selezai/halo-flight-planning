@@ -139,8 +139,13 @@ export default function Map({ className = '' }: MapProps) {
         // Handle missing images (sprites)
         map.current.on('styleimagemissing', () => undefined);
 
-        // Error handling
-        map.current.on('error', () => undefined);
+        map.current.on('error', (event) => {
+          const mapError = event.error instanceof Error
+            ? event.error.message
+            : 'Aviation map rendering failed';
+          console.error('MapLibre error:', mapError);
+          setError(mapError);
+        });
 
       } catch (err) {
         console.error('Failed to initialize map:', err);

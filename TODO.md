@@ -19,7 +19,7 @@
 ## Remaining Before Operational Launch
 
 - [ ] Generate and commit/ship authentic OpenAIP sprite assets or configure a reliable asset deployment path.
-- [ ] Configure production OpenAIP and MapTiler environment variables in Vercel.
+- [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
 - [ ] Add live NOTAM provider integration with route filtering and source attribution.
 - [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
 - [ ] Add aircraft-specific weight-and-balance envelopes before exposing W&B as operational output.
