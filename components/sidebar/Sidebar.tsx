@@ -50,6 +50,8 @@ import type { ParsedFeature } from '@/types/openaip';
 import type {
   Coordinates,
   FlightCategory,
+  RouteAirspaceAlert,
+  RouteAirspaceReview,
   WeatherReport,
   Waypoint,
   WaypointType,
@@ -377,6 +379,8 @@ function RoutePanel() {
     updateRouteWaypoint,
     clearRoute,
     activeAircraft,
+    cruiseAltitudeFt,
+    routeAirspaceReview,
     planningMode,
     setPlanningMode,
     visibleLayers,
@@ -418,6 +422,8 @@ function RoutePanel() {
         ]}
         status={route.summary.fuelStatus}
       />
+
+      <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
 
       <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
         <div>
@@ -561,6 +567,90 @@ function RoutePanel() {
           ))}
         </div>
       </PanelBlock>
+    </div>
+  );
+}
+
+function AirspaceReviewPanel({
+  review,
+  cruiseAltitudeFt,
+}: {
+  review: RouteAirspaceReview;
+  cruiseAltitudeFt: number;
+}) {
+  const reviewableAlerts = review.alerts.filter((alert) => alert.requiresReview);
+  const criticalCount = review.alerts.filter((alert) => alert.level === 'critical').length;
+  const visibleAlerts = review.alerts.slice(0, 6);
+  const StatusIcon =
+    criticalCount > 0 || reviewableAlerts.length > 0 || review.status === 'partial'
+      ? AlertTriangle
+      : CheckCircle2;
+
+  return (
+    <PanelBlock title="Route airspace review" icon={<Layers className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getAirspaceReviewTone(review)}`}>
+        <div className="flex items-start gap-2">
+          <StatusIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              {reviewableAlerts.length > 0
+                ? `${reviewableAlerts.length} item${reviewableAlerts.length === 1 ? '' : 's'} need review`
+                : 'Rendered airspace scan'}
+            </p>
+            <p className="mt-1">{review.message}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Cruise" value={`${Math.round(cruiseAltitudeFt)} ft`} />
+        <Metric label="Samples" value={String(review.sampledPointCount)} />
+        <Metric label="Layers" value={String(review.visibleLayerCount)} />
+      </div>
+
+      <p className="mt-2 text-xs text-slate-500">
+        Uses OpenAIP airspaces currently rendered in the browser. Pan/zoom over the full route before final review.
+      </p>
+
+      {visibleAlerts.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState
+            title="No rendered airspace hits"
+            detail={review.status === 'needs-route' ? 'Add a route first.' : 'No intersections were found in the visible rendered samples.'}
+          />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {visibleAlerts.map((alert) => (
+            <AirspaceAlertRow key={alert.id} alert={alert} />
+          ))}
+          {review.alerts.length > visibleAlerts.length && (
+            <p className="text-xs font-medium text-slate-500">
+              +{review.alerts.length - visibleAlerts.length} more airspace crossing{review.alerts.length - visibleAlerts.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+      )}
+    </PanelBlock>
+  );
+}
+
+function AirspaceAlertRow({ alert }: { alert: RouteAirspaceAlert }) {
+  return (
+    <div className={`rounded-md border p-2 text-xs ${getAirspaceAlertTone(alert.level)}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{alert.name}</p>
+          <p className="mt-0.5">
+            {[alert.airspaceType, alert.airspaceClass].filter(Boolean).join(' · ') || 'Airspace'}
+          </p>
+        </div>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase">
+          {alert.level}
+        </span>
+      </div>
+      <p className="mt-1 font-mono">{formatAirspaceVertical(alert)}</p>
+      <p className="mt-1">{alert.reason}</p>
     </div>
   );
 }
@@ -711,6 +801,7 @@ function BriefingPanel() {
     waypoints,
     activeAircraft,
     personalMinimums,
+    routeAirspaceReview,
   } = useMapStore();
   const weather = useRouteWeather(false);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
@@ -719,8 +810,8 @@ function BriefingPanel() {
     [weather.reports]
   );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums),
-    [route, reports, personalMinimums]
+    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts),
+    [route, reports, personalMinimums, routeAirspaceReview.alerts]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -730,11 +821,12 @@ function BriefingPanel() {
       waypoints,
       weather: reports,
       risks,
+      routeAirspaceAlerts: routeAirspaceReview.alerts,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -764,6 +856,8 @@ function BriefingPanel() {
           />
         </div>
       </PanelBlock>
+
+      <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
 
       <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
         <div className="space-y-2">
@@ -979,6 +1073,29 @@ function formatLayerName(layer: string): string {
   };
 
   return labels[layer] ?? layer.replace(/([A-Z])/g, ' $1');
+}
+
+function getAirspaceReviewTone(review: RouteAirspaceReview): string {
+  if (review.alerts.some((alert) => alert.level === 'critical')) {
+    return 'bg-rose-50 text-rose-800';
+  }
+  if (review.alerts.some((alert) => alert.level === 'caution') || review.status === 'partial') {
+    return 'bg-amber-50 text-amber-900';
+  }
+  if (review.status === 'airspace-hidden' || review.status === 'map-loading' || review.status === 'needs-route') {
+    return 'bg-slate-50 text-slate-700';
+  }
+  return 'bg-emerald-50 text-emerald-800';
+}
+
+function getAirspaceAlertTone(level: RouteAirspaceAlert['level']): string {
+  if (level === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (level === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
+  return 'border-slate-200 bg-white text-slate-700';
+}
+
+function formatAirspaceVertical(alert: RouteAirspaceAlert): string {
+  return `${alert.lowerLimit ?? 'lower unknown'} to ${alert.upperLimit ?? 'upper unknown'}`;
 }
 
 function SummaryGrid({

@@ -5,6 +5,7 @@ import type {
   AircraftProfile,
   Coordinates,
   PersonalMinimums,
+  RouteAirspaceReview,
   Waypoint,
 } from '@/types/planning';
 import {
@@ -48,6 +49,7 @@ interface MapState {
   waypoints: Waypoint[];
   activeAircraft: AircraftProfile;
   personalMinimums: PersonalMinimums;
+  routeAirspaceReview: RouteAirspaceReview;
   
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -73,6 +75,7 @@ interface MapState {
   setActiveAircraft: (aircraft: AircraftProfile) => void;
   updateActiveAircraft: (updates: Partial<AircraftProfile>) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
+  setRouteAirspaceReview: (review: RouteAirspaceReview) => void;
 }
 
 const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
@@ -84,6 +87,14 @@ const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
   hotspots: true,
   hangGlidings: true,
   rcAirfields: true,
+};
+
+const DEFAULT_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
+  status: 'needs-route',
+  message: 'Add at least two waypoints to review rendered OpenAIP airspace along the route.',
+  alerts: [],
+  sampledPointCount: 0,
+  visibleLayerCount: 0,
 };
 
 export const useMapStore = create<MapState>()(
@@ -112,6 +123,7 @@ export const useMapStore = create<MapState>()(
       waypoints: [],
       activeAircraft: DEFAULT_AIRCRAFT,
       personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
+      routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       
       // Actions
       setCenter: (center) => set({ center }),
@@ -200,7 +212,7 @@ export const useMapStore = create<MapState>()(
         ),
       })),
 
-      clearRoute: () => set({ waypoints: [] }),
+      clearRoute: () => set({ waypoints: [], routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW }),
 
       setActiveAircraft: (aircraft) => set({
         activeAircraft: clampAircraftProfile(aircraft),
@@ -213,6 +225,8 @@ export const useMapStore = create<MapState>()(
       updatePersonalMinimums: (updates) => set((state) => ({
         personalMinimums: clampPersonalMinimums({ ...state.personalMinimums, ...updates }),
       })),
+
+      setRouteAirspaceReview: (review) => set({ routeAirspaceReview: review }),
     }),
     {
       name: 'halo-map-store',

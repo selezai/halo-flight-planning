@@ -20,6 +20,9 @@ Verification:
 - `pnpm typecheck`: passed.
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed.
+- Local browser against `next start`: FAOR→FALA at 6,500 ft showed 3 critical rendered OpenAIP airspace overlaps (`CTR FALA`, `CTR FAOR`, `TMA FALA A`) plus informational airway/FIR crossings outside cruise altitude.
+- Local briefing panel and exported briefing text included the airspace review and critical risk item.
+- Browser console/page error checks were clean.
 - Browser verification against `next start`: content rendered, no framework overlay, no captured console errors, route creation and briefing flow verified.
 - Vercel production deployment inspected as Ready:
   - Primary alias: https://halo-flight-planning.vercel.app
@@ -129,3 +132,46 @@ Production deployment and verification:
   - Branch: `agent/complete-halo-flight-planner-20260719`
   - Commit: `464c5be`
   - PR: https://github.com/selezai/halo-flight-planning/pull/1
+
+## 2026-07-19 Route-Aware Airspace Review Slice
+
+Objective: make Halo use the OpenAIP browser vector map as planning data by reviewing rendered route airspace crossings against the selected cruise altitude.
+
+Decisions:
+
+- Keep OpenAIP as the aviation map/data source and implement route-aware planning logic inside Halo.
+- Use currently rendered OpenAIP vector airspaces for this browser-first slice. The UI explicitly says when the review is partial because the route is outside the viewport, the airspace layer is hidden, or map tiles are still loading.
+- Compare parsed airspace vertical limits in feet against the pilot-selected cruise altitude.
+- Treat controlled/special-use intersections at cruise altitude as critical, unknown vertical data as caution, and crossed airspaces outside cruise altitude as informational.
+- Keep derived route airspace review state out of persisted local storage because it depends on live map render state.
+
+Changes:
+
+- Added `RouteAirspaceAlert` and `RouteAirspaceReview` planning types.
+- Added `lowerLimitFt` and `upperLimitFt` to parsed OpenAIP airspace features.
+- Added `lib/planning/airspaceReview.ts` for pure alert classification and sorting.
+- Added MapLibre route sampling against visible OpenAIP airspace layers.
+- Added route airspace review output to the route panel, briefing panel, route status bar, and exported briefing text.
+- Added regression tests for altitude parsing and airspace conflict classification.
+
+Local verification:
+
+- `pnpm test`: 21 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Local browser against `next start`: FAOR→FALA at 6,500 ft showed 3 critical rendered OpenAIP airspace overlaps (`CTR FALA`, `CTR FAOR`, `TMA FALA A`) plus informational airway/FIR crossings outside cruise altitude.
+- Local briefing panel and exported briefing text included the airspace review and critical risk item.
+- Browser console/page error checks were clean.
+
+Production deployment and verification:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-2zz9w1tks-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_CXFcKk8gw94YcSQ9abmrPbSFVJn7`
+- Production API: `/api/openaip/style` returned 96 layers, 49 airspace layers, and 22 aviation symbol layers.
+- Production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
+- Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 and a 50,990-byte vector tile.
+- Production browser: FAOR→FALA at 6,500 ft showed 3 critical rendered OpenAIP airspace overlaps and the same briefing/risk output as local.
+- Sampled Vercel runtime log stream showed no errors after production smoke requests.

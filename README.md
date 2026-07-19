@@ -10,6 +10,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
 - Authentic OpenAIP sprites for aviation icons, symbols, and patterned airspace overlays.
 - Click-to-detail inspection for OpenAIP airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Route-aware rendered OpenAIP airspace review that compares crossed airspaces with selected cruise altitude and surfaces critical/caution/info alerts.
 - Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.
 - Route planning with airport/navaid search, manual coordinates, map-click waypoints, reordering, removal, and persisted local routes.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
@@ -94,6 +95,7 @@ types/              OpenAIP and planning TypeScript models
 - Design: `docs/superpowers/plans/2026-07-19-halo-flight-planning-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-halo-flight-planning.md`
 - OpenAIP global vector map plan: `docs/superpowers/plans/2026-07-19-openaip-global-vector-map.md`
+- Route airspace review plan: `docs/superpowers/plans/2026-07-19-route-airspace-review.md`
 - Research: `docs/research/competitor-pain-points.md`
 - Setup detail: `SETUP.md`
 - Implementation notes: `IMPLEMENTATION_NOTES.md`

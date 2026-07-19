@@ -99,6 +99,41 @@ export interface BriefingRisk {
   detail: string;
 }
 
+export type RouteAirspaceAlertLevel = 'info' | 'caution' | 'critical';
+
+export interface RouteAirspaceAlert {
+  id: string;
+  name: string;
+  sourceId?: string;
+  airspaceType?: string;
+  airspaceClass?: string;
+  lowerLimit?: string;
+  upperLimit?: string;
+  lowerLimitFt?: number;
+  upperLimitFt?: number;
+  cruiseAltitudeFt: number;
+  conflict: boolean;
+  requiresReview: boolean;
+  level: RouteAirspaceAlertLevel;
+  reason: string;
+}
+
+export type RouteAirspaceReviewStatus =
+  | 'needs-route'
+  | 'map-loading'
+  | 'airspace-hidden'
+  | 'partial'
+  | 'complete';
+
+export interface RouteAirspaceReview {
+  status: RouteAirspaceReviewStatus;
+  message: string;
+  alerts: RouteAirspaceAlert[];
+  sampledPointCount: number;
+  visibleLayerCount: number;
+  updatedAt?: string;
+}
+
 export interface CompetitorPainPoint {
   competitor: string;
   painPoint: string;

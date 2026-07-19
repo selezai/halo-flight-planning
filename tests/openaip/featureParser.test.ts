@@ -65,6 +65,8 @@ describe('OpenAIP feature parser', () => {
     expect(feature.airspaceClass).toBe('Class D');
     expect(feature.lowerLimit).toBe('GND');
     expect(feature.upperLimit).toBe('7500 ft MSL');
+    expect(feature.lowerLimitFt).toBe(0);
+    expect(feature.upperLimitFt).toBe(7500);
     expect(feature.activationFlags).toEqual(['On demand', 'By NOTAM']);
     expect(feature.coordinates?.[0]).toBeCloseTo(28.4);
     expect(feature.coordinates?.[1]).toBeCloseTo(-26.4);
@@ -96,7 +98,32 @@ describe('OpenAIP feature parser', () => {
     expect(feature.airspaceClass).toBe('Class G');
     expect(feature.lowerLimit).toBe('FL110');
     expect(feature.upperLimit).toBe('FL195');
+    expect(feature.lowerLimitFt).toBe(11000);
+    expect(feature.upperLimitFt).toBe(19500);
     expect(feature.activity).toBeUndefined();
+  });
+
+  it('converts metric airspace limits to feet for route review', () => {
+    const feature = parseFeature({
+      sourceLayer: 'airspaces',
+      properties: {
+        source_id: 'metric-airspace',
+        feature_type: 'airspace',
+        name: 'Metric Training Area',
+        type: 'tra',
+        lower_limit_value: 300,
+        lower_limit_unit: 'm',
+        lower_limit_reference_datum: 'msl',
+        upper_limit_value: 1500,
+        upper_limit_unit: 'm',
+        upper_limit_reference_datum: 'msl',
+      },
+    });
+
+    expect(feature.lowerLimit).toBe('300 m MSL');
+    expect(feature.upperLimit).toBe('1500 m MSL');
+    expect(feature.lowerLimitFt).toBe(984);
+    expect(feature.upperLimitFt).toBe(4921);
   });
 
   it('parses obstacles from current OpenAIP tile properties', () => {

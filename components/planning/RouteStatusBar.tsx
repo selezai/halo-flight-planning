@@ -11,8 +11,12 @@ import {
 } from '@/lib/planning/navigation';
 
 export default function RouteStatusBar() {
-  const { waypoints, activeAircraft } = useMapStore();
+  const { waypoints, activeAircraft, cruiseAltitudeFt, routeAirspaceReview } = useMapStore();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const airspaceSummary = useMemo(
+    () => summarizeAirspaceReview(routeAirspaceReview.alerts, routeAirspaceReview.status),
+    [routeAirspaceReview.alerts, routeAirspaceReview.status]
+  );
   const statusTone =
     route.summary.fuelStatus === 'critical'
       ? 'text-rose-700'
@@ -41,6 +45,15 @@ export default function RouteStatusBar() {
           <StatusIcon className="h-3.5 w-3.5" />
           {route.summary.fuelStatus}
         </span>
+        {waypoints.length > 1 && (
+          <>
+            <Divider />
+            <span className={`inline-flex items-center gap-1 font-semibold ${airspaceSummary.tone}`}>
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {airspaceSummary.label} @ {Math.round(cruiseAltitudeFt)} ft
+            </span>
+          </>
+        )}
         <Divider />
         <span>{activeAircraft.registration} {activeAircraft.type}</span>
       </div>
@@ -50,4 +63,30 @@ export default function RouteStatusBar() {
 
 function Divider() {
   return <span className="h-4 w-px shrink-0 bg-slate-200" />;
+}
+
+function summarizeAirspaceReview(
+  alerts: Array<{ level: 'info' | 'caution' | 'critical'; requiresReview: boolean }>,
+  status: string
+): { label: string; tone: string } {
+  const criticalCount = alerts.filter((alert) => alert.level === 'critical').length;
+  const reviewCount = alerts.filter((alert) => alert.requiresReview).length;
+
+  if (criticalCount > 0) {
+    return { label: `${criticalCount} airspace critical`, tone: 'text-rose-700' };
+  }
+
+  if (reviewCount > 0) {
+    return { label: `${reviewCount} airspace review`, tone: 'text-amber-700' };
+  }
+
+  if (status === 'partial') {
+    return { label: 'Airspace partial', tone: 'text-amber-700' };
+  }
+
+  if (alerts.length > 0) {
+    return { label: `${alerts.length} airspace clear`, tone: 'text-emerald-700' };
+  }
+
+  return { label: 'Airspace scan', tone: 'text-slate-600' };
 }

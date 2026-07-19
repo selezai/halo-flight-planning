@@ -229,6 +229,8 @@ function parseAirspaceFeature(props: Record<string, unknown>): Partial<ParsedFea
     airspaceClass: formatAirspaceClass(value(props, 'icaoClass', 'icao_class')),
     upperLimit: formatAltitudeFromProps(props, 'upper'),
     lowerLimit: formatAltitudeFromProps(props, 'lower'),
+    upperLimitFt: altitudeFeetFromProps(props, 'upper'),
+    lowerLimitFt: altitudeFeetFromProps(props, 'lower'),
     activity: formatActivity(value(props, 'activity')),
     onRequest,
     onDemand,
@@ -509,6 +511,24 @@ function formatAltitudeFromProps(props: Record<string, unknown>, prefix: 'upper'
   return formatAltitudeParts(valuePart, unitPart, referencePart);
 }
 
+function altitudeFeetFromProps(props: Record<string, unknown>, prefix: 'upper' | 'lower'): number | undefined {
+  const objectLimit = value(props, `${prefix}Limit`, `${prefix}_limit`);
+  if (objectLimit && typeof objectLimit === 'object') {
+    const limit = objectLimit as Record<string, unknown>;
+    return altitudeFeetFromParts(
+      value(limit, 'value'),
+      value(limit, 'unit'),
+      value(limit, 'referenceDatum', 'reference_datum')
+    );
+  }
+
+  return altitudeFeetFromParts(
+    value(props, `${prefix}_limit_value`),
+    value(props, `${prefix}_limit_unit`),
+    value(props, `${prefix}_limit_reference_datum`)
+  );
+}
+
 function formatAltitudeObject(limit: Record<string, unknown>): string | undefined {
   return formatAltitudeParts(
     value(limit, 'value'),
@@ -529,6 +549,20 @@ function formatAltitudeParts(rawValue: unknown, rawUnit: unknown, rawReference: 
   if (reference === 'GND' && numericValue === 0) return 'GND';
 
   return `${numericValue} ${unit}${reference ? ` ${reference}` : ''}`;
+}
+
+function altitudeFeetFromParts(rawValue: unknown, rawUnit: unknown, rawReference: unknown): number | undefined {
+  const numericValue = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  if (!Number.isFinite(numericValue)) return undefined;
+
+  const unit = unitValueFromUnknown(rawUnit) ?? 'ft';
+  const reference = referenceValueFromUnknown(rawReference);
+
+  if (reference === 'GND' && numericValue === 0) return 0;
+  if (reference === 'STD' || unit === 'FL') return Math.round(numericValue * 100);
+  if (unit === 'm') return Math.round(numericValue * 3.28084);
+
+  return Math.round(numericValue);
 }
 
 function formatActivity(raw: unknown): string | undefined {

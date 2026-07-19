@@ -425,6 +425,8 @@ export interface ParsedFeature {
   airspaceClass?: string;
   upperLimit?: string;
   lowerLimit?: string;
+  upperLimitFt?: number;
+  lowerLimitFt?: number;
   activity?: string;
   onRequest?: boolean;
   onDemand?: boolean;

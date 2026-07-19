@@ -2,6 +2,7 @@ import type {
   AircraftProfile,
   BriefingRisk,
   PersonalMinimums,
+  RouteAirspaceAlert,
   RouteAnalysis,
   Waypoint,
   WeatherReport,
@@ -12,7 +13,8 @@ import { isBelowPersonalMinimums } from './weather';
 export function buildRiskAssessment(
   route: RouteAnalysis,
   weather: WeatherReport[],
-  minimums: PersonalMinimums
+  minimums: PersonalMinimums,
+  routeAirspaceAlerts: RouteAirspaceAlert[] = []
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -65,6 +67,25 @@ export function buildRiskAssessment(
     });
   }
 
+  const criticalAirspaces = routeAirspaceAlerts.filter((alert) => alert.level === 'critical');
+  const cautionAirspaces = routeAirspaceAlerts.filter((alert) => alert.level === 'caution');
+
+  if (criticalAirspaces.length > 0) {
+    risks.push({
+      id: 'airspace-critical',
+      level: 'critical',
+      title: 'Cruise altitude intersects controlled or special-use airspace',
+      detail: formatAirspaceAlertSummary(criticalAirspaces),
+    });
+  } else if (cautionAirspaces.length > 0) {
+    risks.push({
+      id: 'airspace-caution',
+      level: 'caution',
+      title: 'Route airspace review required',
+      detail: formatAirspaceAlertSummary(cautionAirspaces),
+    });
+  }
+
   risks.push({
     id: 'notam-review',
     level: 'caution',
@@ -94,6 +115,7 @@ export function buildBriefingText(params: {
   waypoints: Waypoint[];
   weather: WeatherReport[];
   risks: BriefingRisk[];
+  routeAirspaceAlerts?: RouteAirspaceAlert[];
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -105,6 +127,7 @@ export function buildBriefingText(params: {
     waypoints,
     weather,
     risks,
+    routeAirspaceAlerts = [],
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -138,6 +161,11 @@ export function buildBriefingText(params: {
       ? weather.map((report) => `${report.icao}: ${report.flightCategory} ${report.raw}`)
       : ['No METAR data loaded.']),
     '',
+    'AIRSPACE REVIEW',
+    ...(routeAirspaceAlerts.length
+      ? routeAirspaceAlerts.map(formatBriefingAirspaceAlert)
+      : ['No rendered OpenAIP airspace intersections recorded for the visible route samples. Continue with official chart and NOTAM review.']),
+    '',
     'RISK REVIEW',
     ...risks.map((risk) => `${risk.level.toUpperCase()}: ${risk.title} - ${risk.detail}`),
     '',
@@ -154,4 +182,19 @@ export function buildBriefingText(params: {
 function routeLabel(waypoints: Waypoint[]): string {
   if (waypoints.length === 0) return 'Untitled route';
   return waypoints.map((waypoint) => waypoint.ident ?? waypoint.name).join(' -> ');
+}
+
+function formatAirspaceAlertSummary(alerts: RouteAirspaceAlert[]): string {
+  const visible = alerts.slice(0, 5).map((alert) => {
+    const category = [alert.airspaceType, alert.airspaceClass].filter(Boolean).join(' ');
+    return `${alert.name}${category ? ` (${category})` : ''}`;
+  });
+  const extra = alerts.length > visible.length ? `; +${alerts.length - visible.length} more` : '';
+  return `${visible.join('; ')}${extra}`;
+}
+
+function formatBriefingAirspaceAlert(alert: RouteAirspaceAlert): string {
+  const category = [alert.airspaceType, alert.airspaceClass].filter(Boolean).join(' ');
+  const vertical = [alert.lowerLimit ?? 'lower unknown', alert.upperLimit ?? 'upper unknown'].join(' to ');
+  return `${alert.level.toUpperCase()}: ${alert.name}${category ? ` (${category})` : ''}, ${vertical} - ${alert.reason}`;
 }
