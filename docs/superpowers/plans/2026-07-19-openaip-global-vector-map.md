@@ -21,7 +21,9 @@
 - `types/openaip.ts`: parsed feature types and fields shown in the sidebar.
 - `components/map/Map.tsx`: click prioritization, enrichment endpoint selection, missing-sprite diagnostics.
 - `components/sidebar/Sidebar.tsx`: richer aviation feature detail display.
+- `lib/openaip/featureSelection.ts`: OpenAIP-style clicked-feature stack sorting and deduplication.
 - `tests/openaip/featureParser.test.ts`: parser regression tests for actual OpenAIP snake_case tile properties.
+- `tests/openaip/featureSelection.test.ts`: clicked-feature stack ordering and deduplication tests.
 - `tests/openaip/tilePath.test.ts`: style converter regression tests for symbol retention and clickable layers.
 - `README.md`, `IMPLEMENTATION_NOTES.md`, `docs/research/aviation-map-sources.md`, `../PROJECT_SESSION_LOG.md`: documentation and decision log updates.
 
@@ -177,3 +179,39 @@
 - [x] Deploy to Vercel production.
 - [x] Verify production style, sprites, tile endpoint, and browser click behavior.
 - [x] Mirror changes into the GitHub PR branch and push.
+
+### Task 7: Add OpenAIP-style clicked-feature stack inspection
+
+- [x] **Step 1: Add feature stack selection tests**
+
+  Create `tests/openaip/featureSelection.test.ts` with cases that prove Halo keeps airports/navaids above airspace when stacked, dedupes repeated airspace fill/border records by source ID, and still selects an airspace when it is the only clicked object.
+
+- [x] **Step 2: Add a pure feature selection helper**
+
+  Create `lib/openaip/featureSelection.ts` to normalize MapLibre rendered features through `parseFeature`, sort them with aviation point features first and airspaces after, and return a deduped stack for the sidebar.
+
+- [x] **Step 3: Persist the clicked feature stack in map state**
+
+  Extend `stores/mapStore.ts` with `selectedFeatureCandidates`, update `setSelectedFeature(feature, candidates?)`, and clear the stack when the user clears selection or adds a route waypoint.
+
+- [x] **Step 4: Wire map clicks to the stack**
+
+  Update `components/map/Map.tsx` so click handling calls the helper, stores the whole stack, and enriches whichever selected feature is active through the existing OpenAIP Core detail proxy.
+
+- [x] **Step 5: Show switchable clicked features in the sidebar**
+
+  Update `components/sidebar/Sidebar.tsx` to render a "Clicked features" section when multiple aviation objects were hit, with buttons for airport, navaid, airspace, obstacle, and other OpenAIP feature records.
+
+- [x] **Step 6: Verify without Playwright**
+
+  Run:
+
+  ```bash
+  pnpm test -- tests/openaip/featureSelection.test.ts
+  pnpm test
+  pnpm typecheck
+  pnpm lint
+  pnpm build
+  ```
+
+  Expected: all commands pass. Manual browser inspection is owned by the user for this slice.

@@ -18,6 +18,7 @@
 - [x] Authentic OpenAIP sprite assets generated from OpenAIP public map resources.
 - [x] OpenAIP symbol layers restored for aviation icons and labels.
 - [x] Click-to-detail parsing expanded for airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- [x] OpenAIP-style clicked-feature stack inspection for overlapping aviation icons and airspaces.
 - [x] Route-aware rendered OpenAIP airspace review with cruise-altitude conflict classification in route, briefing, status bar, and export text.
 - [x] Backend OpenAIP Core route-corridor airspace review with bounded bbox queries, 5 nm corridor filtering, and rendered-map fallback.
 - [x] Global OpenAIP Core airport/navaid route search with starter fallback and deduplication.

@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useMapStore } from '@/stores/mapStore';
+import {
+  buildFeatureSelectionStack,
+  featureSelectionKey,
+} from '@/lib/openaip/featureSelection';
 import { parseFeature } from '@/lib/openaip/featureParser';
 import { getClickableLayers } from '@/lib/openaip/styleConverter';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
@@ -36,19 +40,6 @@ const OPENAIP_DETAIL_ENDPOINTS: Partial<Record<ParsedFeature['type'], string>> =
   rcAirfield: 'rc-airfields',
 };
 
-const FEATURE_PRIORITY: Record<string, number> = {
-  airports: 10,
-  navaids: 20,
-  reporting_points: 30,
-  obstacles: 40,
-  hang_glidings: 50,
-  hotspots: 60,
-  rc_airfields: 70,
-  airspaces: 80,
-  airspaces_border_offset: 90,
-  airspaces_border_offset_2x: 91,
-};
-
 export default function Map({ className = '' }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -63,6 +54,8 @@ export default function Map({ className = '' }: MapProps) {
     zoom, 
     setViewport, 
     setSelectedFeature,
+    selectedFeature,
+    selectedFeatureCandidates,
     visibleLayers,
     waypoints,
     cruiseAltitudeFt,
@@ -326,21 +319,10 @@ export default function Map({ className = '' }: MapProps) {
       const features = existingLayers.length
         ? map.current.queryRenderedFeatures(e.point, { layers: existingLayers })
         : [];
+      const featureStack = buildFeatureSelectionStack(features);
 
-      if (features.length > 0) {
-        const feature = pickBestFeature(features);
-        const parsed = parseFeature({
-          properties: feature.properties as Record<string, unknown>,
-          geometry: toParserGeometry(feature.geometry),
-          sourceLayer: feature.sourceLayer,
-          source: feature.source,
-        });
-
-        setSelectedFeature(parsed);
-        
-        if (parsed.sourceId) {
-          enrichFeature(parsed, feature.geometry as FeatureGeometry);
-        }
+      if (featureStack.length > 0) {
+        setSelectedFeature(featureStack[0], featureStack);
       } else if (planningMode) {
         enrichmentRequestId.current += 1;
         addUserWaypoint([e.lngLat.lng, e.lngLat.lat]);
@@ -367,7 +349,7 @@ export default function Map({ className = '' }: MapProps) {
   };
 
   // Fetch full feature details from REST API
-  const enrichFeature = async (
+  const enrichFeature = useCallback(async (
     feature: ParsedFeature,
     geometry?: FeatureGeometry
   ) => {
@@ -392,7 +374,8 @@ export default function Map({ className = '' }: MapProps) {
 
         if (requestId !== enrichmentRequestId.current) return;
 
-        setSelectedFeature({
+        const selectedKey = featureSelectionKey(feature);
+        const enrichedSelection = {
           ...feature,
           ...enrichedFeature,
           sourceId: feature.sourceId,
@@ -400,12 +383,26 @@ export default function Map({ className = '' }: MapProps) {
           coordinates: feature.coordinates ?? enrichedFeature.coordinates,
           raw: fullData,
           enriched: true,
-        });
+        };
+        const updatedCandidates = selectedFeatureCandidates.length
+          ? selectedFeatureCandidates.map((candidate) =>
+              featureSelectionKey(candidate) === selectedKey
+                ? enrichedSelection
+                : candidate
+            )
+          : [enrichedSelection];
+
+        setSelectedFeature(enrichedSelection, updatedCandidates);
       }
     } catch (err) {
       console.error('Failed to enrich feature:', err);
     }
-  };
+  }, [selectedFeatureCandidates, setSelectedFeature]);
+
+  useEffect(() => {
+    if (!selectedFeature || selectedFeature.enriched || !selectedFeature.sourceId) return;
+    enrichFeature(selectedFeature);
+  }, [enrichFeature, selectedFeature]);
 
   // Update layer visibility
   useEffect(() => {
@@ -510,24 +507,6 @@ export default function Map({ className = '' }: MapProps) {
       )}
     </div>
   );
-}
-
-function pickBestFeature(features: maplibregl.MapGeoJSONFeature[]): maplibregl.MapGeoJSONFeature {
-  return [...features].sort((a, b) => featurePriority(a) - featurePriority(b))[0];
-}
-
-function featurePriority(feature: maplibregl.MapGeoJSONFeature): number {
-  const sourceLayer = feature.sourceLayer ?? '';
-  const basePriority = FEATURE_PRIORITY[sourceLayer] ?? 100;
-  const layerId = feature.layer.id.toLowerCase();
-
-  if (layerId.includes('clicktarget')) return basePriority;
-  if (feature.layer.type === 'symbol') return basePriority + 1;
-  if (feature.layer.type === 'circle') return basePriority + 2;
-  if (feature.layer.type === 'fill') return basePriority + 3;
-  if (feature.layer.type === 'line') return basePriority + 4;
-
-  return basePriority + 5;
 }
 
 function createTransparentImageData(width: number, height: number) {

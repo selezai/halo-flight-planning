@@ -30,6 +30,7 @@ import {
   formatCoordinatesDMS,
   formatCoordinatesDecimal,
 } from '@/lib/openaip/featureParser';
+import { featureSelectionKey } from '@/lib/openaip/featureSelection';
 import {
   PRESET_AIRCRAFT,
   DEFAULT_PERSONAL_MINIMUMS,
@@ -170,8 +171,16 @@ function FeatureDisplay({
   feature: ParsedFeature;
   onClose: () => void;
 }) {
-  const { addRouteWaypoint } = useMapStore();
+  const {
+    addRouteWaypoint,
+    selectedFeatureCandidates,
+    setSelectedFeature,
+  } = useMapStore();
   const waypoint = makeWaypointFromFeature(feature);
+  const selectedFeatureKey = featureSelectionKey(feature);
+  const clickedFeatures = selectedFeatureCandidates.length > 1
+    ? selectedFeatureCandidates
+    : [];
   const icon =
     feature.type === 'airport' ? <Plane className="h-5 w-5" /> :
       feature.type === 'navaid' ? <Navigation className="h-5 w-5" /> :
@@ -215,6 +224,36 @@ function FeatureDisplay({
           </button>
         )}
       </div>
+
+      {clickedFeatures.length > 1 && (
+        <Section title="Clicked features">
+          <div className="space-y-2">
+            {clickedFeatures.map((candidate) => {
+              const candidateKey = featureSelectionKey(candidate);
+              const active = candidateKey === selectedFeatureKey;
+              const label = formatFeatureCandidate(candidate);
+
+              return (
+                <button
+                  key={candidateKey}
+                  type="button"
+                  onClick={() => setSelectedFeature(candidate, clickedFeatures)}
+                  className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                    active
+                      ? 'border-slate-950 bg-slate-950 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="block font-semibold">{label.title}</span>
+                  <span className={`block text-xs ${active ? 'text-slate-300' : 'text-slate-500'}`}>
+                    {label.meta}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       <Section>
         {feature.country && <Row label="Country">{feature.country}</Row>}
@@ -1287,6 +1326,27 @@ function formatFeatureType(type: ParsedFeature['type']): string {
   };
 
   return labels[type];
+}
+
+function formatFeatureCandidate(feature: ParsedFeature): { title: string; meta: string } {
+  const title =
+    feature.icao ??
+    feature.identifier ??
+    feature.name ??
+    feature.subtype ??
+    formatFeatureType(feature.type);
+  const details = [
+    formatFeatureType(feature.type),
+    feature.airspaceType,
+    feature.airspaceClass,
+    feature.lowerLimit && feature.upperLimit ? `${feature.lowerLimit} - ${feature.upperLimit}` : null,
+    feature.sourceLayer,
+  ].filter(Boolean);
+
+  return {
+    title,
+    meta: details.join(' · '),
+  };
 }
 
 function formatLayerName(layer: string): string {

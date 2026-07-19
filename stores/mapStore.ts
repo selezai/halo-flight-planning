@@ -24,6 +24,7 @@ interface MapState {
   
   // Selected feature
   selectedFeature: ParsedFeature | null;
+  selectedFeatureCandidates: ParsedFeature[];
   
   // Layer visibility
   visibleLayers: {
@@ -59,7 +60,7 @@ interface MapState {
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
   setViewport: (center: [number, number], zoom: number) => void;
-  setSelectedFeature: (feature: ParsedFeature | null) => void;
+  setSelectedFeature: (feature: ParsedFeature | null, candidates?: ParsedFeature[]) => void;
   toggleLayer: (layer: keyof MapState['visibleLayers']) => void;
   setLayerVisibility: (layer: keyof MapState['visibleLayers'], visible: boolean) => void;
   setSidebarOpen: (open: boolean) => void;
@@ -147,6 +148,7 @@ export const useMapStore = create<MapState>()(
       
       // No feature selected initially
       selectedFeature: null,
+      selectedFeatureCandidates: [],
       
       // All layers visible by default
       visibleLayers: DEFAULT_VISIBLE_LAYERS,
@@ -174,8 +176,11 @@ export const useMapStore = create<MapState>()(
       setZoom: (zoom) => set({ zoom }),
       setViewport: (center, zoom) => set({ center, zoom }),
       
-      setSelectedFeature: (feature) => set({ 
+      setSelectedFeature: (feature, candidates) => set({
         selectedFeature: feature,
+        selectedFeatureCandidates: feature
+          ? candidates?.length ? candidates : [feature]
+          : [],
         sidebarPanel: feature ? 'feature' : 'route',
         sidebarOpen: true,
       }),
@@ -199,6 +204,7 @@ export const useMapStore = create<MapState>()(
       
       clearSelection: () => set({ 
         selectedFeature: null,
+        selectedFeatureCandidates: [],
         sidebarPanel: 'route',
       }),
 
@@ -219,6 +225,7 @@ export const useMapStore = create<MapState>()(
           },
         ],
         selectedFeature: null,
+        selectedFeatureCandidates: [],
         sidebarPanel: 'route',
         sidebarOpen: true,
       })),
@@ -229,6 +236,7 @@ export const useMapStore = create<MapState>()(
           createUserWaypoint(coordinates, state.waypoints.length + 1),
         ],
         selectedFeature: null,
+        selectedFeatureCandidates: [],
         sidebarPanel: 'route',
         sidebarOpen: true,
       })),

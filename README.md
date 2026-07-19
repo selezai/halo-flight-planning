@@ -9,7 +9,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Interactive planning map with OpenAIP server-side proxy support.
 - Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
 - Authentic OpenAIP sprites for aviation icons, symbols, and patterned airspace overlays.
-- Click-to-detail inspection for OpenAIP airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
+- Click-to-detail inspection for OpenAIP airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields, including a switchable clicked-feature stack when icons and airspaces overlap.
 - Server-side OpenAIP Core route-corridor airspace review that compares crossed/nearby airspaces with selected cruise altitude and surfaces critical/caution/info alerts.
 - Rendered OpenAIP map airspace review remains available as a browser fallback while Core API review is checking or unavailable.
 - Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.

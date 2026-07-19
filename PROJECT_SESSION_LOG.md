@@ -92,6 +92,7 @@ Changes:
 - Restored OpenAIP aviation symbol layers and kept Mapbox/composite basemap symbol layers filtered out.
 - Added MapLibre token conversion for OpenAIP style values such as `{type}-medium` and `{icao_code}`.
 - Added feature click prioritization so point aviation features beat airspace border/decorative layers when stacked.
+- Added OpenAIP-style clicked-feature stack inspection so a click keeps the full deduped aviation feature stack and the sidebar can switch between overlapping icons, airspaces, obstacles, hotspots, hang-gliding sites, and RC airfields.
 - Expanded parsed feature support for airports, navaids, airspaces, reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
 - Added detail API proxies for reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
 - Expanded sidebar fields for vertical limits, activation flags, runway hints, navaid alignment, obstacle dimensions, RC airfield power types, source layer, and source ID.
@@ -101,6 +102,7 @@ Prevention guidelines:
 
 - Do not deploy empty sprite placeholders; `pnpm build:sprites` validates file sizes and sprite key count.
 - Do not strip all `symbol` layers; filter only incompatible basemap/terrain sources.
+- Do not discard overlapping click results. OpenAIP supplies data; Halo must preserve and rank the clicked feature stack so the pilot can inspect the intended aviation record.
 - Normalize OpenAIP snake_case tile properties at the parser boundary before displaying feature information.
 - Keep OpenAIP API keys server-side in route handlers/proxies only.
 - Convert legacy OpenAIP style `stops` carefully for MapLibre: tokenized text/icon strings, array-valued offsets, one-stop functions, and font-stack arrays each need specific handling.
@@ -109,7 +111,7 @@ Prevention guidelines:
 Local verification:
 
 - `pnpm build:sprites`: generated 128 OpenAIP sprite entries.
-- `pnpm test`: 15 tests passed.
+- `pnpm test`: 41 tests passed, including clicked-feature stack ordering/deduplication.
 - `pnpm typecheck`: passed.
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed and included all added OpenAIP detail routes.

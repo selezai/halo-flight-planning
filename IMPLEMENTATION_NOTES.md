@@ -73,6 +73,7 @@ Delivered:
 - Converted OpenAIP token strings such as `{type}-medium` and `{icao_code}` into MapLibre expressions.
 - Added a compatibility mapping for the current style's `airfield-15` RC-airfield icon reference to the available `rc_airfield` sprite.
 - Added click prioritization so airports, navaids, reporting points, obstacles, hang-gliding sites, hotspots, and RC airfields win over decorative airspace border layers when stacked.
+- Added OpenAIP-style clicked-feature stack inspection so a click that hits an airport/navaid plus overlapping airspaces keeps every aviation feature, dedupes repeated fill/border records, and lets the pilot switch the selected record in the sidebar.
 - Expanded feature parsing for snake_case vector-tile fields and camelCase Core API records.
 - Added Core API detail proxies for reporting points, obstacles, hotspots, hang-gliding sites, and RC airfields.
 - Expanded sidebar details for activation flags, vertical limits, runway hints, navaid alignment, obstacle height/top elevation, RC power types, source layer, and source ID.
@@ -80,7 +81,7 @@ Delivered:
 Verification:
 
 - `pnpm build:sprites`: generated 128 OpenAIP sprite entries.
-- `pnpm test`: 15 tests passed.
+- `pnpm test`: 41 tests passed, including clicked-feature stack ordering/deduplication.
 - `pnpm typecheck`: passed.
 - `pnpm lint`: no warnings or errors.
 - `pnpm build`: production build passed and included all added OpenAIP detail routes.
