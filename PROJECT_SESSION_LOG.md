@@ -125,3 +125,7 @@ Production deployment and verification:
 - Production API: `/api/openaip/sprites/openaip.json` returned 128 sprite keys.
 - Production API: `/api/openaip/tiles/8/147/147.pbf` returned HTTP 200 without stale `Content-Encoding`.
 - Production browser: no framework overlay, no degraded-map error, navaid click selected `LIV` with enriched details, and airspace click selected `JOHANNESBURG SOUTHWEST` with `FL110` to `FL195` limits.
+- GitHub PR branch pushed:
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+  - Commit: `464c5be`
+  - PR: https://github.com/selezai/halo-flight-planning/pull/1

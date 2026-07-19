@@ -176,4 +176,4 @@
 - [x] Verify in browser with MapLibre rendering, aviation symbols visible, no framework overlay, and click-to-detail on at least airspace plus one point feature.
 - [x] Deploy to Vercel production.
 - [x] Verify production style, sprites, tile endpoint, and browser click behavior.
-- [ ] Mirror changes into the GitHub PR branch and push.
+- [x] Mirror changes into the GitHub PR branch and push.
