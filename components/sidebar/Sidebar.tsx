@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import {
   AlertTriangle,
   ArrowDown,
@@ -127,7 +128,11 @@ const PANEL_META: Array<{ id: Panel; label: string; icon: typeof Plane }> = [
   { id: 'research', label: 'Research', icon: Info },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  accountSyncEnabled,
+}: {
+  accountSyncEnabled: boolean;
+}) {
   const {
     sidebarOpen,
     setSidebarOpen,
@@ -166,6 +171,8 @@ export default function Sidebar() {
           <X className="h-5 w-5" />
         </button>
       </div>
+
+      <AccountSyncPanel enabled={accountSyncEnabled} />
 
       {!selectedFeature && (
         <nav className="grid grid-cols-5 border-b border-slate-200">

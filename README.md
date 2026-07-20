@@ -1,6 +1,6 @@
 # Halo Flight Planning
 
-Browser-first flight planning for pilots. Built with Next.js 14, TypeScript, MapLibre GL, OpenAIP proxies, AviationWeather.gov weather, Zustand, Vitest, and Tailwind CSS.
+Browser-first flight planning for pilots. Built with Next.js 15, TypeScript, MapLibre GL, OpenAIP proxies, AviationWeather.gov weather, Zustand, Clerk-ready account sync, Neon-ready Postgres persistence, Vitest, and Tailwind CSS.
 
 Live production deployment: https://halo-flight-planning.vercel.app
 
@@ -28,6 +28,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Data freshness badges for route, weather, airspace, NOTAM, and W&B states so stale or unknown data is never presented as clear.
 - Briefing generation with pilot digest, risk review, W&B, weather, fuel, airspace, NOTAM status/results, print, text export, clipboard copy, and one-click backup/print pack download.
 - Research panel documenting competitor pain points and Halo's product response.
+- Optional Clerk + Neon account sync path with local-only fallback, authenticated server-side snapshot APIs, and browser-to-account save/load/merge controls.
 - Unit tests for navigation and weather logic.
 
 ## Quick Start
@@ -46,6 +47,10 @@ The app works as a local planner without external keys, but live OpenAIP aviatio
 ```env
 OPENAIP_API_KEY=your_openaip_api_key_here
 NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+POSTGRES_URL=
+DATABASE_URL=
 NOTAM_PROVIDER=south-africa-manual
 SOUTH_AFRICA_NOTAM_SOURCE_URL=https://file2fly.atns.co.za/aes/login.jsp
 SOUTH_AFRICA_NOTAM_API_URL=
@@ -60,6 +65,13 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`, a public NOTAM API key, or any public FAA credential. Aviation and NOTAM credentials must stay server-side.
 
 `NOTAM_PROVIDER=south-africa-manual` is the safe production default for South Africa launch. Set `NOTAM_PROVIDER=south-africa-live` only after SACAA/ATNS or an authorized provider supplies a legitimate JSON API endpoint and key. Halo must not scrape File2Fly or treat SACAA's public daily summary as flight-preparation data.
+
+Account sync uses Clerk for authentication and Neon Postgres for storage. If `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `POSTGRES_URL`/`DATABASE_URL` are absent, Halo remains fully usable in local-only mode. After provisioning Neon, run:
+
+```bash
+vercel env pull .env.local --yes
+pnpm db:migrate
+```
 
 ## OpenAIP Sprites
 
@@ -80,6 +92,7 @@ pnpm start      # Start production server after build
 pnpm lint       # Run Next.js ESLint checks
 pnpm typecheck  # Run TypeScript checks
 pnpm test       # Run Vitest unit tests
+pnpm db:migrate # Apply the Neon account-sync migration after env vars are present
 pnpm test:e2e   # Run Playwright integration tests against next build && next start
 ```
 
@@ -87,14 +100,20 @@ pnpm test:e2e   # Run Playwright integration tests against next build && next st
 
 ```text
 app/
+  api/account/      Authenticated account snapshot sync route
   api/openaip/      OpenAIP style, tile, sprite, and detail proxies
   api/weather/      METAR and TAF proxies
 components/
+  auth/             Clerk provider and account sync controls
   map/              MapLibre map and Halo route overlays
   planning/         Route status surface
   sidebar/          Route, weather, aircraft, briefing, and research panels
+db/                 SQL migrations for account sync
 e2e/                Playwright integration tests against a production server
 lib/
+  account/          Planner snapshot validation, merge, and persistence helpers
+  auth/             Clerk auth guard helpers
+  db/               Lazy Neon/Drizzle database client and schema
   openaip/          OpenAIP style conversion and feature parsing
   planning/         Navigation math, aircraft, weather, briefing, starter data
   research/         Competitor pain-point mapping
@@ -106,7 +125,7 @@ types/              OpenAIP and planning TypeScript models
 ## Operational Notes
 
 - Production is deployed on Vercel. `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` are configured for the production deployment.
-- Supabase auth/account sync is intentionally deferred until the live project schema and RLS policies are verified.
+- Supabase auth/account sync has been replaced by the current Clerk + Neon path. Vercel Marketplace approval/account setup is required before production account sync can be enabled.
 - Live NOTAM data is not faked. Halo defaults to South Africa official manual briefing mode, prepares route locations, and links ATNS File2Fly. The live South Africa adapter is present behind `NOTAM_PROVIDER=south-africa-live` but requires a real authorized API URL and key. FAA remains available only behind `NOTAM_PROVIDER=faa` for future international rollout.
 - Weight-and-balance remains aircraft-registration-specific: presets provide structure, but pilots must enter verified POH/AFM empty weight, arms, max weights, and envelope points before using the CG status operationally.
 

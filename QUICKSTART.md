@@ -38,6 +38,13 @@ NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
+Account sync is optional. After Clerk and Neon are approved/provisioned through Vercel Marketplace, pull env vars and migrate:
+
+```bash
+vercel env pull .env.local --yes
+pnpm db:migrate
+```
+
 ### 4. Build Sprites (One-Time Setup)
 
 Run the automated sprite builder:
@@ -86,7 +93,7 @@ pnpm dev -- -p 3001
 ## Next Steps
 
 - Explore the map and click on airports/navaids
-- Check out the [PRD](../halo-flight-planning-prd.md) for planned features
+- Use the Account Sync panel after Clerk + Neon are configured
 - Read [SETUP.md](./SETUP.md) for detailed documentation
 
 ## Project Commands
@@ -96,6 +103,8 @@ pnpm dev          # Start development server
 pnpm build        # Build for production
 pnpm start        # Start production server
 pnpm lint         # Run ESLint
+pnpm test         # Run unit tests
+pnpm db:migrate   # Apply Neon account-sync migration
 ```
 
 ## Need Help?

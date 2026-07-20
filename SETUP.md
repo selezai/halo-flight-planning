@@ -15,7 +15,7 @@ Before you begin, ensure you have:
 ## Step 1: Install Dependencies
 
 ```bash
-cd halo-scaffold
+cd /Users/selezmassozi/CascadeProjects/halo/halo-flight-planning-github-sync
 pnpm install
 ```
 
@@ -66,6 +66,31 @@ Do not use browser automation, scraping, or public-summary parsing for live oper
 
 Set `NOTAM_PROVIDER=faa` with these credentials only when FAA coverage is desired. Without them Halo will still run using the South Africa official manual briefing mode.
 
+### Account Sync: Clerk + Neon (Optional until launch)
+
+Halo runs without accounts in local-only mode. For cross-device sync, provision both integrations through Vercel Marketplace:
+
+```bash
+vercel integration add neon
+vercel integration add clerk
+vercel env pull .env.local --yes
+pnpm db:migrate
+```
+
+The Vercel CLI may open the Dashboard first so you can accept Marketplace terms and connect or create the provider accounts. After approval, rerun the same commands.
+
+Expected env vars:
+
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+POSTGRES_URL=
+# DATABASE_URL is also supported.
+DATABASE_URL=
+```
+
+Account sync writes only through authenticated server API routes. The browser never receives a database connection string.
+
 ## Step 3: Configure Environment Variables
 
 Open `.env.local` and add your API keys:
@@ -76,6 +101,12 @@ OPENAIP_API_KEY=your_actual_openaip_key_here
 
 # MapTiler (for glyphs/fonts)
 NEXT_PUBLIC_MAPTILER_KEY=your_actual_maptiler_key_here
+
+# Account sync (optional until Clerk + Neon are provisioned)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+POSTGRES_URL=
+DATABASE_URL=
 
 # NOTAM provider
 NOTAM_PROVIDER=south-africa-manual
@@ -126,7 +157,7 @@ License note: OpenAIP's current public map resources are CC BY-NC-SA 4.0. See `p
 ## Step 5: Run Development Server
 
 ```bash
-cd /Users/selezmassozi/CascadeProjects/halo/halo-scaffold
+cd /Users/selezmassozi/CascadeProjects/halo/halo-flight-planning-github-sync
 pnpm dev
 ```
 

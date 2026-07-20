@@ -117,6 +117,7 @@ interface MapState {
   addEmergencyLandingSite: (site: Omit<EmergencyLandingSite, 'id'>) => void;
   updateEmergencyLandingSite: (id: string, updates: Partial<EmergencyLandingSite>) => void;
   removeEmergencyLandingSite: (id: string) => void;
+  restorePlannerSnapshotState: (snapshot: Record<string, unknown>) => void;
 }
 
 const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
@@ -171,6 +172,63 @@ function chooseActiveAirspaceReview(
   }
 
   return coreReview.status === 'unavailable' ? coreReview : renderedReview;
+}
+
+function mergePersistedMapState(
+  persistedState: Partial<MapState> | undefined,
+  current: MapState
+): MapState {
+  return {
+    ...current,
+    ...persistedState,
+    visibleLayers: {
+      ...DEFAULT_VISIBLE_LAYERS,
+      ...persistedState?.visibleLayers,
+    },
+    weightBalanceLoading: {
+      ...DEFAULT_WEIGHT_BALANCE_LOADING,
+      ...persistedState?.weightBalanceLoading,
+      stationWeights: {
+        ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
+        ...persistedState?.weightBalanceLoading?.stationWeights,
+      },
+    },
+    trainingWind: {
+      ...DEFAULT_TRAINING_WIND,
+      ...persistedState?.trainingWind,
+    },
+    filingChecklist: {
+      ...DEFAULT_FILING_CHECKLIST,
+      ...persistedState?.filingChecklist,
+    },
+    notamBriefingRecord: {
+      ...DEFAULT_NOTAM_BRIEFING_RECORD,
+      ...(persistedState?.filingChecklist?.notamPibObtained && !persistedState?.notamBriefingRecord
+        ? {
+            status: 'completed' as const,
+            method: 'Legacy Halo checklist',
+            notes: 'Imported from previous “Official NOTAM PIB obtained” checklist state.',
+          }
+        : {}),
+      ...persistedState?.notamBriefingRecord,
+    },
+    flightPlanFilingRecord: {
+      ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+      ...(persistedState?.filingChecklist?.filedViaOfficialSource && !persistedState?.flightPlanFilingRecord
+        ? {
+            status: 'filed-manually' as const,
+            method: 'Legacy Halo checklist',
+            notes: 'Imported from previous “Filed via official source” checklist state.',
+          }
+        : {}),
+      ...persistedState?.flightPlanFilingRecord,
+    },
+    closeReminder: {
+      ...DEFAULT_CLOSE_REMINDER,
+      ...persistedState?.closeReminder,
+    },
+    emergencyLandingSites: persistedState?.emergencyLandingSites ?? [],
+  };
 }
 
 export const useMapStore = create<MapState>()(
@@ -430,6 +488,10 @@ export const useMapStore = create<MapState>()(
       removeEmergencyLandingSite: (id) => set((state) => ({
         emergencyLandingSites: state.emergencyLandingSites.filter((site) => site.id !== id),
       })),
+
+      restorePlannerSnapshotState: (snapshot) => set((state) =>
+        mergePersistedMapState(snapshot as Partial<MapState>, state)
+      ),
     }),
     {
       name: 'halo-map-store',
@@ -455,57 +517,7 @@ export const useMapStore = create<MapState>()(
       merge: (persisted, current) => {
         const persistedState = persisted as Partial<MapState> | undefined;
 
-        return {
-          ...current,
-          ...persistedState,
-          visibleLayers: {
-            ...DEFAULT_VISIBLE_LAYERS,
-            ...persistedState?.visibleLayers,
-          },
-          weightBalanceLoading: {
-            ...DEFAULT_WEIGHT_BALANCE_LOADING,
-            ...persistedState?.weightBalanceLoading,
-            stationWeights: {
-              ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
-              ...persistedState?.weightBalanceLoading?.stationWeights,
-            },
-          },
-          trainingWind: {
-            ...DEFAULT_TRAINING_WIND,
-            ...persistedState?.trainingWind,
-          },
-          filingChecklist: {
-            ...DEFAULT_FILING_CHECKLIST,
-            ...persistedState?.filingChecklist,
-          },
-          notamBriefingRecord: {
-            ...DEFAULT_NOTAM_BRIEFING_RECORD,
-            ...(persistedState?.filingChecklist?.notamPibObtained && !persistedState?.notamBriefingRecord
-              ? {
-                  status: 'completed' as const,
-                  method: 'Legacy Halo checklist',
-                  notes: 'Imported from previous “Official NOTAM PIB obtained” checklist state.',
-                }
-              : {}),
-            ...persistedState?.notamBriefingRecord,
-          },
-          flightPlanFilingRecord: {
-            ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
-            ...(persistedState?.filingChecklist?.filedViaOfficialSource && !persistedState?.flightPlanFilingRecord
-              ? {
-                  status: 'filed-manually' as const,
-                  method: 'Legacy Halo checklist',
-                  notes: 'Imported from previous “Filed via official source” checklist state.',
-                }
-              : {}),
-            ...persistedState?.flightPlanFilingRecord,
-          },
-          closeReminder: {
-            ...DEFAULT_CLOSE_REMINDER,
-            ...persistedState?.closeReminder,
-          },
-          emergencyLandingSites: persistedState?.emergencyLandingSites ?? [],
-        };
+        return mergePersistedMapState(persistedState, current);
       },
     }
   )

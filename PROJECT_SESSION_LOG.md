@@ -740,3 +740,62 @@ Remaining external blockers:
 - Live SACAA/ATNS NOTAM data remains deferred until an authorized feed/API exists.
 - Automatic File2Fly/SACAA/ATNS filing remains deferred until authorized integration access exists.
 - Paid/commercial launch remains blocked until OpenAIP grants written permission for authentic sprite/icon usage or the icon set is replaced.
+
+## 2026-07-20 Clerk + Neon Account Sync
+
+Objective: replace the deferred Supabase account-sync path with the best fit for Halo: Clerk authentication plus Neon Postgres persistence.
+
+Decision:
+
+- Use Clerk for auth because it has a Vercel Marketplace integration and drop-in Next.js account UI.
+- Use Neon Postgres because Halo data is relational and Postgres remains the right long-term storage model.
+- Use one owner-scoped latest planner snapshot for this phase instead of normalizing routes/aircraft immediately. This preserves the full current Zustand planner shape while the product model continues to evolve.
+- Keep local-only mode as the default fallback when Clerk/Neon env vars are not present.
+- Do not expose database credentials to the browser. Sync mutations go through authenticated server API routes only.
+
+Vercel provisioning status:
+
+- `vercel integration add neon` and `vercel integration add clerk` both reached Vercel Marketplace terms/account approval and opened the Dashboard.
+- `vercel integration ls` still reports no resources, so production account sync remains pending until those external approvals are completed.
+- Current Vercel env still has aviation/runtime variables only; Clerk/Neon env vars are not present yet.
+
+Changes:
+
+- Added `@clerk/nextjs`, `@neondatabase/serverless`, `drizzle-orm`, `drizzle-kit`, and `zod`.
+- Added a conditional Clerk provider so the app builds and runs without Clerk env vars.
+- Added account sync UI in the sidebar with signed-out, signed-in, save, refresh, load, merge, and local-only states.
+- Added `app/api/account/snapshot` with authenticated GET/PUT handlers.
+- Added server-side auth guard for Clerk and lazy Neon/Drizzle database initialization.
+- Added `halo_planner_snapshots` migration SQL and `pnpm db:migrate`.
+- Added snapshot validation, size limiting, extraction, and merge helpers.
+- Added a Zustand restore action that reuses existing persisted-state defaults and legacy migration behavior.
+- Updated README, SETUP, QUICKSTART, TODO, and env template for the Clerk + Neon path.
+
+Focused verification:
+
+- `pnpm test -- tests/account/plannerSnapshot.test.ts tests/account/snapshotApi.test.ts`: passed, 22 files / 95 tests.
+- `pnpm typecheck`: initially failed because the route test passed plain `Request` to a `NextRequest` route handler; fixed by constructing `NextRequest` in the test.
+- `pnpm typecheck`: passed after the test fix.
+- Production smoke initially showed `/api/account/snapshot` returning HTTP 500 while Clerk/Neon were not configured.
+- Root cause: production-only Clerk auth initialization can throw before account sync is fully configured; the original guard only handled the obvious missing-env path.
+- Fix: hardened `requireAccountUserId()` to trim env values and convert Clerk import/session failures into a safe HTTP 503 setup/auth-unavailable response.
+- Added `tests/auth/accountAuth.test.ts`.
+
+Final verification:
+
+- `pnpm test`: passed, 23 files / 97 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/browser E2E command was run.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-8tqzf4e6i-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_nAXJ5eJuSRQJGN7X8TiBCNfRSd1E`
+- Production API: `/api/openaip/style` returned HTTP 200 with style version 8 and 96 layers.
+- Production API: `/api/notams/route` for FAOR → FALA returned HTTP 200 with `source=south-africa-official` and `status=manual-required`.
+- Production API: `/api/account/snapshot` returned the expected HTTP 503 setup/auth-unavailable response while Clerk/Neon are not configured.
+- Vercel runtime logs showed structured account and NOTAM API start/complete entries; no unhandled `api_request_failed` entry appeared after the auth-guard fix.

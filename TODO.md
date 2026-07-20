@@ -40,7 +40,8 @@
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
 - [ ] Configure production `SOUTH_AFRICA_NOTAM_API_URL` and `SOUTH_AFRICA_NOTAM_API_KEY` after SACAA/ATNS or an authorized provider grants live API access.
 - [ ] Configure production FAA NOTAM API credentials only when international/FAA rollout starts.
-- [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
+- [x] Add Clerk + Neon account-sync implementation with local-only fallback, authenticated server-side snapshot API, and save/load/merge UI.
+- [ ] Complete Vercel Marketplace approval/provisioning for Clerk and Neon, pull env vars, run `pnpm db:migrate`, deploy, and smoke-test account sync.
 - [x] Add aircraft-specific weight-and-balance envelope entry before exposing W&B status as operational output.
 - [x] Add Vercel Analytics, Speed Insights, API structured logging, and app/global error boundaries.
 - [ ] Replace OpenAIP CC BY-NC-SA sprites or obtain OpenAIP permission before commercializing the app.
