@@ -779,6 +779,8 @@ Focused verification:
 - Production smoke initially showed `/api/account/snapshot` returning HTTP 500 while Clerk/Neon were not configured.
 - Root cause: production-only Clerk auth initialization can throw before account sync is fully configured; the original guard only handled the obvious missing-env path.
 - Fix: hardened `requireAccountUserId()` to trim env values and convert Clerk import/session failures into a safe HTTP 503 setup/auth-unavailable response.
+- Follow-up root cause: once Clerk env vars appeared, Clerk auth still needed request context from `clerkMiddleware()`. Without middleware, signed-in account sync would not be reliable.
+- Fix: added conditional `middleware.ts` that runs Clerk middleware only when Clerk env vars are configured and otherwise passes through for local-only environments.
 - Added `tests/auth/accountAuth.test.ts`.
 
 Final verification:
@@ -787,15 +789,22 @@ Final verification:
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
+- Re-ran the full gate after adding `middleware.ts`; all checks still passed.
 - No Playwright/browser E2E command was run.
 
 Production deployment:
 
 - Vercel production deployment inspected as Ready:
-  - Deployment URL: https://halo-flight-planning-8tqzf4e6i-pilotmerch-gmailcoms-projects.vercel.app
+  - Deployment URL: https://halo-flight-planning-dd3rrxayf-pilotmerch-gmailcoms-projects.vercel.app
   - Production alias: https://halo-flight-planning.vercel.app
-  - Deployment ID: `dpl_nAXJ5eJuSRQJGN7X8TiBCNfRSd1E`
+  - Deployment ID: `dpl_CBJQbZfbEKooLCMbCY42EnNzE37k`
 - Production API: `/api/openaip/style` returned HTTP 200 with style version 8 and 96 layers.
 - Production API: `/api/notams/route` for FAOR → FALA returned HTTP 200 with `source=south-africa-official` and `status=manual-required`.
-- Production API: `/api/account/snapshot` returned the expected HTTP 503 setup/auth-unavailable response while Clerk/Neon are not configured.
+- Production API: `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming Clerk middleware/auth context is active.
 - Vercel runtime logs showed structured account and NOTAM API start/complete entries; no unhandled `api_request_failed` entry appeared after the auth-guard fix.
+
+Remaining account-sync blocker:
+
+- Clerk is installed and production/preview env vars are present.
+- Neon still requires Vercel Dashboard web UI provisioning; no Neon resource or `POSTGRES_URL`/`DATABASE_URL` env var is present yet.
+- After Neon provisioning, run `vercel env pull .env.local --yes`, `pnpm db:migrate`, redeploy, and smoke-test signed-in save/load/merge.
