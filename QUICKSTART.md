@@ -45,6 +45,8 @@ vercel env pull .env.local --yes
 pnpm db:migrate
 ```
 
+If Vercel pulls empty placeholders for sensitive Neon values, local account sync needs the real values added to `.env.local` from Neon. Deployed Vercel functions still receive the real integration values and create the account-sync table on the first authenticated save if needed.
+
 ### 4. Build Sprites (One-Time Setup)
 
 Run the automated sprite builder:

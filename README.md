@@ -73,6 +73,8 @@ vercel env pull .env.local --yes
 pnpm db:migrate
 ```
 
+If Vercel Marketplace marks Neon values as sensitive, `vercel env pull` may write empty local placeholders. In that case local account sync needs connection values copied from Neon into `.env.local` by the developer, but Vercel deployments still receive the real runtime env values. The production app creates the account-sync table idempotently on the first authenticated save if the migration has not already run.
+
 ## OpenAIP Sprites
 
 The committed sprite files are generated from OpenAIP's public map resources and validated as part of the map build workflow. To regenerate them:

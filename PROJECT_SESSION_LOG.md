@@ -803,8 +803,11 @@ Production deployment:
 - Production API: `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming Clerk middleware/auth context is active.
 - Vercel runtime logs showed structured account and NOTAM API start/complete entries; no unhandled `api_request_failed` entry appeared after the auth-guard fix.
 
-Remaining account-sync blocker:
+Neon activation follow-up:
 
-- Clerk is installed and production/preview env vars are present.
-- Neon still requires Vercel Dashboard web UI provisioning; no Neon resource or `POSTGRES_URL`/`DATABASE_URL` env var is present yet.
-- After Neon provisioning, run `vercel env pull .env.local --yes`, `pnpm db:migrate`, redeploy, and smoke-test signed-in save/load/merge.
+- After Neon provisioning, `vercel integration ls` reports both Marketplace resources as available for `halo-flight-planning`.
+- `vercel env ls` reports Neon database variables and Clerk variables for Preview and Production.
+- `vercel env pull .env.local --environment=production --yes` and `vercel pull --environment=production --yes` both wrote sensitive Marketplace values as empty local placeholders in this CLI environment.
+- Root cause: the deployed Vercel runtime can receive the real integration secrets, but this local CLI session cannot read those sensitive values back for `pnpm db:migrate`.
+- Fix: treat empty quoted env placeholders as unconfigured locally, keep GET read-only when the table is absent, and idempotently ensure the `halo_planner_snapshots` table on authenticated PUT before saving the owner-scoped planner snapshot.
+- This keeps local-only mode safe when secrets are unavailable locally while allowing production account sync to initialize through the real runtime Neon env values.

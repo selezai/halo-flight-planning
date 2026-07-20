@@ -4,17 +4,26 @@ import {
   type PlannerSnapshotPayload,
   type StoredPlannerSnapshot,
 } from '@/lib/account/plannerSnapshot';
-import { getDb, isDatabaseConfigured } from '@/lib/db/client';
+import { getDb, getSql, isDatabaseConfigured } from '@/lib/db/client';
 import { plannerSnapshots } from '@/lib/db/schema';
 
 export { isDatabaseConfigured as isAccountDatabaseConfigured };
 
 export async function getAccountPlannerSnapshot(userId: string): Promise<StoredPlannerSnapshot | null> {
-  const [row] = await getDb()
-    .select()
-    .from(plannerSnapshots)
-    .where(eq(plannerSnapshots.userId, userId))
-    .limit(1);
+  let row;
+  try {
+    [row] = await getDb()
+      .select()
+      .from(plannerSnapshots)
+      .where(eq(plannerSnapshots.userId, userId))
+      .limit(1);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!row) return null;
 
@@ -32,6 +41,8 @@ export async function upsertAccountPlannerSnapshot(
 ): Promise<StoredPlannerSnapshot> {
   const parsedSnapshot = parsePlannerSnapshotPayload(snapshot);
   const now = new Date();
+
+  await ensureAccountSnapshotSchema();
 
   const [row] = await getDb()
     .insert(plannerSnapshots)
@@ -57,4 +68,37 @@ export async function upsertAccountPlannerSnapshot(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export async function ensureAccountSnapshotSchema(): Promise<void> {
+  const sql = getSql();
+
+  await sql.query(`
+    create table if not exists halo_planner_snapshots (
+      user_id text primary key,
+      snapshot jsonb not null,
+      version integer not null default 1,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+
+  await sql.query(`
+    create index if not exists halo_planner_snapshots_updated_at_idx
+      on halo_planner_snapshots (updated_at desc)
+  `);
+
+  await sql.query(`
+    comment on table halo_planner_snapshots is
+      'Latest owner-scoped Halo planner snapshot for Clerk-authenticated account sync.'
+  `);
+}
+
+export function isMissingRelationError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === '42P01'
+  );
 }

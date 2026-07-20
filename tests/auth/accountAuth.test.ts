@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isClerkConfigured, requireAccountUserId } from '@/lib/auth/accountAuth';
+import {
+  getConfiguredEnvValue,
+  isClerkConfigured,
+  isPublicClerkConfigured,
+  requireAccountUserId,
+} from '@/lib/auth/accountAuth';
 
 const originalPublicKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const originalSecretKey = process.env.CLERK_SECRET_KEY;
@@ -18,6 +23,21 @@ describe('account auth guard', () => {
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_example';
     process.env.CLERK_SECRET_KEY = '';
 
+    expect(isClerkConfigured()).toBe(false);
+  });
+
+  it('treats empty quoted Clerk placeholders as unconfigured', () => {
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = '""';
+    process.env.CLERK_SECRET_KEY = 'sk_test_example';
+
+    expect(getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)).toBeUndefined();
+    expect(isPublicClerkConfigured()).toBe(false);
+    expect(isClerkConfigured()).toBe(false);
+
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_example';
+    process.env.CLERK_SECRET_KEY = "''";
+
+    expect(isPublicClerkConfigured()).toBe(true);
     expect(isClerkConfigured()).toBe(false);
   });
 

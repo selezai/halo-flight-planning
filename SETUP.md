@@ -79,6 +79,8 @@ pnpm db:migrate
 
 The Vercel CLI may open the Dashboard first so you can accept Marketplace terms and connect or create the provider accounts. After approval, rerun the same commands.
 
+If pulled Marketplace secrets appear locally as empty placeholders, do not print or commit the real values. For local account-sync testing, copy the connection values directly from the Neon dashboard into `.env.local`. On Vercel, the deployment runtime receives the real integration env values, and Halo will idempotently create the account-sync table during the first authenticated save if the migration has not already run.
+
 Expected env vars:
 
 ```env

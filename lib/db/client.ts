@@ -3,12 +3,14 @@ import { drizzle, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import * as schema from '@/lib/db/schema';
 
 type HaloDatabase = NeonHttpDatabase<typeof schema>;
+type NeonSql = ReturnType<typeof neon>;
 
 let cachedDb: HaloDatabase | null = null;
+let cachedSql: NeonSql | null = null;
 let cachedUrl: string | null = null;
 
 export function getDatabaseUrl(): string | undefined {
-  return process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  return normalizeDatabaseUrl(process.env.DATABASE_URL) || normalizeDatabaseUrl(process.env.POSTGRES_URL);
 }
 
 export function isDatabaseConfigured(): boolean {
@@ -23,9 +25,32 @@ export function getDb(): HaloDatabase {
   }
 
   if (!cachedDb || cachedUrl !== databaseUrl) {
-    cachedDb = drizzle(neon(databaseUrl), { schema });
+    cachedSql = neon(databaseUrl);
+    cachedDb = drizzle(cachedSql, { schema });
     cachedUrl = databaseUrl;
   }
 
   return cachedDb;
+}
+
+export function getSql(): NeonSql {
+  const databaseUrl = getDatabaseUrl();
+
+  if (!databaseUrl) {
+    throw new Error('Missing DATABASE_URL or POSTGRES_URL.');
+  }
+
+  if (!cachedSql || cachedUrl !== databaseUrl) {
+    cachedSql = neon(databaseUrl);
+    cachedDb = drizzle(cachedSql, { schema });
+    cachedUrl = databaseUrl;
+  }
+
+  return cachedSql;
+}
+
+function normalizeDatabaseUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '""' || trimmed === "''") return undefined;
+  return trimmed;
 }

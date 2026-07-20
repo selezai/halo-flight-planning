@@ -1,11 +1,12 @@
 import { ClerkProvider } from '@clerk/nextjs';
+import { getConfiguredEnvValue } from '@/lib/auth/accountAuth';
 
 export default function HaloClerkProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const publishableKey = getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
   if (!publishableKey) {
     return <>{children}</>;

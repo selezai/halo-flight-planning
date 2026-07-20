@@ -11,10 +11,20 @@ export interface AccountAuthFailure {
 
 export type AccountAuthResult = AccountAuthSuccess | AccountAuthFailure;
 
+export function getConfiguredEnvValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '""' || trimmed === "''") return undefined;
+  return trimmed;
+}
+
+export function isPublicClerkConfigured(): boolean {
+  return Boolean(getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY));
+}
+
 export function isClerkConfigured(): boolean {
   return Boolean(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() &&
-    process.env.CLERK_SECRET_KEY?.trim()
+    getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
+    getConfiguredEnvValue(process.env.CLERK_SECRET_KEY)
   );
 }
 
