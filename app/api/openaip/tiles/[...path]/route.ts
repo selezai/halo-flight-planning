@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeOpenAipTilePath } from '@/lib/openaip/tilePath';
-import { withApiLogging } from '@/lib/observability/apiLogger';
+import { withApiLogging } from '@/lib/observability/api';
 
 const OPENAIP_TILES_BASE = 'https://api.tiles.openaip.net/api/data/openaip';
 const OPENAIP_API_KEY = process.env.OPENAIP_API_KEY;
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+export const GET = withApiLogging('/api/openaip/tiles/[...path]', async (
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  return withApiLogging(request, '/api/openaip/tiles/[...path]', async () => handleGet(await params));
-}
-
-async function handleGet(params: { path: string[] }) {
+  context: { params: Promise<{ path: string[] }> }
+) => {
   if (!OPENAIP_API_KEY) {
     return NextResponse.json(
       { error: 'OpenAIP API key not configured' },
@@ -23,6 +19,7 @@ async function handleGet(params: { path: string[] }) {
   }
 
   try {
+    const params = await context.params;
     const tilePath = normalizeOpenAipTilePath(params.path);
     if (!tilePath) {
       return NextResponse.json(
@@ -71,4 +68,4 @@ async function handleGet(params: { path: string[] }) {
       { status: 500 }
     );
   }
-}
+});

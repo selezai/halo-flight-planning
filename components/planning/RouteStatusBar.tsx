@@ -9,14 +9,26 @@ import {
   formatDuration,
   formatFuel,
 } from '@/lib/planning/navigation';
+import { assessDataFreshness, FRESHNESS_THRESHOLDS_MINUTES, formatFreshnessStatus } from '@/lib/planning/freshness';
+import type { DataFreshness } from '@/types/planning';
 
 export default function RouteStatusBar() {
-  const { waypoints, activeAircraft, cruiseAltitudeFt, routeAirspaceReview } = useMapStore();
+  const { waypoints, activeAircraft, cruiseAltitudeFt, routeAirspaceReview, routeNotamReview } = useMapStore();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const airspaceSummary = useMemo(
     () => summarizeAirspaceReview(routeAirspaceReview.alerts, routeAirspaceReview.status),
     [routeAirspaceReview.alerts, routeAirspaceReview.status]
   );
+  const airspaceFreshness = useMemo(() => assessDataFreshness({
+    source: 'Airspace',
+    updatedAt: routeAirspaceReview.updatedAt,
+    maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
+  }), [routeAirspaceReview.updatedAt]);
+  const notamFreshness = useMemo(() => assessDataFreshness({
+    source: 'NOTAM',
+    updatedAt: routeNotamReview.updatedAt,
+    maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.notam,
+  }), [routeNotamReview.updatedAt]);
   const statusTone =
     route.summary.fuelStatus === 'critical'
       ? 'text-rose-700'
@@ -52,12 +64,29 @@ export default function RouteStatusBar() {
               <AlertTriangle className="h-3.5 w-3.5" />
               {airspaceSummary.label} @ {Math.round(cruiseAltitudeFt)} ft
             </span>
+            <FreshnessChip freshness={airspaceFreshness} />
+            <FreshnessChip freshness={notamFreshness} />
           </>
         )}
         <Divider />
         <span>{activeAircraft.registration} {activeAircraft.type}</span>
       </div>
     </div>
+  );
+}
+
+function FreshnessChip({ freshness }: { freshness: DataFreshness }) {
+  const tone =
+    freshness.status === 'current'
+      ? 'text-emerald-700'
+      : freshness.status === 'stale'
+        ? 'text-amber-700'
+        : 'text-slate-600';
+
+  return (
+    <span className={`font-semibold ${tone}`}>
+      {freshness.source} {formatFreshnessStatus(freshness.status).toLowerCase()}
+    </span>
   );
 }
 

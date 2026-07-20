@@ -11,9 +11,11 @@ import {
 import { parseFeature } from '@/lib/openaip/featureParser';
 import { getClickableLayers } from '@/lib/openaip/styleConverter';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
-import { formatCoordinates } from '@/lib/planning/navigation';
+import { calculateGlideRadiusNm } from '@/lib/planning/emergencyPlanning';
+import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/lib/planning/navigation';
+import { chooseSnapWaypoint, getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import type { ParsedFeature } from '@/types/openaip';
-import type { RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
+import type { Coordinates, RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
 
 interface MapProps {
   className?: string;
@@ -45,6 +47,9 @@ export default function Map({ className = '' }: MapProps) {
   const map = useRef<maplibregl.Map | null>(null);
   const enrichmentRequestId = useRef(0);
   const missingSpriteIds = useRef<Set<string>>(new Set());
+  const draggingWaypointId = useRef<string | null>(null);
+  const rubberBandHandlersAttached = useRef(false);
+  const suppressNextMapClick = useRef(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +63,9 @@ export default function Map({ className = '' }: MapProps) {
     selectedFeatureCandidates,
     visibleLayers,
     waypoints,
+    activeAircraft,
     cruiseAltitudeFt,
+    emergencyLandingSites,
     planningMode,
     addUserWaypoint,
     setRenderedRouteAirspaceReview,
@@ -85,6 +92,7 @@ export default function Map({ className = '' }: MapProps) {
       features: waypoints.map((waypoint, index) => ({
         type: 'Feature',
         properties: {
+          id: waypoint.id,
           index: index + 1,
           title: waypoint.ident ?? waypoint.name,
         },
@@ -95,6 +103,48 @@ export default function Map({ className = '' }: MapProps) {
       })),
     } as any);
   }, [mapLoaded, waypoints]);
+
+  const updateEmergencyOverlay = useCallback(() => {
+    if (!map.current || !mapLoaded) return;
+
+    ensureEmergencyLayers(map.current);
+    const ringsSource = map.current.getSource('halo-glide-rings') as maplibregl.GeoJSONSource | undefined;
+    const sitesSource = map.current.getSource('halo-emergency-sites') as maplibregl.GeoJSONSource | undefined;
+    const glideRadiusNm = calculateGlideRadiusNm(cruiseAltitudeFt, activeAircraft.glideRatio ?? 9);
+
+    ringsSource?.setData({
+      type: 'FeatureCollection',
+      features: glideRadiusNm > 0
+        ? waypoints.map((waypoint, index) => ({
+          type: 'Feature',
+          properties: {
+            title: waypoint.ident ?? waypoint.name,
+            index: index + 1,
+            radiusNm: glideRadiusNm,
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [buildCircleCoordinates(waypoint.coordinates, glideRadiusNm)],
+          },
+        }))
+        : [],
+    } as any);
+
+    sitesSource?.setData({
+      type: 'FeatureCollection',
+      features: emergencyLandingSites.map((site) => ({
+        type: 'Feature',
+        properties: {
+          title: site.name,
+          suitability: site.suitability,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: site.coordinates,
+        },
+      })),
+    } as any);
+  }, [activeAircraft.glideRatio, cruiseAltitudeFt, emergencyLandingSites, mapLoaded, waypoints]);
 
   const updateRouteAirspaceReview = useCallback(() => {
     if (waypoints.length < 2) {
@@ -124,7 +174,7 @@ export default function Map({ className = '' }: MapProps) {
     const mapInstance = map.current;
     const airspaceLayers = getVisibleAirspaceLayerIds(mapInstance);
     const allSamples = sampleRouteScreenPoints(mapInstance, waypoints);
-    const visibleSamples = allSamples.filter((point) => isPointInsideMapCanvas(mapInstance, point));
+    const visibleSamples = allSamples.filter((sample) => isPointInsideMapCanvas(mapInstance, sample.screenPoint));
 
     if (airspaceLayers.length === 0) {
       setRenderedRouteAirspaceReview(createRouteAirspaceReview({
@@ -146,8 +196,8 @@ export default function Map({ className = '' }: MapProps) {
 
     const alertsById = new globalThis.Map<string, RouteAirspaceAlert>();
 
-    for (const point of visibleSamples) {
-      const features = mapInstance.queryRenderedFeatures(point, { layers: airspaceLayers });
+    for (const sample of visibleSamples) {
+      const features = mapInstance.queryRenderedFeatures(sample.screenPoint, { layers: airspaceLayers });
 
       for (const feature of features) {
         const parsed = parseFeature({
@@ -156,12 +206,15 @@ export default function Map({ className = '' }: MapProps) {
           sourceLayer: feature.sourceLayer,
           source: feature.source,
         });
-        const alert = buildRouteAirspaceAlert(parsed, cruiseAltitudeFt);
+        const alert = buildRouteAirspaceAlert(parsed, cruiseAltitudeFt, {
+          startDistanceNm: sample.distanceNm,
+          endDistanceNm: sample.distanceNm,
+        });
 
         if (!alert) continue;
 
         const existing = alertsById.get(alert.id);
-        alertsById.set(alert.id, existing ? sortRouteAirspaceAlerts([existing, alert])[0] : alert);
+        alertsById.set(alert.id, existing ? mergeRenderedAirspaceAlert(existing, alert) : alert);
       }
     }
 
@@ -247,14 +300,19 @@ export default function Map({ className = '' }: MapProps) {
         map.current.on('load', () => {
           setMapLoaded(true);
           ensureRouteLayers(map.current!);
+          ensureEmergencyLayers(map.current!);
         });
 
         // Style load event
         map.current.on('style.load', () => {
           setStyleLoaded(true);
+          ensureRouteLayers(map.current!);
+          ensureEmergencyLayers(map.current!);
           const clickableLayers = getClickableLayers(style);
           setupClickHandlers(clickableLayers);
+          setupRubberBandHandlers(clickableLayers);
           updateRouteOverlay();
+          updateEmergencyOverlay();
         });
 
         // Track viewport changes
@@ -315,6 +373,11 @@ export default function Map({ className = '' }: MapProps) {
     // Click handler
     map.current.on('click', (e) => {
       if (!map.current) return;
+
+      if (suppressNextMapClick.current) {
+        suppressNextMapClick.current = false;
+        return;
+      }
       
       const features = existingLayers.length
         ? map.current.queryRenderedFeatures(e.point, { layers: existingLayers })
@@ -345,6 +408,108 @@ export default function Map({ className = '' }: MapProps) {
           map.current.getCanvas().style.cursor = '';
         }
       });
+    });
+  };
+
+  const setupRubberBandHandlers = (clickableLayers: string[]) => {
+    if (!map.current || rubberBandHandlersAttached.current) return;
+    if (!map.current.getLayer('halo-route-line') || !map.current.getLayer('halo-route-points')) return;
+
+    rubberBandHandlersAttached.current = true;
+    const mapInstance = map.current;
+
+    mapInstance.on('mousedown', 'halo-route-points', (event) => {
+      const state = useMapStore.getState();
+      if (!state.planningMode) return;
+
+      const id = String(event.features?.[0]?.properties?.id ?? '');
+      if (!id) return;
+
+      event.preventDefault();
+      draggingWaypointId.current = id;
+      suppressNextMapClick.current = true;
+      mapInstance.dragPan.disable();
+      mapInstance.getCanvas().style.cursor = 'grabbing';
+    });
+
+    const startInsertDrag = (event: maplibregl.MapLayerMouseEvent) => {
+      if (draggingWaypointId.current) return;
+      const state = useMapStore.getState();
+      if (!state.planningMode || state.waypoints.length < 2) return;
+
+      event.preventDefault();
+      const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
+      const insertIndex = getNearestRouteLegIndex(state.waypoints, coordinates) + 1;
+      const waypoint = createUserWaypoint(coordinates, state.waypoints.length + 1);
+
+      state.insertRouteWaypoint(insertIndex, waypoint);
+      draggingWaypointId.current = waypoint.id;
+      suppressNextMapClick.current = true;
+      mapInstance.dragPan.disable();
+      mapInstance.getCanvas().style.cursor = 'grabbing';
+    };
+
+    mapInstance.on('mousedown', 'halo-route-line', startInsertDrag);
+    mapInstance.on('mousedown', 'halo-route-casing', startInsertDrag);
+
+    mapInstance.on('mousemove', (event) => {
+      if (!draggingWaypointId.current) return;
+      const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
+      useMapStore.getState().updateRouteWaypoint(draggingWaypointId.current, { coordinates });
+    });
+
+    mapInstance.on('mouseup', (event) => {
+      if (!draggingWaypointId.current) return;
+
+      const waypointId = draggingWaypointId.current;
+      const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
+      const state = useMapStore.getState();
+      const currentWaypoint = state.waypoints.find((waypoint) => waypoint.id === waypointId);
+      const snap = getSnapWaypoint(mapInstance, event.point, coordinates, clickableLayers);
+
+      if (snap) {
+        state.updateRouteWaypoint(waypointId, {
+          ...snap,
+          id: waypointId,
+        });
+      } else if (currentWaypoint) {
+        state.updateRouteWaypoint(waypointId, {
+          coordinates,
+          type: 'user',
+          ident: currentWaypoint.type === 'user' ? currentWaypoint.ident : undefined,
+          name: currentWaypoint.type === 'user' ? currentWaypoint.name : `Moved ${currentWaypoint.ident ?? currentWaypoint.name}`,
+          sourceId: undefined,
+        });
+      }
+
+      draggingWaypointId.current = null;
+      mapInstance.dragPan.enable();
+      mapInstance.getCanvas().style.cursor = '';
+      window.setTimeout(() => {
+        suppressNextMapClick.current = false;
+      }, 0);
+    });
+
+    mapInstance.on('mouseenter', 'halo-route-line', () => {
+      if (useMapStore.getState().planningMode) {
+        mapInstance.getCanvas().style.cursor = 'copy';
+      }
+    });
+    mapInstance.on('mouseenter', 'halo-route-casing', () => {
+      if (useMapStore.getState().planningMode) {
+        mapInstance.getCanvas().style.cursor = 'copy';
+      }
+    });
+
+    mapInstance.on('mouseleave', 'halo-route-line', () => {
+      if (!draggingWaypointId.current) {
+        mapInstance.getCanvas().style.cursor = '';
+      }
+    });
+    mapInstance.on('mouseleave', 'halo-route-casing', () => {
+      if (!draggingWaypointId.current) {
+        mapInstance.getCanvas().style.cursor = '';
+      }
     });
   };
 
@@ -447,6 +612,10 @@ export default function Map({ className = '' }: MapProps) {
   }, [updateRouteOverlay]);
 
   useEffect(() => {
+    updateEmergencyOverlay();
+  }, [updateEmergencyOverlay]);
+
+  useEffect(() => {
     updateRouteAirspaceReview();
   }, [updateRouteAirspaceReview]);
 
@@ -528,6 +697,49 @@ function toParserGeometry(geometry: FeatureGeometry | undefined) {
   };
 }
 
+function getSnapWaypoint(
+  mapInstance: maplibregl.Map,
+  point: { x: number; y: number },
+  coordinates: Coordinates,
+  clickableLayers: string[]
+): Waypoint | null {
+  const radiusPx = 14;
+  const bbox: [[number, number], [number, number]] = [
+    [point.x - radiusPx, point.y - radiusPx],
+    [point.x + radiusPx, point.y + radiusPx],
+  ];
+  const existingLayers = clickableLayers.filter((layer) => mapInstance.getLayer(layer));
+  const features = existingLayers.length
+    ? mapInstance.queryRenderedFeatures(bbox, { layers: existingLayers })
+    : [];
+  const candidates = buildFeatureSelectionStack(features)
+    .map(makeWaypointFromFeature)
+    .filter((waypoint): waypoint is Waypoint => Boolean(waypoint));
+
+  return chooseSnapWaypoint(coordinates, candidates, 2);
+}
+
+function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
+  if (!feature.coordinates) return null;
+  if (feature.type !== 'airport' && feature.type !== 'navaid' && feature.type !== 'reportingPoint') {
+    return null;
+  }
+
+  const ident = feature.icao ?? feature.identifier;
+  const name = feature.name ?? ident ?? 'Snapped waypoint';
+  const waypointType = feature.type === 'reportingPoint' ? 'reporting-point' : feature.type;
+
+  return {
+    id: String(feature.sourceId ?? ident ?? `${feature.coordinates[0]}-${feature.coordinates[1]}`),
+    type: waypointType,
+    name: String(name),
+    ident: ident ? String(ident) : undefined,
+    coordinates: feature.coordinates,
+    sourceId: feature.sourceId,
+    elevationFt: feature.elevationUnit === 'ft' ? feature.elevation : undefined,
+  };
+}
+
 function createRouteAirspaceReview(
   review: Pick<RouteAirspaceReview, 'status' | 'message'> & Partial<RouteAirspaceReview>
 ): RouteAirspaceReview {
@@ -557,27 +769,52 @@ function getVisibleAirspaceLayerIds(mapInstance: maplibregl.Map): string[] {
 function sampleRouteScreenPoints(
   mapInstance: maplibregl.Map,
   waypoints: Waypoint[]
-): Array<[number, number]> {
-  const samples: Array<[number, number]> = [];
+): Array<{ screenPoint: [number, number]; distanceNm: number }> {
+  const samples: Array<{ screenPoint: [number, number]; distanceNm: number }> = [];
+  let cumulativeDistanceNm = 0;
 
   for (let index = 0; index < waypoints.length - 1; index += 1) {
+    const from = waypoints[index];
+    const to = waypoints[index + 1];
     const start = mapInstance.project(toLngLatLike(waypoints[index]));
     const end = mapInstance.project(toLngLatLike(waypoints[index + 1]));
     const pixelDistance = Math.hypot(end.x - start.x, end.y - start.y);
+    const legDistanceNm = calculateDistanceNm(from.coordinates, to.coordinates);
     const steps = Math.max(1, Math.ceil(pixelDistance / ROUTE_AIRSPACE_SAMPLE_SPACING_PX));
 
     for (let step = 0; step <= steps; step += 1) {
       if (index > 0 && step === 0) continue;
 
       const progress = step / steps;
-      samples.push([
-        start.x + (end.x - start.x) * progress,
-        start.y + (end.y - start.y) * progress,
-      ]);
+      samples.push({
+        screenPoint: [
+          start.x + (end.x - start.x) * progress,
+          start.y + (end.y - start.y) * progress,
+        ],
+        distanceNm: cumulativeDistanceNm + legDistanceNm * progress,
+      });
     }
+
+    cumulativeDistanceNm += legDistanceNm;
   }
 
   return samples;
+}
+
+function mergeRenderedAirspaceAlert(existing: RouteAirspaceAlert, incoming: RouteAirspaceAlert): RouteAirspaceAlert {
+  const best = sortRouteAirspaceAlerts([existing, incoming])[0];
+  const starts = [existing.startDistanceNm, incoming.startDistanceNm].filter(isFiniteNumber);
+  const ends = [existing.endDistanceNm, incoming.endDistanceNm].filter(isFiniteNumber);
+
+  return {
+    ...best,
+    startDistanceNm: starts.length ? Math.min(...starts) : best.startDistanceNm,
+    endDistanceNm: ends.length ? Math.max(...ends) : best.endDistanceNm,
+  };
+}
+
+function isFiniteNumber(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function toLngLatLike(waypoint: Waypoint): maplibregl.LngLatLike {
@@ -704,6 +941,96 @@ function ensureRouteLayers(mapInstance: maplibregl.Map) {
       },
     });
   }
+}
+
+function ensureEmergencyLayers(mapInstance: maplibregl.Map) {
+  if (!mapInstance.getSource('halo-glide-rings')) {
+    mapInstance.addSource('halo-glide-rings', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [],
+      } as any,
+    });
+  }
+
+  if (!mapInstance.getSource('halo-emergency-sites')) {
+    mapInstance.addSource('halo-emergency-sites', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [],
+      } as any,
+    });
+  }
+
+  if (!mapInstance.getLayer('halo-glide-rings-fill')) {
+    mapInstance.addLayer({
+      id: 'halo-glide-rings-fill',
+      type: 'fill',
+      source: 'halo-glide-rings',
+      paint: {
+        'fill-color': '#38bdf8',
+        'fill-opacity': 0.08,
+      },
+    });
+  }
+
+  if (!mapInstance.getLayer('halo-glide-rings-line')) {
+    mapInstance.addLayer({
+      id: 'halo-glide-rings-line',
+      type: 'line',
+      source: 'halo-glide-rings',
+      paint: {
+        'line-color': '#0284c7',
+        'line-width': 2,
+        'line-dasharray': [2, 2],
+        'line-opacity': 0.75,
+      },
+    });
+  }
+
+  if (!mapInstance.getLayer('halo-emergency-sites')) {
+    mapInstance.addLayer({
+      id: 'halo-emergency-sites',
+      type: 'circle',
+      source: 'halo-emergency-sites',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': [
+          'match',
+          ['get', 'suitability'],
+          'good',
+          '#059669',
+          'caution',
+          '#d97706',
+          'unsuitable',
+          '#e11d48',
+          '#64748b',
+        ],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2,
+      },
+    });
+  }
+}
+
+function buildCircleCoordinates(center: Coordinates, radiusNm: number): Coordinates[] {
+  const steps = 64;
+  const [lng, lat] = center;
+  const coordinates: Coordinates[] = [];
+  const latRadius = radiusNm / 60;
+  const lngRadius = radiusNm / (60 * Math.max(0.15, Math.cos((lat * Math.PI) / 180)));
+
+  for (let index = 0; index <= steps; index += 1) {
+    const angle = (index / steps) * Math.PI * 2;
+    coordinates.push([
+      lng + Math.cos(angle) * lngRadius,
+      lat + Math.sin(angle) * latRadius,
+    ]);
+  }
+
+  return coordinates;
 }
 
 function OfflinePlanningCanvas() {

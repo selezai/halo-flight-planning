@@ -22,19 +22,25 @@
 - [x] Route-aware rendered OpenAIP airspace review with cruise-altitude conflict classification in route, briefing, status bar, and export text.
 - [x] Backend OpenAIP Core route-corridor airspace review with bounded bbox queries, 5 nm corridor filtering, and rendered-map fallback.
 - [x] Global OpenAIP Core airport/navaid route search with starter fallback and deduplication.
-- [x] Playwright integration tests exist, but are not part of the current launch implementation verification gate.
-- [x] CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm build`.
-- [x] South Africa official manual NOTAM launch provider with route airport/navaid preparation and ATNS/SACAA source links.
-- [x] FAA NOTAM provider integration retained behind `NOTAM_PROVIDER=faa`.
-- [x] Hybrid W&B setup with POH/AFM configuration, loading stations, CG envelope checks, and briefing/risk/export surfacing.
-- [x] Supabase auth/account sync code with magic link, Google OAuth, owner-scoped API persistence, and local/cloud merge controls.
-- [x] Vercel Analytics, Speed Insights, structured API logging, and app/global error boundaries.
+- [x] Playwright integration tests against `next build && next start`.
+- [x] CI pipeline for `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, and `pnpm test:e2e`.
+- [x] South Africa-first NOTAM provider adapter with manual official briefing mode, authorized live JSON feed path, FAA future rollout path, route airport/navaid filtering, source attribution, and explicit unavailable states.
+- [x] Hybrid W&B with POH/AFM setup, loading inputs, ramp/takeoff/landing CG checks, and briefing/risk integration.
+- [x] Pilot Digest that converts route, fuel, W&B, weather, airspace, and NOTAM states into prioritized stop/review/ready actions.
+- [x] Data freshness badges for route, weather, airspace, NOTAM, and W&B states.
+- [x] Training/checkride navlog with route-wind input, WCA/headings/groundspeed/ETE/fuel calculations, formula text, and briefing export.
+- [x] Backup/print pack export with digest, navlog, training navlog, W&B, fuel, weather, airspace, NOTAM source links, stale-data warnings, filing worksheet, and emergency worksheet fields.
+- [x] Airspace vertical profile with approximate along-route distance ranges, cruise-altitude context, and critical/caution/info bands.
+- [x] South Africa-safe filing checklist and close-flight reminder with File2Fly handoff, planned/overdue/closed states, and optional browser notification.
+- [x] Emergency/forced-landing planning with glide radius, route/starter/user candidates, user-marked sites, briefing/backup export, and map glide rings/site markers.
+- [x] Rubber-band route editing with drag-to-insert, drag-to-reposition, and snap-to-nearby airport/navaid/reporting-point helper logic.
 
 ## Remaining Before Operational Launch
 
 - [x] Configure production OpenAIP and MapTiler environment variables in Vercel.
-- [ ] Configure production Supabase public env vars plus server-only service-role key, apply/verify account-sync migration, and smoke-test RLS/API sync before enabling sync for users.
-- [ ] Configure production FAA NOTAM API credentials only when international FAA rollout is enabled with `NOTAM_PROVIDER=faa`.
-- [ ] Add real aircraft-specific W&B envelopes per aircraft before exposing W&B as operational output for that aircraft.
-- [ ] Scan Vercel post-deploy runtime logs for errors and structured `api_request` entries.
+- [ ] Configure production `SOUTH_AFRICA_NOTAM_API_URL` and `SOUTH_AFRICA_NOTAM_API_KEY` after SACAA/ATNS or an authorized provider grants live API access.
+- [ ] Configure production FAA NOTAM API credentials only when international/FAA rollout starts.
+- [ ] Add Supabase auth/account sync only after confirming live schema, migrations, RLS policies, and smoke tests.
+- [x] Add aircraft-specific weight-and-balance envelope entry before exposing W&B status as operational output.
+- [x] Add Vercel Analytics, Speed Insights, API structured logging, and app/global error boundaries.
 - [ ] Replace OpenAIP CC BY-NC-SA sprites or obtain OpenAIP permission before commercializing the app.

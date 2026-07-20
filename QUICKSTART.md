@@ -35,16 +35,7 @@ Edit `.env.local` and add your keys:
 ```env
 OPENAIP_API_KEY=your_openaip_key
 NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key
-NOTAM_PROVIDER=south-africa-manual
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-Optional account sync:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
-SUPABASE_SERVICE_ROLE_KEY=server_only_after_migration_verification
 ```
 
 ### 4. Build Sprites (One-Time Setup)
@@ -56,7 +47,7 @@ Run the automated sprite builder:
 ```
 
 This will:
-- Clone OpenAIP's public map resources repository
+- Clone OpenAIP's mapstyles repository
 - Build the sprite files
 - Copy them to the correct location
 
@@ -75,8 +66,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ✅ Interactive aviation map centered on South Africa  
 ✅ Airports, navaids, and airspaces visible  
 ✅ Click on features to see details in sidebar  
-✅ Briefing NOTAM state points to South Africa official manual briefing  
-✅ Aircraft W&B shows “Needs POH setup” until POH/AFM data is entered  
 ✅ No console errors about missing sprites  
 
 ## Troubleshooting
@@ -107,8 +96,6 @@ pnpm dev          # Start development server
 pnpm build        # Build for production
 pnpm start        # Start production server
 pnpm lint         # Run ESLint
-pnpm typecheck    # Run TypeScript checks
-pnpm test         # Run Vitest unit tests
 ```
 
 ## Need Help?

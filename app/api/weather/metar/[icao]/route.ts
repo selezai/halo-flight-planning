@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server';
-import { withApiLogging } from '@/lib/observability/apiLogger';
 import { normalizeMetarPayload } from '@/lib/planning/weather';
+import { withApiLogging } from '@/lib/observability/api';
 
 export const dynamic = 'force-dynamic';
 
 const ICAO_RE = /^[A-Z0-9]{4}$/;
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ icao: string }> }
-) {
-  return withApiLogging(request, '/api/weather/metar/[icao]', async () => handleGet(await params));
-}
-
-async function handleGet(params: { icao: string }) {
-  const icao = params.icao.toUpperCase();
+export const GET = withApiLogging('/api/weather/metar/[icao]', async (
+  _request: Request,
+  context: { params: Promise<{ icao: string }> }
+) => {
+  const { icao: rawIcao } = await context.params;
+  const icao = rawIcao.toUpperCase();
 
   if (!ICAO_RE.test(icao)) {
     return NextResponse.json(
@@ -55,7 +52,7 @@ async function handleGet(params: { icao: string }) {
       { status: 502 }
     );
   }
-}
+});
 
 function cacheHeaders() {
   return {

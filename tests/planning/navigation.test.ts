@@ -7,7 +7,6 @@ import {
   calculateTrueBearingDeg,
 } from '@/lib/planning/navigation';
 import { categorizeFlightConditions, parseRawMetar } from '@/lib/planning/weather';
-import { calculateWeightBalance, createDefaultWeightBalanceConfig } from '@/lib/planning/weightBalance';
 import type { RouteNotamReview, Waypoint } from '@/types/planning';
 
 const jfk: Waypoint = {
@@ -43,23 +42,6 @@ describe('navigation calculations', () => {
     expect(route.summary.reserveFuelGal).toBeCloseTo(7.125, 3);
     expect(route.summary.totalFuelRequiredGal).toBeGreaterThan(route.summary.tripFuelGal);
   });
-
-  it('uses W&B loaded fuel after taxi for dispatch fuel status when configured', () => {
-    const route = calculateRoute([jfk, lax], {
-      ...DEFAULT_AIRCRAFT,
-      weightBalance: createDefaultWeightBalanceConfig(),
-      weightBalanceLoading: {
-        fuelGallons: 20,
-        taxiFuelGallons: 1,
-        stationWeightsLb: {},
-      },
-    });
-
-    expect(route.summary.loadedFuelGal).toBe(20);
-    expect(route.summary.dispatchFuelGal).toBe(19);
-    expect(route.summary.totalFuelRequiredGal).toBeGreaterThan(route.summary.dispatchFuelGal ?? 0);
-    expect(route.summary.fuelStatus).toBe('critical');
-  });
 });
 
 describe('weather categorization', () => {
@@ -84,7 +66,7 @@ describe('weather categorization', () => {
 });
 
 describe('briefing risk review', () => {
-  it('surfaces unavailable NOTAM review in risks and briefing text', () => {
+  it('surfaces unavailable live NOTAM review in risks and briefing text', () => {
     const route = calculateRoute([], DEFAULT_AIRCRAFT);
     const notamReview: RouteNotamReview = {
       source: 'unavailable',
@@ -111,35 +93,31 @@ describe('briefing risk review', () => {
     expect(briefing).toContain('FAA NOTAM API credentials are not configured.');
   });
 
-  it('surfaces South Africa manual NOTAM and W&B setup states in risks and briefing text', () => {
-    const route = calculateRoute([jfk, lax], DEFAULT_AIRCRAFT);
+  it('keeps South Africa official manual NOTAM as briefing handoff text without making it a required risk', () => {
+    const route = calculateRoute([], DEFAULT_AIRCRAFT);
     const notamReview: RouteNotamReview = {
       source: 'south-africa-official',
       status: 'manual-required',
-      message: 'Use ATNS File2Fly and SACAA official briefing sources.',
+      message: 'Official South Africa NOTAM briefing is required for route locations FAOR, FALA.',
       notams: [],
-      locations: ['KJFK', 'KLAX'],
+      locations: ['FAOR', 'FALA'],
       queryCount: 0,
       sourceUrl: 'https://file2fly.atns.co.za/aes/login.jsp',
     };
-    const weightBalance = calculateWeightBalance(DEFAULT_AIRCRAFT);
-    const risks = buildRiskAssessment(route, [], DEFAULT_PERSONAL_MINIMUMS, [], notamReview, weightBalance);
+    const risks = buildRiskAssessment(route, [], DEFAULT_PERSONAL_MINIMUMS, [], notamReview);
     const briefing = buildBriefingText({
       routeName: 'Test route',
       aircraft: DEFAULT_AIRCRAFT,
       route,
-      waypoints: [jfk, lax],
+      waypoints: [],
       weather: [],
       risks,
       routeNotamReview: notamReview,
-      weightBalanceResult: weightBalance,
     });
 
-    expect(risks.some((risk) => risk.id === 'notam-manual-required')).toBe(true);
-    expect(risks.some((risk) => risk.id === 'wb-incomplete')).toBe(true);
-    expect(briefing).toContain('WEIGHT AND BALANCE');
-    expect(briefing).toContain('Status: Needs POH setup');
-    expect(briefing).toContain('South Africa official briefing');
-    expect(briefing).toContain('Use ATNS File2Fly and SACAA official briefing sources.');
+    expect(risks.some((risk) => risk.id === 'notam-manual-required')).toBe(false);
+    expect(briefing).toContain('South Africa official NOTAM briefing');
+    expect(briefing).toContain('Route locations prepared: FAOR, FALA');
+    expect(briefing).toContain('Manual action: Halo did not retrieve official NOTAMs');
   });
 });

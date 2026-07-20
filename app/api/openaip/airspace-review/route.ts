@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseFeature } from '@/lib/openaip/featureParser';
+import { withApiLogging } from '@/lib/observability/api';
 import {
   buildRouteSignature,
   formatBBox,
@@ -8,7 +9,6 @@ import {
   type GeoJsonPolygon,
 } from '@/lib/planning/airspaceCorridor';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
-import { withApiLogging } from '@/lib/observability/apiLogger';
 import type { Coordinates, RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
 
 const OPENAIP_API_BASE = 'https://api.core.openaip.net/api';
@@ -39,11 +39,7 @@ const AIRSPACE_FIELDS = [
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
-  return withApiLogging(request, '/api/openaip/airspace-review', () => handlePost(request));
-}
-
-async function handlePost(request: NextRequest) {
+export const POST = withApiLogging('/api/openaip/airspace-review', async (request: NextRequest) => {
   const apiKey = process.env.OPENAIP_API_KEY;
 
   if (!apiKey) {
@@ -142,6 +138,8 @@ async function handlePost(request: NextRequest) {
       const alert = buildRouteAirspaceAlert(parsed, cruiseAltitudeFt, {
         relationship: match.relationship === 'none' ? undefined : match.relationship,
         distanceNm: match.distanceNm,
+        startDistanceNm: match.startDistanceNm,
+        endDistanceNm: match.endDistanceNm,
       });
 
       if (!alert) continue;
@@ -179,7 +177,7 @@ async function handlePost(request: NextRequest) {
       'Cache-Control': 'private, max-age=120',
     },
   });
-}
+});
 
 async function validateRequest(request: NextRequest): Promise<
   | { ok: true; value: { waypoints: Array<Pick<Waypoint, 'coordinates'>>; cruiseAltitudeFt: number; corridorNm: number } }

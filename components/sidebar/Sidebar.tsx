@@ -36,12 +36,6 @@ import {
   DEFAULT_PERSONAL_MINIMUMS,
 } from '@/lib/planning/aircraft';
 import {
-  calculateWeightBalance,
-  createDefaultWeightBalanceConfig,
-  createDefaultWeightBalanceLoading,
-  formatWeightBalanceStatus,
-} from '@/lib/planning/weightBalance';
-import {
   calculateRoute,
   formatCoordinates,
   formatCourse,
@@ -50,24 +44,59 @@ import {
   formatFuel,
 } from '@/lib/planning/navigation';
 import { searchStarterWaypoints } from '@/lib/planning/sampleData';
-import { buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
+import { buildBackupPackText } from '@/lib/planning/backupPack';
+import { buildBriefingDigest, buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
 import { mergeWaypointResults } from '@/lib/planning/waypointResults';
 import { COMPETITOR_PAIN_POINTS } from '@/lib/research/competitorPainPoints';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
-import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
+import {
+  calculateWeightBalance,
+  createDefaultWeightBalanceConfig,
+  getWeightBalanceStatusLabel,
+} from '@/lib/planning/weightBalance';
+import {
+  buildCloseReminderFromDeparture,
+  buildFilingWorkflowReview,
+} from '@/lib/planning/filingReminder';
+import {
+  buildFlightAdminReview,
+  formatFilingStatus as formatFlightPlanFilingStatus,
+  formatNotamRecordStatus,
+} from '@/lib/planning/flightAdmin';
+import {
+  assessDataFreshness,
+  FRESHNESS_THRESHOLDS_MINUTES,
+  formatFreshnessStatus,
+} from '@/lib/planning/freshness';
+import { buildAirspaceVerticalProfile } from '@/lib/planning/airspaceProfile';
+import { buildEmergencyPlanningReview } from '@/lib/planning/emergencyPlanning';
+import { buildTrainingNavLog } from '@/lib/planning/trainingNavlog';
 import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   Coordinates,
+  AirspaceVerticalProfile,
+  EmergencyLandingSite,
+  EmergencyLandingSuitability,
+  EmergencyPlanningReview,
+  FlightAdminReview,
+  FlightPlanFilingRecord,
   FlightCategory,
+  FilingChecklistState,
+  FilingWorkflowReview,
+  FlightCloseReminder,
+  NotamBriefingRecord,
   RouteAirspaceAlert,
   RouteAirspaceReview,
+  BriefingDigest,
+  DataFreshness,
   RouteNotam,
   RouteNotamReview,
-  WeatherReport,
+  TrainingNavLog,
+  WeightBalanceConfig,
   WeightBalanceEnvelopePoint,
   WeightBalanceResult,
-  WeightBalanceStation,
+  WeatherReport,
   Waypoint,
   WaypointType,
 } from '@/types/planning';
@@ -77,6 +106,7 @@ type Panel = 'route' | 'weather' | 'aircraft' | 'briefing' | 'research';
 interface RouteWeatherState {
   reports: Record<string, WeatherReport | null>;
   tafs: Record<string, string | null>;
+  updatedAt?: string;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -136,8 +166,6 @@ export default function Sidebar() {
           <X className="h-5 w-5" />
         </button>
       </div>
-
-      <AccountSyncPanel />
 
       {!selectedFeature && (
         <nav className="grid grid-cols-5 border-b border-slate-200">
@@ -490,7 +518,11 @@ function RoutePanel() {
         status={route.summary.fuelStatus}
       />
 
-      <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
+      <AirspaceReviewPanel
+        review={routeAirspaceReview}
+        route={route}
+        cruiseAltitudeFt={cruiseAltitudeFt}
+      />
 
       <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
         <div>
@@ -663,14 +695,20 @@ function RoutePanel() {
 
 function AirspaceReviewPanel({
   review,
+  route,
   cruiseAltitudeFt,
 }: {
   review: RouteAirspaceReview;
+  route: ReturnType<typeof calculateRoute>;
   cruiseAltitudeFt: number;
 }) {
   const reviewableAlerts = review.alerts.filter((alert) => alert.requiresReview);
   const criticalCount = review.alerts.filter((alert) => alert.level === 'critical').length;
   const visibleAlerts = review.alerts.slice(0, 6);
+  const verticalProfile = useMemo(
+    () => buildAirspaceVerticalProfile(route, review.alerts, cruiseAltitudeFt),
+    [route, review.alerts, cruiseAltitudeFt]
+  );
   const StatusIcon =
     criticalCount > 0 || reviewableAlerts.length > 0 || review.status === 'partial' || review.status === 'rate-limited'
       ? AlertTriangle
@@ -693,7 +731,7 @@ function AirspaceReviewPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
         <Metric label="Cruise" value={`${Math.round(cruiseAltitudeFt)} ft`} />
         {isCoreReview ? (
           <>
@@ -713,6 +751,8 @@ function AirspaceReviewPanel({
           <Metric label="Candidates" value={String(review.candidateCount ?? 0)} />
         </div>
       )}
+
+      <AirspaceVerticalProfilePanel profile={verticalProfile} />
 
       <p className="mt-2 text-xs text-slate-500">
         {isCoreReview
@@ -763,6 +803,61 @@ function AirspaceAlertRow({ alert }: { alert: RouteAirspaceAlert }) {
       </div>
       <p className="mt-1 font-mono">{formatAirspaceVertical(alert)}</p>
       <p className="mt-1">{alert.reason}</p>
+    </div>
+  );
+}
+
+function AirspaceVerticalProfilePanel({ profile }: { profile: AirspaceVerticalProfile }) {
+  const visibleItems = profile.items.slice(0, 5);
+
+  return (
+    <div className="mt-3 rounded-md border border-slate-200 p-2">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <p className="font-semibold text-slate-900">Vertical profile</p>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${getAirspaceProfileTone(profile.status)}`}>
+          {profile.status}
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Route" value={formatDistance(profile.routeDistanceNm)} />
+        <Metric label="Cruise" value={`${Math.round(profile.cruiseAltitudeFt)} ft`} />
+      </div>
+
+      {visibleItems.length === 0 ? (
+        <p className="mt-2 text-xs text-slate-500">
+          No profile bands available yet.
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {visibleItems.map((item) => {
+            const range = getAirspaceProfileRange(item, profile.routeDistanceNm);
+            return (
+              <div key={item.id} className="text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-slate-800">{item.name}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                    {formatProfileRangeLabel(item)}
+                  </span>
+                </div>
+                <div className="relative mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`absolute inset-y-0 rounded-full ${getAirspaceProfileBandTone(item.level)}`}
+                    style={{ left: `${range.leftPercent}%`, width: `${range.widthPercent}%` }}
+                  />
+                </div>
+                <p className="mt-1 font-mono text-[10px] text-slate-500">
+                  {item.lowerLimit ?? 'lower unknown'} to {item.upperLimit ?? 'upper unknown'}
+                </p>
+              </div>
+            );
+          })}
+          {profile.items.length > visibleItems.length && (
+            <p className="text-xs font-medium text-slate-500">
+              +{profile.items.length - visibleItems.length} more profile band{profile.items.length - visibleItems.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -906,127 +1001,33 @@ function WeatherPanel() {
 function AircraftPanel() {
   const {
     activeAircraft,
-    waypoints,
     setActiveAircraft,
     updateActiveAircraft,
+    weightBalanceLoading,
+    updateWeightBalanceLoading,
+    updateWeightBalanceStationWeight,
     personalMinimums,
     updatePersonalMinimums,
   } = useMapStore();
-  const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [activeAircraft, waypoints]);
-  const weightBalance = useMemo(
-    () => calculateWeightBalance(activeAircraft, route),
-    [activeAircraft, route]
+  const weightBalanceConfig = activeAircraft.weightBalance ?? createDefaultWeightBalanceConfig();
+  const weightBalanceResult = useMemo(
+    () => calculateWeightBalance({ aircraft: activeAircraft, loading: weightBalanceLoading }),
+    [activeAircraft, weightBalanceLoading]
   );
-  const weightBalanceConfig = activeAircraft.weightBalance;
-  const weightBalanceLoading = weightBalanceConfig
-    ? activeAircraft.weightBalanceLoading ?? createDefaultWeightBalanceLoading(weightBalanceConfig)
-    : undefined;
-
-  const startWeightBalanceSetup = () => {
-    const config = createDefaultWeightBalanceConfig();
+  const updateWeightBalanceConfig = useCallback((updates: Partial<WeightBalanceConfig>) => {
     updateActiveAircraft({
-      weightBalance: config,
-      weightBalanceLoading: createDefaultWeightBalanceLoading(config),
-    });
-  };
-
-  const updateWeightBalanceConfig = (updates: Partial<NonNullable<typeof weightBalanceConfig>>) => {
-    if (!weightBalanceConfig) return;
-    const config = { ...weightBalanceConfig, ...updates };
-    updateActiveAircraft({
-      weightBalance: config,
-      weightBalanceLoading: activeAircraft.weightBalanceLoading ?? createDefaultWeightBalanceLoading(config),
-    });
-  };
-
-  const updateWeightBalanceLoading = (updates: Partial<NonNullable<typeof weightBalanceLoading>>) => {
-    if (!weightBalanceConfig || !weightBalanceLoading) return;
-    updateActiveAircraft({
-      weightBalanceLoading: {
-        ...weightBalanceLoading,
+      weightBalance: {
+        ...weightBalanceConfig,
         ...updates,
+        fuel: {
+          ...weightBalanceConfig.fuel,
+          ...updates.fuel,
+        },
+        stations: updates.stations ?? weightBalanceConfig.stations,
+        envelope: updates.envelope ?? weightBalanceConfig.envelope,
       },
     });
-  };
-
-  const updateStation = (id: string, updates: Partial<WeightBalanceStation>) => {
-    if (!weightBalanceConfig) return;
-    updateWeightBalanceConfig({
-      stations: weightBalanceConfig.stations.map((station) =>
-        station.id === id ? { ...station, ...updates } : station
-      ),
-    });
-  };
-
-  const updateStationWeight = (stationId: string, weightLb: number) => {
-    if (!weightBalanceLoading) return;
-    updateWeightBalanceLoading({
-      stationWeightsLb: {
-        ...weightBalanceLoading.stationWeightsLb,
-        [stationId]: weightLb,
-      },
-    });
-  };
-
-  const addStation = () => {
-    if (!weightBalanceConfig || !weightBalanceLoading) return;
-    const id = `station-${Date.now()}`;
-    updateWeightBalanceConfig({
-      stations: [
-        ...weightBalanceConfig.stations,
-        { id, label: `Station ${weightBalanceConfig.stations.length + 1}`, armIn: 0 },
-      ],
-    });
-    updateWeightBalanceLoading({
-      stationWeightsLb: {
-        ...weightBalanceLoading.stationWeightsLb,
-        [id]: 0,
-      },
-    });
-  };
-
-  const removeStation = (stationId: string) => {
-    if (!weightBalanceConfig || !weightBalanceLoading || weightBalanceConfig.stations.length <= 1) return;
-    const remainingWeights = { ...weightBalanceLoading.stationWeightsLb };
-    delete remainingWeights[stationId];
-    updateWeightBalanceConfig({
-      stations: weightBalanceConfig.stations.filter((station) => station.id !== stationId),
-    });
-    updateWeightBalanceLoading({
-      stationWeightsLb: remainingWeights,
-    });
-  };
-
-  const updateEnvelopePoint = (index: number, updates: Partial<WeightBalanceEnvelopePoint>) => {
-    if (!weightBalanceConfig) return;
-    updateWeightBalanceConfig({
-      envelope: weightBalanceConfig.envelope.map((point, pointIndex) =>
-        pointIndex === index ? { ...point, ...updates } : point
-      ),
-    });
-  };
-
-  const addEnvelopePoint = () => {
-    if (!weightBalanceConfig) return;
-    const last = weightBalanceConfig.envelope[weightBalanceConfig.envelope.length - 1] ?? {
-      weightLb: 0,
-      forwardArmIn: 0,
-      aftArmIn: 0,
-    };
-    updateWeightBalanceConfig({
-      envelope: [
-        ...weightBalanceConfig.envelope,
-        { ...last, weightLb: last.weightLb + 100 },
-      ],
-    });
-  };
-
-  const removeEnvelopePoint = (index: number) => {
-    if (!weightBalanceConfig || weightBalanceConfig.envelope.length <= 2) return;
-    updateWeightBalanceConfig({
-      envelope: weightBalanceConfig.envelope.filter((_, pointIndex) => pointIndex !== index),
-    });
-  };
+  }, [updateActiveAircraft, weightBalanceConfig]);
 
   return (
     <div className="space-y-5">
@@ -1055,127 +1056,149 @@ function AircraftPanel() {
           <NumberField label="Reserve min" value={activeAircraft.reserveMinutes} onChange={(value) => updateActiveAircraft({ reserveMinutes: value })} />
           <NumberField label="Contingency %" value={activeAircraft.contingencyPercent} onChange={(value) => updateActiveAircraft({ contingencyPercent: value })} />
           <NumberField label="Mag var" value={activeAircraft.magneticVariationDeg} onChange={(value) => updateActiveAircraft({ magneticVariationDeg: value })} />
+          <NumberField label="Compass dev" value={activeAircraft.compassDeviationDeg ?? 0} onChange={(value) => updateActiveAircraft({ compassDeviationDeg: value })} />
+          <NumberField label="Glide ratio" value={activeAircraft.glideRatio ?? 9} onChange={(value) => updateActiveAircraft({ glideRatio: value })} step="0.1" />
         </div>
       </PanelBlock>
 
-      <PanelBlock title="Weight and balance" icon={<Gauge className="h-4 w-4" />}>
-        <div className={`rounded-md border p-3 text-sm ${getWeightBalanceTone(weightBalance.status)}`}>
-          <p className="font-semibold">{formatWeightBalanceStatus(weightBalance.status)}</p>
-          <p className="mt-1 text-xs">
-            {weightBalance.messages[0] ?? 'Ramp, takeoff, and landing CG are within the configured aircraft envelope.'}
-          </p>
+      <PanelBlock title="Weight & balance" icon={<Gauge className="h-4 w-4" />}>
+        <div className={`rounded-md px-3 py-2 text-xs ${getWeightBalanceTone(weightBalanceResult)}`}>
+          <p className="font-semibold">{getWeightBalanceStatusLabel(weightBalanceResult.status)}</p>
+          <p className="mt-1">{weightBalanceResult.message}</p>
         </div>
 
-        {!weightBalanceConfig ? (
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-600">
-              Preset aircraft performance is available, but operational W&B needs your POH/AFM empty weight, arms, station limits, and CG envelope.
-            </p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            Enter real POH/AFM values for this registration. Presets are templates only.
+          </p>
+          <button
+            type="button"
+            onClick={() => updateWeightBalanceConfig({ setupStatus: 'configured' })}
+            className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Mark configured
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <NumberField label="Empty lb" value={weightBalanceConfig.emptyWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyWeightLb: value })} />
+          <NumberField label="Empty arm" value={weightBalanceConfig.emptyArmIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyArmIn: value })} step="0.01" />
+          <NumberField label="Max ramp lb" value={weightBalanceConfig.maxRampWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxRampWeightLb: value })} />
+          <NumberField label="Max TO lb" value={weightBalanceConfig.maxTakeoffWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxTakeoffWeightLb: value })} />
+          <NumberField label="Max land lb" value={weightBalanceConfig.maxLandingWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxLandingWeightLb: value })} />
+          <NumberField label="Fuel arm" value={weightBalanceConfig.fuel.armIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ fuel: { ...weightBalanceConfig.fuel, armIn: value } })} step="0.01" />
+          <NumberField label="Fuel gal" value={weightBalanceLoading.fuelGal} onChange={(value) => updateWeightBalanceLoading({ fuelGal: value })} step="0.1" />
+          <NumberField label="Landing gal" value={weightBalanceLoading.landingFuelGal ?? 0} onChange={(value) => updateWeightBalanceLoading({ landingFuelGal: value })} step="0.1" />
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stations</p>
             <button
               type="button"
-              onClick={startWeightBalanceSetup}
-              className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              onClick={() => updateWeightBalanceConfig({
+                stations: [
+                  ...weightBalanceConfig.stations,
+                  { id: `station-${Date.now()}`, name: 'Custom station' },
+                ],
+              })}
+              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
-              Start POH W&B setup
+              Add station
             </button>
           </div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField label="Empty wt lb" value={weightBalanceConfig.emptyWeightLb} onChange={(value) => updateWeightBalanceConfig({ emptyWeightLb: value })} />
-              <NumberField label="Empty arm in" value={weightBalanceConfig.emptyArmIn} onChange={(value) => updateWeightBalanceConfig({ emptyArmIn: value })} step="0.01" />
-              <NumberField label="Max ramp lb" value={weightBalanceConfig.maxRampWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxRampWeightLb: value })} />
-              <NumberField label="MTOW lb" value={weightBalanceConfig.maxTakeoffWeightLb} onChange={(value) => updateWeightBalanceConfig({ maxTakeoffWeightLb: value })} />
-              <NumberField label="Max land lb" value={weightBalanceConfig.maxLandingWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxLandingWeightLb: value })} />
-              <NumberField label="Fuel arm in" value={weightBalanceConfig.fuelArmIn} onChange={(value) => updateWeightBalanceConfig({ fuelArmIn: value })} step="0.01" />
-              <NumberField label="Fuel lb/gal" value={weightBalanceConfig.fuelWeightLbPerGal} onChange={(value) => updateWeightBalanceConfig({ fuelWeightLbPerGal: value })} step="0.1" />
-              <NumberField label="Fuel gal" value={weightBalanceLoading?.fuelGallons ?? 0} onChange={(value) => updateWeightBalanceLoading({ fuelGallons: value })} step="0.1" />
-              <NumberField label="Taxi fuel gal" value={weightBalanceLoading?.taxiFuelGallons ?? 0} onChange={(value) => updateWeightBalanceLoading({ taxiFuelGallons: value })} step="0.1" />
-            </div>
-
-            <div>
-              <PanelHeader
-                title="Loading stations"
-                action={
-                  <button type="button" onClick={addStation} className="text-xs font-semibold text-slate-700 hover:text-slate-950">
-                    Add station
-                  </button>
-                }
-              />
-              <div className="mt-2 space-y-3">
-                {weightBalanceConfig.stations.map((station) => (
-                  <div key={station.id} className="rounded border border-slate-200 p-2">
-                    <input
-                      aria-label={`${station.label} label`}
-                      value={station.label}
-                      onChange={(event) => updateStation(station.id, { label: event.target.value })}
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm font-medium"
-                    />
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                      <NumberField id={`station-${station.id}-arm`} label="Arm in" value={station.armIn} onChange={(value) => updateStation(station.id, { armIn: value })} step="0.01" />
-                      <NumberField id={`station-${station.id}-limit`} label="Limit lb" value={station.maxWeightLb ?? 0} onChange={(value) => updateStation(station.id, { maxWeightLb: value })} />
-                      <NumberField id={`station-${station.id}-load`} label="Load lb" value={weightBalanceLoading?.stationWeightsLb[station.id] ?? 0} onChange={(value) => updateStationWeight(station.id, value)} />
-                    </div>
-                    {weightBalanceConfig.stations.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeStation(station.id)}
-                        className="mt-2 text-xs font-semibold text-rose-700 hover:text-rose-900"
-                      >
-                        Remove station
-                      </button>
-                    )}
-                  </div>
-                ))}
+          <div className="space-y-2">
+            {weightBalanceConfig.stations.map((station) => (
+              <div key={station.id} className="rounded-md border border-slate-200 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    value={station.name}
+                    onChange={(event) => updateWeightBalanceConfig({
+                      stations: updateStation(weightBalanceConfig.stations, station.id, { name: event.target.value }),
+                    })}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                    aria-label={`${station.name} station name`}
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={station.armIn ?? 0}
+                    onChange={(event) => updateWeightBalanceConfig({
+                      stations: updateStation(weightBalanceConfig.stations, station.id, { armIn: Number(event.target.value) }),
+                    })}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                    aria-label={`${station.name} arm`}
+                  />
+                  <input
+                    type="number"
+                    value={weightBalanceLoading.stationWeights[station.id] ?? 0}
+                    onChange={(event) => updateWeightBalanceStationWeight(station.id, Number(event.target.value))}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                    aria-label={`${station.name} weight`}
+                  />
+                </div>
+                <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-500">Name · arm in · loaded lb</p>
               </div>
-            </div>
-
-            <div>
-              <PanelHeader
-                title="CG envelope"
-                action={
-                  <button type="button" onClick={addEnvelopePoint} className="text-xs font-semibold text-slate-700 hover:text-slate-950">
-                    Add point
-                  </button>
-                }
-              />
-              <div className="mt-2 space-y-2">
-                {weightBalanceConfig.envelope.map((point, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 rounded border border-slate-200 p-2">
-                    <NumberField id={`envelope-${index}-weight`} label="Wt lb" value={point.weightLb} onChange={(value) => updateEnvelopePoint(index, { weightLb: value })} />
-                    <NumberField id={`envelope-${index}-forward`} label="Fwd in" value={point.forwardArmIn} onChange={(value) => updateEnvelopePoint(index, { forwardArmIn: value })} step="0.01" />
-                    <NumberField id={`envelope-${index}-aft`} label="Aft in" value={point.aftArmIn} onChange={(value) => updateEnvelopePoint(index, { aftArmIn: value })} step="0.01" />
-                    <button
-                      type="button"
-                      onClick={() => removeEnvelopePoint(index)}
-                      disabled={weightBalanceConfig.envelope.length <= 2}
-                      className="self-end rounded border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={`Remove envelope point ${index + 1}`}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {weightBalance.phases.length > 0 && (
-              <div className="space-y-2">
-                {weightBalance.phases.map((phase) => (
-                  <div key={phase.phase} className={`rounded border p-2 text-xs ${getWeightBalanceTone(phase.status)}`}>
-                    <p className="font-semibold uppercase">{phase.phase} · {formatWeightBalanceStatus(phase.status)}</p>
-                    <p>
-                      {Math.round(phase.weightLb)} lb · CG {phase.armIn?.toFixed(2) ?? 'unknown'} in
-                      {phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
-                        ? ` · Limits ${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
-                        : ''}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
-        )}
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">CG envelope</p>
+            <button
+              type="button"
+              onClick={() => updateWeightBalanceConfig({
+                envelope: [
+                  ...weightBalanceConfig.envelope,
+                  { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 },
+                ],
+              })}
+              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Add point
+            </button>
+          </div>
+          <div className="space-y-2">
+            {(weightBalanceConfig.envelope.length ? weightBalanceConfig.envelope : [
+              { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 },
+              { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 },
+            ]).map((point, index) => (
+              <div key={`${point.weightLb}-${index}`} className="grid grid-cols-3 gap-2">
+                <input
+                  type="number"
+                  value={point.weightLb}
+                  onChange={(event) => updateWeightBalanceConfig({
+                    envelope: updateEnvelopePoint(weightBalanceConfig.envelope, index, { weightLb: Number(event.target.value) }),
+                  })}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                  aria-label="Envelope weight"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={point.forwardArmIn}
+                  onChange={(event) => updateWeightBalanceConfig({
+                    envelope: updateEnvelopePoint(weightBalanceConfig.envelope, index, { forwardArmIn: Number(event.target.value) }),
+                  })}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                  aria-label="Envelope forward arm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={point.aftArmIn}
+                  onChange={(event) => updateWeightBalanceConfig({
+                    envelope: updateEnvelopePoint(weightBalanceConfig.envelope, index, { aftArmIn: Number(event.target.value) }),
+                  })}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                  aria-label="Envelope aft arm"
+                />
+              </div>
+            ))}
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">Weight lb · forward arm · aft arm</p>
+          </div>
+        </div>
       </PanelBlock>
 
       <PanelBlock title="Personal minimums" icon={<Gauge className="h-4 w-4" />}>
@@ -1215,23 +1238,138 @@ function BriefingPanel() {
     setCruiseAltitudeFt,
     waypoints,
     activeAircraft,
+    weightBalanceLoading,
     personalMinimums,
     routeAirspaceReview,
     routeNotamReview,
+    trainingWind,
+    updateTrainingWind,
+    filingChecklist,
+    updateFilingChecklist,
+    notamBriefingRecord,
+    updateNotamBriefingRecord,
+    flightPlanFilingRecord,
+    updateFlightPlanFilingRecord,
+    closeReminder,
+    updateCloseReminder,
+    emergencyLandingSites,
+    addEmergencyLandingSite,
+    updateEmergencyLandingSite,
+    removeEmergencyLandingSite,
   } = useMapStore();
   const weather = useRouteWeather(false);
+  const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
-  const weightBalance = useMemo(
-    () => calculateWeightBalance(activeAircraft, route),
-    [activeAircraft, route]
+  const trainingNavLog = useMemo(
+    () => buildTrainingNavLog(route, activeAircraft, trainingWind),
+    [route, activeAircraft, trainingWind]
+  );
+  const routeFreshnessSignature = useMemo(
+    () => `${waypoints.map((waypoint) => `${waypoint.id}:${waypoint.coordinates.join(',')}`).join('|')}@${activeAircraft.id}:${activeAircraft.cruiseSpeedKts}:${activeAircraft.fuelBurnGph}`,
+    [activeAircraft.cruiseSpeedKts, activeAircraft.fuelBurnGph, activeAircraft.id, waypoints]
+  );
+  const routeCalculatedAt = useMemo(
+    () => routeFreshnessSignature ? new Date().toISOString() : undefined,
+    [routeFreshnessSignature]
+  );
+  const weightBalanceResult = useMemo(
+    () => calculateWeightBalance({
+      aircraft: activeAircraft,
+      loading: weightBalanceLoading,
+      tripFuelGal: route.summary.tripFuelGal,
+    }),
+    [activeAircraft, route.summary.tripFuelGal, weightBalanceLoading]
+  );
+  const airspaceVerticalProfile = useMemo(
+    () => buildAirspaceVerticalProfile(route, routeAirspaceReview.alerts, cruiseAltitudeFt),
+    [route, routeAirspaceReview.alerts, cruiseAltitudeFt]
+  );
+  const filingReview = useMemo(
+    () => buildFilingWorkflowReview({
+      checklist: filingChecklist,
+      closeReminder,
+      now,
+    }),
+    [filingChecklist, closeReminder, now]
+  );
+  const flightAdminReview = useMemo(
+    () => buildFlightAdminReview({
+      notamRecord: notamBriefingRecord,
+      flightPlanRecord: flightPlanFilingRecord,
+      routeNotamReview,
+      waypoints,
+      departureTime,
+      cruiseAltitudeFt,
+      routeName,
+      closeReminder,
+      closeReview: filingReview,
+      now,
+    }),
+    [closeReminder, cruiseAltitudeFt, departureTime, filingReview, flightPlanFilingRecord, notamBriefingRecord, now, routeName, routeNotamReview, waypoints]
+  );
+  const emergencyReview = useMemo(
+    () => buildEmergencyPlanningReview({
+      waypoints,
+      cruiseAltitudeFt,
+      aircraft: activeAircraft,
+      userSites: emergencyLandingSites,
+      now,
+    }),
+    [activeAircraft, cruiseAltitudeFt, emergencyLandingSites, now, waypoints]
   );
   const reports = useMemo(
     () => Object.values(weather.reports).filter((report): report is WeatherReport => Boolean(report)),
     [weather.reports]
   );
+  const dataFreshness = useMemo(
+    () => [
+      assessDataFreshness({
+        source: 'Route',
+        updatedAt: routeCalculatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.route,
+      }),
+      assessDataFreshness({
+        source: 'Weather',
+        updatedAt: weather.updatedAt ?? newestWeatherObservedAt(reports),
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.weather,
+      }),
+      assessDataFreshness({
+        source: 'Airspace',
+        updatedAt: routeAirspaceReview.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
+      }),
+      assessDataFreshness({
+        source: 'NOTAM',
+        updatedAt: routeNotamReview.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.notam,
+      }),
+      assessDataFreshness({
+        source: 'W&B',
+        updatedAt: weightBalanceResult.calculatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.weightBalance,
+      }),
+    ],
+    [reports, routeAirspaceReview.updatedAt, routeCalculatedAt, routeNotamReview.updatedAt, weather.updatedAt, weightBalanceResult.calculatedAt]
+  );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalance),
-    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalance]
+    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview),
+    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview]
+  );
+  const digest = useMemo(
+    () => buildBriefingDigest({
+      routeName,
+      route,
+      risks,
+      weather: reports,
+      routeAirspaceAlerts: routeAirspaceReview.alerts,
+      routeNotamReview,
+      weightBalanceResult,
+      dataFreshness,
+      filingReview,
+      flightAdminReview,
+      emergencyReview,
+    }),
+    [routeName, route, risks, reports, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, dataFreshness, filingReview, flightAdminReview, emergencyReview]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -1242,13 +1380,43 @@ function BriefingPanel() {
       weather: reports,
       risks,
       routeAirspaceAlerts: routeAirspaceReview.alerts,
+      airspaceVerticalProfile,
       routeNotamReview,
-      weightBalanceResult: weightBalance,
+      weightBalanceResult,
+      dataFreshness,
+      trainingNavLog,
+      filingReview,
+      flightAdminReview,
+      emergencyReview,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, routeNotamReview, weightBalance, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
+  );
+  const backupPackText = useMemo(
+    () => buildBackupPackText({
+      routeName,
+      aircraft: activeAircraft,
+      route,
+      waypoints,
+      digest,
+      weather: reports,
+      risks,
+      routeAirspaceAlerts: routeAirspaceReview.alerts,
+      airspaceVerticalProfile,
+      routeNotamReview,
+      weightBalanceResult,
+      dataFreshness,
+      trainingNavLog,
+      filingReview,
+      flightAdminReview,
+      emergencyReview,
+      departureTime,
+      cruiseAltitudeFt,
+      notes: routeNotes,
+    }),
+    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -1279,11 +1447,46 @@ function BriefingPanel() {
         </div>
       </PanelBlock>
 
-      <AirspaceReviewPanel review={routeAirspaceReview} cruiseAltitudeFt={cruiseAltitudeFt} />
+      <AirspaceReviewPanel
+        review={routeAirspaceReview}
+        route={route}
+        cruiseAltitudeFt={cruiseAltitudeFt}
+      />
+
+      <BriefingDigestPanel digest={digest} />
+
+      <FreshnessPanel freshness={dataFreshness} />
 
       <NotamReviewPanel review={routeNotamReview} />
 
-      <WeightBalanceSummaryPanel result={weightBalance} />
+      <WeightBalanceReviewPanel result={weightBalanceResult} />
+
+      <TrainingNavLogPanel
+        navLog={trainingNavLog}
+        onWindChange={updateTrainingWind}
+      />
+
+      <FilingCloseReminderPanel
+        checklist={filingChecklist}
+        flightAdminReview={flightAdminReview}
+        notamRecord={notamBriefingRecord}
+        flightPlanRecord={flightPlanFilingRecord}
+        closeReminder={closeReminder}
+        review={filingReview}
+        departureTime={departureTime}
+        estimatedTimeMinutes={route.summary.estimatedTimeMinutes}
+        onChecklistChange={updateFilingChecklist}
+        onNotamRecordChange={updateNotamBriefingRecord}
+        onFlightPlanRecordChange={updateFlightPlanFilingRecord}
+        onReminderChange={updateCloseReminder}
+      />
+
+      <EmergencyPlanningPanel
+        review={emergencyReview}
+        onAddSite={addEmergencyLandingSite}
+        onUpdateSite={updateEmergencyLandingSite}
+        onRemoveSite={removeEmergencyLandingSite}
+      />
 
       <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
         <div className="space-y-2">
@@ -1294,7 +1497,7 @@ function BriefingPanel() {
       </PanelBlock>
 
       <PanelBlock title="Briefing package" icon={<Printer className="h-4 w-4" />}>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => window.print()}
@@ -1313,6 +1516,14 @@ function BriefingPanel() {
           </button>
           <button
             type="button"
+            onClick={() => downloadBriefing(backupPackText, `${routeName || 'halo'}-backup-pack`)}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Backup pack
+          </button>
+          <button
+            type="button"
             onClick={() => navigator.clipboard?.writeText(briefingText)}
             className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -1328,6 +1539,715 @@ function BriefingPanel() {
   );
 }
 
+function BriefingDigestPanel({ digest }: { digest: BriefingDigest }) {
+  return (
+    <PanelBlock title="Pilot digest" icon={<ClipboardCheck className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getDigestTone(digest.status)}`}>
+        <p className="font-semibold">{digest.title}</p>
+        <p className="mt-1">{digest.summary}</p>
+      </div>
+      <div className="mt-3 space-y-2">
+        {digest.items.map((item, index) => (
+          <div key={item.id} className={`rounded-md border p-2 text-xs ${getDigestItemTone(item.level)}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{index + 1}. {item.title}</p>
+                <p className="mt-1">{item.action}</p>
+              </div>
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase">
+                {item.source}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PanelBlock>
+  );
+}
+
+function FreshnessPanel({ freshness }: { freshness: DataFreshness[] }) {
+  return (
+    <PanelBlock title="Data freshness" icon={<RefreshCcw className="h-4 w-4" />}>
+      <div className="grid grid-cols-2 gap-2">
+        {freshness.map((item) => (
+          <FreshnessBadge key={item.source} freshness={item} />
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Stale or unknown data requires official source review before flight.
+      </p>
+    </PanelBlock>
+  );
+}
+
+function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
+  return (
+    <div className={`rounded-md border px-2 py-1 text-xs ${getFreshnessTone(freshness.status)}`}>
+      <p className="font-semibold">{freshness.source}: {formatFreshnessStatus(freshness.status)}</p>
+      <p className="mt-0.5">{freshness.ageMinutes !== undefined ? `${freshness.ageMinutes} min old` : 'Age unknown'}</p>
+    </div>
+  );
+}
+
+function WeightBalanceReviewPanel({ result }: { result: WeightBalanceResult }) {
+  return (
+    <PanelBlock title="Weight & balance review" icon={<Gauge className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getWeightBalanceTone(result)}`}>
+        <p className="font-semibold">{getWeightBalanceStatusLabel(result.status)}</p>
+        <p className="mt-1">{result.message}</p>
+      </div>
+
+      {result.ramp && result.takeoff && result.landing ? (
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+          <Metric label="Ramp" value={`${Math.round(result.ramp.weightLb)} lb / ${result.ramp.armIn.toFixed(2)} in`} />
+          <Metric label="Takeoff" value={`${Math.round(result.takeoff.weightLb)} lb / ${result.takeoff.armIn.toFixed(2)} in`} />
+          <Metric label="Landing" value={`${Math.round(result.landing.weightLb)} lb / ${result.landing.armIn.toFixed(2)} in`} />
+        </div>
+      ) : (
+        <div className="mt-3">
+          <EmptyState title="W&B not operational yet" detail="Open Aircraft and enter POH/AFM W&B data for this registration." />
+        </div>
+      )}
+
+      {result.issues.length > 0 && (
+        <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-slate-600">
+          {result.issues.slice(0, 4).map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+      )}
+    </PanelBlock>
+  );
+}
+
+function TrainingNavLogPanel({
+  navLog,
+  onWindChange,
+}: {
+  navLog: TrainingNavLog;
+  onWindChange: (updates: Partial<TrainingNavLog['wind']>) => void;
+}) {
+  return (
+    <PanelBlock title="Training / checkride navlog" icon={<Navigation className="h-4 w-4" />}>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField
+          label="Wind from deg"
+          value={navLog.wind.directionDeg}
+          onChange={(value) => onWindChange({ directionDeg: value })}
+        />
+        <NumberField
+          label="Wind kt"
+          value={navLog.wind.speedKts}
+          onChange={(value) => onWindChange({ speedKts: value })}
+        />
+      </div>
+
+      <p className="mt-2 text-xs text-slate-500">
+        Training mode uses a single manually entered route wind to teach WCA, heading, groundspeed, ETE, and fuel calculations.
+        Operational route math above remains unchanged.
+      </p>
+
+      {navLog.legs.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState
+            title="No training legs yet"
+            detail="Add at least two waypoints to generate checkride navlog calculations."
+          />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+            <Metric label="Training ETE" value={formatDuration(navLog.totalTimeMinutes)} />
+            <Metric label="Training fuel" value={formatFuel(navLog.totalFuelGal)} />
+          </div>
+          <p className="rounded bg-slate-50 p-2 text-xs text-slate-600">
+            Formula: {navLog.legs[0].formula}
+          </p>
+          {navLog.legs.slice(0, 6).map((leg, index) => (
+            <div key={leg.id} className="rounded-md border border-slate-200 p-2 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-900">
+                    {index + 1}. {leg.from} → {leg.to}
+                  </p>
+                  <p className="mt-1 text-slate-500">
+                    WCA {formatSignedDegrees(leg.windCorrectionAngleDeg)} · GS {Math.round(leg.groundSpeedKts)} kt
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-700">
+                  {formatDuration(leg.estimatedTimeMinutes)}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-2 rounded bg-slate-50 p-2">
+                <Metric label="TC" value={formatCourse(leg.trueCourseDeg)} />
+                <Metric label="MC" value={formatCourse(leg.magneticCourseDeg)} />
+                <Metric label="TH" value={formatCourse(leg.trueHeadingDeg)} />
+                <Metric label="MH" value={formatCourse(leg.magneticHeadingDeg)} />
+                <Metric label="CH" value={formatCourse(leg.compassHeadingDeg)} />
+                <Metric label="Fuel" value={formatFuel(leg.fuelRequiredGal)} />
+                <Metric label="WCA" value={formatSignedDegrees(leg.windCorrectionAngleDeg)} />
+                <Metric label="GS" value={`${Math.round(leg.groundSpeedKts)} kt`} />
+              </div>
+            </div>
+          ))}
+          {navLog.legs.length > 6 && (
+            <p className="text-xs font-medium text-slate-500">
+              +{navLog.legs.length - 6} more training leg{navLog.legs.length - 6 === 1 ? '' : 's'} in the exported briefing.
+            </p>
+          )}
+        </div>
+      )}
+    </PanelBlock>
+  );
+}
+
+function FilingCloseReminderPanel({
+  checklist,
+  flightAdminReview,
+  notamRecord,
+  flightPlanRecord,
+  closeReminder,
+  review,
+  departureTime,
+  estimatedTimeMinutes,
+  onChecklistChange,
+  onNotamRecordChange,
+  onFlightPlanRecordChange,
+  onReminderChange,
+}: {
+  checklist: FilingChecklistState;
+  flightAdminReview: FlightAdminReview;
+  notamRecord: NotamBriefingRecord;
+  flightPlanRecord: FlightPlanFilingRecord;
+  closeReminder: FlightCloseReminder;
+  review: FilingWorkflowReview;
+  departureTime: string;
+  estimatedTimeMinutes: number;
+  onChecklistChange: (updates: Partial<FilingChecklistState>) => void;
+  onNotamRecordChange: (updates: Partial<NotamBriefingRecord>) => void;
+  onFlightPlanRecordChange: (updates: Partial<FlightPlanFilingRecord>) => void;
+  onReminderChange: (updates: Partial<FlightCloseReminder>) => void;
+}) {
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [lastNotifiedStatus, setLastNotifiedStatus] = useState<FilingWorkflowReview['status'] | null>(null);
+
+  useEffect(() => {
+    if (!closeReminder.enabled || closeReminder.acknowledgedAt) return;
+    if (review.status !== 'due-soon' && review.status !== 'overdue') return;
+    if (lastNotifiedStatus === review.status) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    new Notification('Halo close-flight reminder', {
+      body: review.message,
+      tag: 'halo-close-flight-reminder',
+    });
+    setLastNotifiedStatus(review.status);
+  }, [closeReminder.acknowledgedAt, closeReminder.enabled, lastNotifiedStatus, review.message, review.status]);
+
+  const setRecommendedTimes = () => {
+    onReminderChange({
+      ...buildCloseReminderFromDeparture({
+        departureTime,
+        estimatedTimeMinutes,
+        closeBufferMinutes: 30,
+      }),
+      acknowledgedAt: undefined,
+    });
+  };
+
+  const recordNotamNow = () => {
+    onNotamRecordChange({
+      status: 'completed',
+      method: notamRecord.method || 'File2Fly / ATNS AIMU',
+      sourceUrl: notamRecord.sourceUrl || flightAdminReview.officialSourceUrl,
+      completedAt: toDateTimeLocal(new Date()),
+      routeSignature: flightAdminReview.routeSignature,
+      departureTime,
+    });
+  };
+
+  const markFiledNow = () => {
+    onFlightPlanRecordChange({
+      status: 'filed-manually',
+      method: flightPlanRecord.method || 'File2Fly / ATNS AIMU',
+      filedAt: toDateTimeLocal(new Date()),
+    });
+  };
+
+  const markFlightClosed = () => {
+    const closedAt = new Date();
+    onFlightPlanRecordChange({
+      status: 'closed',
+      closedAt: toDateTimeLocal(closedAt),
+    });
+    onReminderChange({
+      enabled: true,
+      acknowledgedAt: closedAt.toISOString(),
+    });
+  };
+
+  const copyPibRequest = async () => {
+    await navigator.clipboard?.writeText(flightAdminReview.routePibRequestText);
+    setCopyMessage('Route PIB request copied.');
+  };
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      setNotificationMessage('Browser notifications are not supported here.');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationMessage(
+      permission === 'granted'
+        ? 'Browser close reminder enabled while this app remains open.'
+        : 'Browser notification permission was not granted.'
+    );
+  };
+
+  return (
+    <PanelBlock title="Flight Admin" icon={<ClipboardCheck className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getFlightAdminReviewTone(flightAdminReview.status)}`}>
+        <p className="font-semibold">{formatFlightAdminReviewStatus(flightAdminReview.status)}</p>
+        <p className="mt-1">{flightAdminReview.message}</p>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Admin" value={flightAdminReview.status.toUpperCase()} />
+        <Metric label="NOTAM" value={formatNotamRecordStatus(flightAdminReview.notamStatus)} />
+        <Metric label="Filing" value={formatFlightPlanFilingStatus(flightAdminReview.filingStatus)} />
+        <Metric label="Close state" value={review.status.toUpperCase()} />
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-200 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-slate-950">Official NOTAM record</p>
+          <button
+            type="button"
+            onClick={recordNotamNow}
+            className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+          >
+            Record now
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{flightAdminReview.notamMessage}</p>
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          <SelectField
+            label="NOTAM status"
+            value={notamRecord.status}
+            onChange={(value) => {
+              if (value === 'completed') {
+                onNotamRecordChange({
+                  status: value,
+                  completedAt: notamRecord.completedAt || toDateTimeLocal(new Date()),
+                  routeSignature: flightAdminReview.routeSignature,
+                  departureTime,
+                });
+                return;
+              }
+              onNotamRecordChange({ status: value });
+            }}
+            options={[
+              ['not-recorded', 'Not recorded in Halo'],
+              ['completed', 'Official briefing completed'],
+              ['not-applicable', 'Not applicable / pilot waived'],
+              ['needs-rebrief', 'Needs rebrief'],
+            ]}
+          />
+          <TextField
+            label="NOTAM source/method"
+            value={notamRecord.method ?? ''}
+            onChange={(value) => onNotamRecordChange({ method: value })}
+          />
+          <TextField
+            label="NOTAM reference"
+            value={notamRecord.reference ?? ''}
+            onChange={(value) => onNotamRecordChange({ reference: value })}
+          />
+          <DateTimeField
+            label="NOTAM completed at"
+            value={notamRecord.completedAt ?? ''}
+            onChange={(value) => onNotamRecordChange({
+              completedAt: value,
+              routeSignature: value ? flightAdminReview.routeSignature : notamRecord.routeSignature,
+              departureTime: value ? departureTime : notamRecord.departureTime,
+            })}
+          />
+          <TextareaField
+            label="NOTAM notes"
+            value={notamRecord.notes ?? ''}
+            onChange={(value) => onNotamRecordChange({ notes: value })}
+            rows={2}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-200 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-slate-950">Route PIB handoff</p>
+          <button
+            type="button"
+            onClick={copyPibRequest}
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Copy PIB request
+          </button>
+        </div>
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-2 text-[11px] leading-relaxed text-slate-100">
+          {flightAdminReview.routePibRequestText}
+        </pre>
+        {copyMessage && <p className="mt-2 text-xs text-slate-500">{copyMessage}</p>}
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-200 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-slate-950">Flight plan filing record</p>
+          <button
+            type="button"
+            onClick={markFiledNow}
+            className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+          >
+            Mark filed now
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{flightAdminReview.filingMessage}</p>
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          <SelectField
+            label="Filing status"
+            value={flightPlanRecord.status}
+            onChange={(value) => onFlightPlanRecordChange({ status: value })}
+            options={[
+              ['not-filing', 'Not filing / not applicable'],
+              ['preparing', 'Preparing'],
+              ['filed-manually', 'Filed manually'],
+              ['accepted', 'Accepted'],
+              ['rejected', 'Rejected'],
+              ['cancelled', 'Cancelled'],
+              ['closed', 'Closed'],
+            ]}
+          />
+          <TextField
+            label="Filing source/method"
+            value={flightPlanRecord.method ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ method: value })}
+          />
+          <TextField
+            label="Filing reference"
+            value={flightPlanRecord.reference ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ reference: value })}
+          />
+          <DateTimeField
+            label="Filed at"
+            value={flightPlanRecord.filedAt ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ filedAt: value })}
+          />
+          <DateTimeField
+            label="Accepted at"
+            value={flightPlanRecord.acceptedAt ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ acceptedAt: value })}
+          />
+          <DateTimeField
+            label="Closed at"
+            value={flightPlanRecord.closedAt ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ closedAt: value })}
+          />
+          <TextField
+            label="Responsible contact"
+            value={flightPlanRecord.responsibleContact ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ responsibleContact: value })}
+          />
+          <TextareaField
+            label="Filing notes"
+            value={flightPlanRecord.notes ?? ''}
+            onChange={(value) => onFlightPlanRecordChange({ notes: value })}
+            rows={2}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-200 p-3">
+        <p className="text-sm font-semibold text-slate-950">Close reminder</p>
+        <p className="mt-1 text-xs text-slate-500">{review.message}</p>
+        <div className="mt-3 grid grid-cols-1 gap-3">
+        <DateTimeField
+          label="Planned departure"
+          value={closeReminder.plannedDepartureTime ?? ''}
+          onChange={(value) => onReminderChange({ plannedDepartureTime: value, enabled: true, acknowledgedAt: undefined })}
+        />
+        <DateTimeField
+          label="Planned arrival"
+          value={closeReminder.plannedArrivalTime ?? ''}
+          onChange={(value) => onReminderChange({ plannedArrivalTime: value, enabled: true, acknowledgedAt: undefined })}
+        />
+        <DateTimeField
+          label="Close by"
+          value={closeReminder.closeByTime ?? ''}
+          onChange={(value) => onReminderChange({ closeByTime: value, enabled: true, acknowledgedAt: undefined })}
+        />
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={setRecommendedTimes}
+          className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Set from route ETE
+        </button>
+        <button
+          type="button"
+          onClick={markFlightClosed}
+          className="rounded-md border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+        >
+          Mark closed
+        </button>
+        <button
+          type="button"
+          onClick={requestNotificationPermission}
+          className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Browser notify
+        </button>
+        <a
+          href={review.officialSourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Open File2Fly
+        </a>
+      </div>
+
+      <div className="mt-3 rounded-md border border-slate-200 p-3">
+        <p className="text-sm font-semibold text-slate-950">Optional quick checklist</p>
+        <div className="mt-2 space-y-2">
+          <ChecklistToggle
+            label="Route reviewed"
+            checked={checklist.routeReviewed}
+            onChange={(checked) => onChecklistChange({ routeReviewed: checked })}
+          />
+          <ChecklistToggle
+            label="Weather reviewed"
+            checked={checklist.weatherReviewed}
+            onChange={(checked) => onChecklistChange({ weatherReviewed: checked })}
+          />
+          <ChecklistToggle
+            label="Official NOTAM PIB obtained"
+            checked={checklist.notamPibObtained}
+            onChange={(checked) => onChecklistChange({ notamPibObtained: checked })}
+          />
+          <ChecklistToggle
+            label="Weight & balance reviewed"
+            checked={checklist.weightBalanceReviewed}
+            onChange={(checked) => onChecklistChange({ weightBalanceReviewed: checked })}
+          />
+          <ChecklistToggle
+            label="Fuel reviewed"
+            checked={checklist.fuelReviewed}
+            onChange={(checked) => onChecklistChange({ fuelReviewed: checked })}
+          />
+          <ChecklistToggle
+            label="Filed via official source"
+            checked={checklist.filedViaOfficialSource}
+            onChange={(checked) => onChecklistChange({ filedViaOfficialSource: checked })}
+          />
+        </div>
+      </div>
+
+      {notificationMessage && (
+        <p className="mt-2 text-xs text-slate-500">{notificationMessage}</p>
+      )}
+      <p className="mt-2 text-xs text-slate-500">
+        Halo only prepares handoff text, optional records, checklist, and reminders. Obtain NOTAMs, file, cancel, and close through ATNS File2Fly / SACAA official channels.
+      </p>
+    </PanelBlock>
+  );
+}
+
+function EmergencyPlanningPanel({
+  review,
+  onAddSite,
+  onUpdateSite,
+  onRemoveSite,
+}: {
+  review: EmergencyPlanningReview;
+  onAddSite: (site: Omit<EmergencyLandingSite, 'id'>) => void;
+  onUpdateSite: (id: string, updates: Partial<EmergencyLandingSite>) => void;
+  onRemoveSite: (id: string) => void;
+}) {
+  const [siteName, setSiteName] = useState('');
+  const [siteLat, setSiteLat] = useState('');
+  const [siteLng, setSiteLng] = useState('');
+  const [siteSuitability, setSiteSuitability] = useState<EmergencyLandingSuitability>('unknown');
+  const [siteNotes, setSiteNotes] = useState('');
+  const [siteVerified, setSiteVerified] = useState('');
+  const visibleCandidates = review.candidates.slice(0, 5);
+
+  const addSite = () => {
+    const latitude = Number(siteLat);
+    const longitude = Number(siteLng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+
+    onAddSite({
+      name: siteName.trim() || 'Forced-landing site',
+      coordinates: [longitude, latitude],
+      suitability: siteSuitability,
+      notes: siteNotes.trim() || undefined,
+      lastVerifiedDate: siteVerified || undefined,
+    });
+    setSiteName('');
+    setSiteLat('');
+    setSiteLng('');
+    setSiteSuitability('unknown');
+    setSiteNotes('');
+    setSiteVerified('');
+  };
+
+  return (
+    <PanelBlock title="Emergency / forced landing" icon={<AlertTriangle className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getEmergencyReviewTone(review.status)}`}>
+        <p className="font-semibold">{formatEmergencyStatus(review.status)}</p>
+        <p className="mt-1">{review.message}</p>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Glide" value={`${review.glideRadiusNm.toFixed(1)} nm`} />
+        <Metric label="Ratio" value={`${review.glideRatio}:1`} />
+        <Metric label="Sites" value={String(review.candidates.length)} />
+      </div>
+
+      <p className="mt-2 text-xs text-slate-500">
+        Glide radius is approximate still-air distance from selected cruise altitude. Verify terrain, wind, aircraft configuration, and official aerodrome data.
+      </p>
+
+      <div className="mt-3 space-y-2">
+        {visibleCandidates.length === 0 ? (
+          <EmptyState
+            title="No emergency candidates"
+            detail="Add a route or mark forced-landing sites."
+          />
+        ) : visibleCandidates.map((candidate, index) => (
+          <div key={candidate.id} className={`rounded-md border p-2 text-xs ${getEmergencySuitabilityTone(candidate.suitability)}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">
+                  {index + 1}. {candidate.ident ? `${candidate.ident} · ` : ''}{candidate.name}
+                </p>
+                <p className="mt-1">
+                  {candidate.distanceFromRouteNm.toFixed(1)} nm from route · {candidate.source}
+                </p>
+              </div>
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase">
+                {candidate.suitability}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-md border border-slate-200 p-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mark forced-landing site</p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <input
+            value={siteName}
+            onChange={(event) => setSiteName(event.target.value)}
+            placeholder="Name"
+            className="col-span-2 rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          />
+          <input
+            value={siteLat}
+            onChange={(event) => setSiteLat(event.target.value)}
+            placeholder="Latitude"
+            inputMode="decimal"
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          />
+          <input
+            value={siteLng}
+            onChange={(event) => setSiteLng(event.target.value)}
+            placeholder="Longitude"
+            inputMode="decimal"
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          />
+          <select
+            value={siteSuitability}
+            onChange={(event) => setSiteSuitability(event.target.value as EmergencyLandingSuitability)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          >
+            <option value="unknown">Unknown</option>
+            <option value="good">Good</option>
+            <option value="caution">Caution</option>
+            <option value="unsuitable">Unsuitable</option>
+          </select>
+          <input
+            type="date"
+            value={siteVerified}
+            onChange={(event) => setSiteVerified(event.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          />
+          <input
+            value={siteNotes}
+            onChange={(event) => setSiteNotes(event.target.value)}
+            placeholder="Notes"
+            className="col-span-2 rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={addSite}
+          className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add forced-landing site
+        </button>
+      </div>
+
+      {review.userSites.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">User sites</p>
+          {review.userSites.map((site) => (
+            <div key={site.id} className="rounded-md border border-slate-200 p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <input
+                    value={site.name}
+                    onChange={(event) => onUpdateSite(site.id, { name: event.target.value })}
+                    className="w-full rounded border border-transparent text-xs font-semibold text-slate-900 focus:border-slate-300 focus:px-2 focus:py-1 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-500">{formatCoordinates(site.coordinates)}</p>
+                </div>
+                <IconButton label="Remove emergency site" onClick={() => onRemoveSite(site.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </IconButton>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <select
+                  value={site.suitability}
+                  onChange={(event) => onUpdateSite(site.id, { suitability: event.target.value as EmergencyLandingSuitability })}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="good">Good</option>
+                  <option value="caution">Caution</option>
+                  <option value="unsuitable">Unsuitable</option>
+                </select>
+                <input
+                  type="date"
+                  value={site.lastVerifiedDate ?? ''}
+                  onChange={(event) => onUpdateSite(site.id, { lastVerifiedDate: event.target.value || undefined })}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-950 focus:outline-none"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </PanelBlock>
+  );
+}
+
 function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
   const criticalCount = review.notams.filter((notam) => notam.severity === 'critical').length;
   const cautionCount = review.notams.filter((notam) => notam.severity === 'caution').length;
@@ -1335,6 +2255,7 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
   const StatusIcon = criticalCount > 0 || cautionCount > 0 || review.status !== 'complete'
     ? AlertTriangle
     : CheckCircle2;
+  const sourceLabel = formatNotamSource(review.source);
 
   return (
     <PanelBlock title="Route NOTAM review" icon={<AlertTriangle className="h-4 w-4" />}>
@@ -1347,11 +2268,9 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
                 ? `${criticalCount} critical NOTAM${criticalCount === 1 ? '' : 's'}`
                 : cautionCount > 0
                   ? `${cautionCount} NOTAM${cautionCount === 1 ? '' : 's'} need review`
-                  : review.status === 'manual-required'
-                    ? 'Official NOTAM briefing required'
                   : review.status === 'complete'
-                    ? 'Route NOTAM scan complete'
-                    : 'Route NOTAM review unavailable'}
+                    ? `${sourceLabel} route scan`
+                    : formatNotamStatusLabel(review.status)}
             </p>
             <p className="mt-1">{review.message}</p>
           </div>
@@ -1359,26 +2278,22 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 rounded bg-slate-50 p-2 text-xs">
-        <Metric label="Source" value={formatNotamSourceShort(review.source)} />
+        <Metric label="Source" value={sourceLabel} />
         <Metric label="Queries" value={String(review.queryCount)} />
         <Metric label="NOTAMs" value={String(review.notams.length)} />
       </div>
 
       <p className="mt-2 text-xs text-slate-500">
         {review.locations.length
-          ? `${review.status === 'complete' || review.status === 'partial' ? 'Route locations checked' : 'Route locations prepared'}: ${review.locations.join(', ')}. Source attribution: ${formatNotamSourceLong(review.source)}.`
-          : 'Add route airports or navaids with usable identifiers for NOTAM briefing.'}
+          ? `${review.status === 'complete' || review.status === 'partial' ? 'Route locations checked' : 'Route locations prepared'}: ${review.locations.join(', ')}. Source attribution: ${sourceLabel}.`
+          : 'Add route airports or navaids with usable identifiers for NOTAM lookup.'}
       </p>
 
       {visibleNotams.length === 0 ? (
         <div className="mt-3">
           <EmptyState
-            title={review.status === 'complete' ? 'No NOTAMs returned' : review.status === 'manual-required' ? 'Manual briefing required' : 'No live NOTAM data'}
-            detail={review.status === 'complete'
-              ? 'No route-location NOTAMs were returned by the configured provider. Continue official preflight review.'
-              : review.status === 'manual-required'
-                ? 'Use ATNS File2Fly and SACAA official NOTAM briefing sources. Halo does not scrape or fake live South Africa NOTAMs.'
-                : 'The configured NOTAM provider is unavailable. Continue with the official preflight briefing source.'}
+            title={review.status === 'complete' ? 'No NOTAMs returned' : 'No live NOTAM data'}
+            detail={formatEmptyNotamDetail(review)}
           />
         </div>
       ) : (
@@ -1402,72 +2317,6 @@ function NotamReviewPanel({ review }: { review: RouteNotamReview }) {
       >
         Open official NOTAM source
       </a>
-    </PanelBlock>
-  );
-}
-
-function WeightBalanceSummaryPanel({ result }: { result: WeightBalanceResult }) {
-  const visibleMessages = result.messages.slice(0, 4);
-
-  return (
-    <PanelBlock title="Weight and balance" icon={<Gauge className="h-4 w-4" />}>
-      <div className={`rounded-md px-3 py-2 text-xs ${getWeightBalanceTone(result.status)}`}>
-        <div className="flex items-start gap-2">
-          {result.status === 'within-limits' ? (
-            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          )}
-          <div>
-            <p className="font-semibold">{formatWeightBalanceStatus(result.status)}</p>
-            <p className="mt-1">
-              {visibleMessages[0] ?? 'Ramp, takeoff, and landing CG are within the configured aircraft envelope.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {result.phases.length === 0 ? (
-        <div className="mt-3">
-          <EmptyState
-            title="POH setup required"
-            detail="Enter real aircraft empty weight, arms, station limits, and CG envelope in the Aircraft tab before relying on W&B."
-          />
-        </div>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {result.phases.map((phase) => (
-            <div key={phase.phase} className={`rounded border p-2 text-xs ${getWeightBalanceTone(phase.status)}`}>
-              <div className="flex items-start justify-between gap-3">
-                <p className="font-semibold uppercase">{phase.phase}</p>
-                <span>{formatWeightBalanceStatus(phase.status)}</span>
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Metric label="Weight" value={`${Math.round(phase.weightLb)} lb`} />
-                <Metric label="CG" value={`${phase.armIn?.toFixed(2) ?? 'unknown'} in`} />
-                <Metric
-                  label="Envelope"
-                  value={phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
-                    ? `${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
-                    : 'outside range'}
-                />
-                <Metric
-                  label="Max"
-                  value={phase.maxWeightLb ? `${Math.round(phase.maxWeightLb)} lb` : 'not set'}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {visibleMessages.length > 1 && (
-        <div className="mt-3 space-y-1">
-          {visibleMessages.slice(1).map((message) => (
-            <WarningLine key={message} text={message} />
-          ))}
-        </div>
-      )}
     </PanelBlock>
   );
 }
@@ -1525,11 +2374,26 @@ function ResearchPanel() {
   );
 }
 
+function useNowMinute(): Date {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setNow(new Date());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(id);
+  }, []);
+
+  return now;
+}
+
 function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
   const { waypoints } = useMapStore();
   const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
   const [reports, setReports] = useState<Record<string, WeatherReport | null>>({});
   const [tafs, setTafs] = useState<Record<string, string | null>>({});
+  const [updatedAt, setUpdatedAt] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1537,6 +2401,7 @@ function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
     if (stations.length === 0) {
       setReports({});
       setTafs({});
+      setUpdatedAt(undefined);
       return;
     }
 
@@ -1568,6 +2433,7 @@ function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
 
       setReports(Object.fromEntries(results.map((result) => [result.station, result.report])));
       setTafs(Object.fromEntries(results.map((result) => [result.station, result.taf])));
+      setUpdatedAt(new Date().toISOString());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Weather lookup failed');
     } finally {
@@ -1585,7 +2451,7 @@ function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
     return () => window.clearInterval(id);
   }, [autoRefresh, refresh]);
 
-  return { reports, tafs, loading, error, refresh };
+  return { reports, tafs, updatedAt, loading, error, refresh };
 }
 
 function getRouteStationIds(waypoints: Waypoint[]): string[] {
@@ -1596,6 +2462,17 @@ function getRouteStationIds(waypoints: Waypoint[]): string[] {
         .filter((ident): ident is string => Boolean(ident && /^[A-Z0-9]{4}$/.test(ident)))
     )
   );
+}
+
+function newestWeatherObservedAt(reports: WeatherReport[]): string | undefined {
+  const timestamps = reports
+    .map((report) => report.observedAt)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Date.parse(value))
+    .filter(Number.isFinite);
+
+  if (timestamps.length === 0) return undefined;
+  return new Date(Math.max(...timestamps)).toISOString();
 }
 
 function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
@@ -1689,6 +2566,32 @@ function formatLayerName(layer: string): string {
   return labels[layer] ?? layer.replace(/([A-Z])/g, ' $1');
 }
 
+function updateStation(
+  stations: WeightBalanceConfig['stations'],
+  stationId: string,
+  updates: Partial<WeightBalanceConfig['stations'][number]>
+): WeightBalanceConfig['stations'] {
+  return stations.map((station) =>
+    station.id === stationId ? { ...station, ...updates } : station
+  );
+}
+
+function updateEnvelopePoint(
+  envelope: WeightBalanceEnvelopePoint[],
+  index: number,
+  updates: Partial<WeightBalanceEnvelopePoint>
+): WeightBalanceEnvelopePoint[] {
+  const next = envelope.length ? [...envelope] : [
+    { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 },
+    { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 },
+  ];
+  next[index] = {
+    ...(next[index] ?? { weightLb: 0, forwardArmIn: 0, aftArmIn: 0 }),
+    ...updates,
+  };
+  return next;
+}
+
 function getAirspaceReviewTone(review: RouteAirspaceReview): string {
   if (review.alerts.some((alert) => alert.level === 'critical')) {
     return 'bg-rose-50 text-rose-800';
@@ -1718,6 +2621,103 @@ function getAirspaceAlertTone(level: RouteAirspaceAlert['level']): string {
   return 'border-slate-200 bg-white text-slate-700';
 }
 
+function getAirspaceProfileTone(status: AirspaceVerticalProfile['status']): string {
+  if (status === 'critical') return 'bg-rose-100 text-rose-800';
+  if (status === 'review') return 'bg-amber-100 text-amber-900';
+  return 'bg-emerald-100 text-emerald-800';
+}
+
+function getAirspaceProfileBandTone(level: RouteAirspaceAlert['level']): string {
+  if (level === 'critical') return 'bg-rose-500';
+  if (level === 'caution') return 'bg-amber-500';
+  return 'bg-slate-400';
+}
+
+function getAirspaceProfileRange(
+  item: Pick<AirspaceVerticalProfile['items'][number], 'startDistanceNm' | 'endDistanceNm'>,
+  routeDistanceNm: number
+): { leftPercent: number; widthPercent: number } {
+  if (routeDistanceNm <= 0 || item.startDistanceNm === undefined || item.endDistanceNm === undefined) {
+    return { leftPercent: 0, widthPercent: 100 };
+  }
+
+  const startPercent = Math.max(0, Math.min(100, (item.startDistanceNm / routeDistanceNm) * 100));
+  const endPercent = Math.max(startPercent, Math.min(100, (item.endDistanceNm / routeDistanceNm) * 100));
+
+  return {
+    leftPercent: startPercent,
+    widthPercent: Math.max(3, endPercent - startPercent),
+  };
+}
+
+function formatProfileRangeLabel(item: Pick<AirspaceVerticalProfile['items'][number], 'startDistanceNm' | 'endDistanceNm'>): string {
+  if (item.startDistanceNm === undefined || item.endDistanceNm === undefined) {
+    return 'range unknown';
+  }
+
+  if (Math.abs(item.startDistanceNm - item.endDistanceNm) < 0.1) {
+    return `near ${formatDistance(item.startDistanceNm)}`;
+  }
+
+  return `${formatDistance(item.startDistanceNm)}-${formatDistance(item.endDistanceNm)}`;
+}
+
+function formatNotamSource(source: RouteNotamReview['source']): string {
+  if (source === 'south-africa-official') return 'SA official';
+  if (source === 'faa-notam-api') return 'FAA';
+  return 'Offline';
+}
+
+function formatNotamStatusLabel(status: RouteNotamReview['status']): string {
+  if (status === 'manual-required') return 'Official briefing required';
+  if (status === 'checking') return 'NOTAM review checking';
+  if (status === 'needs-route') return 'Route required';
+  if (status === 'partial') return 'Partial NOTAM review';
+  return 'Live NOTAM review unavailable';
+}
+
+function formatEmptyNotamDetail(review: RouteNotamReview): string {
+  if (review.status === 'complete') {
+    return 'No route-location NOTAMs were returned by the configured official provider. Continue official preflight review.';
+  }
+
+  if (review.status === 'manual-required') {
+    return 'Halo prepared route locations only. Use ATNS File2Fly, SACAA/AIMU briefing office, or another authorized official source for the operational PIB.';
+  }
+
+  if (review.status === 'needs-route') {
+    return 'Add at least two route waypoints to prepare the NOTAM review.';
+  }
+
+  return 'Configure an authorized live NOTAM provider or use the linked official briefing source before flight.';
+}
+
+function getWeightBalanceTone(result: WeightBalanceResult): string {
+  if (result.status === 'out-of-limits') return 'bg-rose-50 text-rose-800';
+  if (result.status === 'caution' || result.status === 'incomplete' || result.status === 'unconfigured') {
+    return 'bg-amber-50 text-amber-900';
+  }
+  return 'bg-emerald-50 text-emerald-800';
+}
+
+function getDigestTone(status: BriefingDigest['status']): string {
+  if (status === 'stop') return 'bg-rose-50 text-rose-800';
+  if (status === 'review') return 'bg-amber-50 text-amber-900';
+  return 'bg-emerald-50 text-emerald-800';
+}
+
+function getDigestItemTone(level: BriefingDigest['items'][number]['level']): string {
+  if (level === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (level === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
+  return 'border-slate-200 bg-white text-slate-700';
+}
+
+function getFreshnessTone(status: DataFreshness['status']): string {
+  if (status === 'stale') return 'border-amber-200 bg-amber-50 text-amber-900';
+  if (status === 'unknown') return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+}
+
 function getNotamReviewTone(review: RouteNotamReview): string {
   if (review.notams.some((notam) => notam.severity === 'critical')) {
     return 'bg-rose-50 text-rose-800';
@@ -1735,33 +2735,84 @@ function getNotamReviewTone(review: RouteNotamReview): string {
   return 'bg-slate-50 text-slate-700';
 }
 
-function formatNotamSourceShort(source: RouteNotamReview['source']): string {
-  if (source === 'south-africa-official') return 'SA official';
-  if (source === 'faa-notam-api') return 'FAA';
-  return 'Offline';
-}
-
-function formatNotamSourceLong(source: RouteNotamReview['source']): string {
-  if (source === 'south-africa-official') return 'ATNS File2Fly / SACAA official briefing';
-  if (source === 'faa-notam-api') return 'FAA NOTAM API';
-  return 'Unavailable';
-}
-
 function getNotamTone(severity: RouteNotam['severity']): string {
   if (severity === 'critical') return 'border-rose-200 bg-rose-50 text-rose-800';
   if (severity === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
   return 'border-slate-200 bg-white text-slate-700';
 }
 
-function getWeightBalanceTone(status: WeightBalanceResult['status']): string {
-  if (status === 'out-of-limits') return 'border-rose-200 bg-rose-50 text-rose-800';
-  if (status === 'caution' || status === 'incomplete') return 'border-amber-200 bg-amber-50 text-amber-900';
-  if (status === 'within-limits') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+function getFilingReviewTone(status: FilingWorkflowReview['status']): string {
+  if (status === 'overdue') return 'bg-rose-50 text-rose-800';
+  if (status === 'due-soon' || status === 'not-planned') return 'bg-amber-50 text-amber-900';
+  if (status === 'closed') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-slate-50 text-slate-700';
+}
+
+function getFlightAdminReviewTone(status: FlightAdminReview['status']): string {
+  if (status === 'stop') return 'bg-rose-50 text-rose-800';
+  if (status === 'review') return 'bg-amber-50 text-amber-900';
+  return 'bg-emerald-50 text-emerald-800';
+}
+
+function formatFlightAdminReviewStatus(status: FlightAdminReview['status']): string {
+  if (status === 'stop') return 'Flight admin needs action';
+  if (status === 'review') return 'Flight admin review';
+  return 'Flight admin optional records';
+}
+
+function formatFilingStatus(status: FilingWorkflowReview['status']): string {
+  const labels: Record<FilingWorkflowReview['status'], string> = {
+    'not-planned': 'Close reminder not planned',
+    planned: 'Close reminder planned',
+    'due-soon': 'Close reminder due soon',
+    overdue: 'Close reminder overdue',
+    closed: 'Flight close acknowledged',
+  };
+
+  return labels[status];
+}
+
+function getEmergencyReviewTone(status: EmergencyPlanningReview['status']): string {
+  if (status === 'review') return 'bg-amber-50 text-amber-900';
+  if (status === 'available') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-slate-50 text-slate-700';
+}
+
+function formatEmergencyStatus(status: EmergencyPlanningReview['status']): string {
+  if (status === 'available') return 'Emergency candidates available';
+  if (status === 'review') return 'Emergency planning review required';
+  return 'Route required for emergency planning';
+}
+
+function getEmergencySuitabilityTone(suitability: EmergencyLandingSuitability): string {
+  if (suitability === 'good') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  if (suitability === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
+  if (suitability === 'unsuitable') return 'border-rose-200 bg-rose-50 text-rose-800';
+  return 'border-slate-200 bg-white text-slate-700';
 }
 
 function formatAirspaceVertical(alert: RouteAirspaceAlert): string {
   return `${alert.lowerLimit ?? 'lower unknown'} to ${alert.upperLimit ?? 'upper unknown'}`;
+}
+
+function formatSignedDegrees(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded > 0 ? '+' : ''}${rounded} deg`;
+}
+
+function toDateTimeLocal(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    '-',
+    pad(date.getMonth() + 1),
+    '-',
+    pad(date.getDate()),
+    'T',
+    pad(date.getHours()),
+    ':',
+    pad(date.getMinutes()),
+  ].join('');
 }
 
 function SummaryGrid({
@@ -1849,25 +2900,23 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 }
 
 function NumberField({
-  id,
   label,
   value,
   onChange,
   step = '1',
 }: {
-  id?: string;
   label: string;
   value: number;
   onChange: (value: number) => void;
   step?: string;
 }) {
-  const inputId = id ?? label.toLowerCase().replace(/\W+/g, '-');
+  const id = label.toLowerCase().replace(/\W+/g, '-');
 
   return (
     <div>
-      <Label htmlFor={inputId}>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <input
-        id={inputId}
+        id={id}
         type="number"
         step={step}
         value={Number.isFinite(value) ? value : 0}
@@ -1875,6 +2924,137 @@ function NumberField({
         className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
       />
     </div>
+  );
+}
+
+function DateTimeField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <input
+        id={id}
+        type="datetime-local"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <input
+        id={id}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function TextareaField({
+  label,
+  value,
+  onChange,
+  rows = 3,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <textarea
+        id={id}
+        value={value}
+        rows={rows}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function SelectField<TValue extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: TValue;
+  options: Array<[TValue, string]>;
+  onChange: (value: TValue) => void;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value as TValue)}
+        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function ChecklistToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-slate-300"
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 

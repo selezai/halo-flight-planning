@@ -4,9 +4,16 @@ import type { ParsedFeature } from '@/types/openaip';
 import type {
   AircraftProfile,
   Coordinates,
+  EmergencyLandingSite,
+  FilingChecklistState,
+  FlightPlanFilingRecord,
+  FlightCloseReminder,
+  NotamBriefingRecord,
   PersonalMinimums,
   RouteAirspaceReview,
   RouteNotamReview,
+  TrainingWind,
+  WeightBalanceLoading,
   Waypoint,
 } from '@/types/planning';
 import {
@@ -15,11 +22,16 @@ import {
   clampAircraftProfile,
   clampPersonalMinimums,
 } from '@/lib/planning/aircraft';
+import { SOUTH_AFRICA_ATNS_FILE2FLY_URL } from '@/lib/planning/notams';
 import { createUserWaypoint } from '@/lib/planning/navigation';
+import { DEFAULT_CLOSE_REMINDER, DEFAULT_FILING_CHECKLIST } from '@/lib/planning/filingReminder';
 import {
-  mergeAccountSnapshotIntoPlannerState,
-  type HaloAccountSnapshot,
-} from '@/lib/supabase/accountSnapshot';
+  DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+  DEFAULT_NOTAM_BRIEFING_RECORD,
+} from '@/lib/planning/flightAdmin';
+import { insertWaypointAtRouteIndex } from '@/lib/planning/rubberBandRoute';
+import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
+import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
 
 interface MapState {
   // Map viewport
@@ -54,11 +66,18 @@ interface MapState {
   cruiseAltitudeFt: number;
   waypoints: Waypoint[];
   activeAircraft: AircraftProfile;
+  weightBalanceLoading: WeightBalanceLoading;
   personalMinimums: PersonalMinimums;
   routeAirspaceReview: RouteAirspaceReview;
   renderedRouteAirspaceReview: RouteAirspaceReview;
   coreRouteAirspaceReview: RouteAirspaceReview;
   routeNotamReview: RouteNotamReview;
+  trainingWind: TrainingWind;
+  filingChecklist: FilingChecklistState;
+  notamBriefingRecord: NotamBriefingRecord;
+  flightPlanFilingRecord: FlightPlanFilingRecord;
+  closeReminder: FlightCloseReminder;
+  emergencyLandingSites: EmergencyLandingSite[];
   
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -76,6 +95,7 @@ interface MapState {
   setDepartureTime: (time: string) => void;
   setCruiseAltitudeFt: (altitudeFt: number) => void;
   addRouteWaypoint: (waypoint: Waypoint) => void;
+  insertRouteWaypoint: (index: number, waypoint: Waypoint) => void;
   addUserWaypoint: (coordinates: Coordinates) => void;
   removeRouteWaypoint: (id: string) => void;
   moveRouteWaypoint: (id: string, direction: 'up' | 'down') => void;
@@ -83,11 +103,20 @@ interface MapState {
   clearRoute: () => void;
   setActiveAircraft: (aircraft: AircraftProfile) => void;
   updateActiveAircraft: (updates: Partial<AircraftProfile>) => void;
+  updateWeightBalanceLoading: (updates: Partial<WeightBalanceLoading>) => void;
+  updateWeightBalanceStationWeight: (stationId: string, weightLb: number) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
-  loadAccountSnapshot: (snapshot: HaloAccountSnapshot) => void;
   setRenderedRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setCoreRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setRouteNotamReview: (review: RouteNotamReview) => void;
+  updateTrainingWind: (updates: Partial<TrainingWind>) => void;
+  updateFilingChecklist: (updates: Partial<FilingChecklistState>) => void;
+  updateNotamBriefingRecord: (updates: Partial<NotamBriefingRecord>) => void;
+  updateFlightPlanFilingRecord: (updates: Partial<FlightPlanFilingRecord>) => void;
+  updateCloseReminder: (updates: Partial<FlightCloseReminder>) => void;
+  addEmergencyLandingSite: (site: Omit<EmergencyLandingSite, 'id'>) => void;
+  updateEmergencyLandingSite: (id: string, updates: Partial<EmergencyLandingSite>) => void;
+  removeEmergencyLandingSite: (id: string) => void;
 }
 
 const DEFAULT_VISIBLE_LAYERS: MapState['visibleLayers'] = {
@@ -122,11 +151,11 @@ const DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW: RouteAirspaceReview = {
 const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
   source: 'south-africa-official',
   status: 'needs-route',
-  message: 'Add at least two route waypoints to prepare the official NOTAM briefing checklist.',
+  message: 'Add at least two route waypoints to prepare official South Africa NOTAM review.',
   notams: [],
   locations: [],
   queryCount: 0,
-  sourceUrl: 'https://file2fly.atns.co.za/aes/login.jsp',
+  sourceUrl: SOUTH_AFRICA_ATNS_FILE2FLY_URL,
 };
 
 function chooseActiveAirspaceReview(
@@ -170,11 +199,18 @@ export const useMapStore = create<MapState>()(
       cruiseAltitudeFt: 6500,
       waypoints: [],
       activeAircraft: DEFAULT_AIRCRAFT,
+      weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
       personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
       routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
       routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
+      trainingWind: DEFAULT_TRAINING_WIND,
+      filingChecklist: DEFAULT_FILING_CHECKLIST,
+      notamBriefingRecord: DEFAULT_NOTAM_BRIEFING_RECORD,
+      flightPlanFilingRecord: DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+      closeReminder: DEFAULT_CLOSE_REMINDER,
+      emergencyLandingSites: [],
       
       // Actions
       setCenter: (center) => set({ center }),
@@ -235,6 +271,17 @@ export const useMapStore = create<MapState>()(
         sidebarOpen: true,
       })),
 
+      insertRouteWaypoint: (index, waypoint) => set((state) => ({
+        waypoints: insertWaypointAtRouteIndex(state.waypoints, {
+          ...waypoint,
+          id: waypoint.id || `${waypoint.type}-${Date.now()}-${index}`,
+        }, index),
+        selectedFeature: null,
+        selectedFeatureCandidates: [],
+        sidebarPanel: 'route',
+        sidebarOpen: true,
+      })),
+
       addUserWaypoint: (coordinates) => set((state) => ({
         waypoints: [
           ...state.waypoints,
@@ -279,32 +326,37 @@ export const useMapStore = create<MapState>()(
 
       setActiveAircraft: (aircraft) => set({
         activeAircraft: clampAircraftProfile(aircraft),
+        weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
       }),
 
       updateActiveAircraft: (updates) => set((state) => ({
         activeAircraft: clampAircraftProfile({ ...state.activeAircraft, ...updates }),
       })),
 
+      updateWeightBalanceLoading: (updates) => set((state) => ({
+        weightBalanceLoading: {
+          ...state.weightBalanceLoading,
+          ...updates,
+          stationWeights: {
+            ...state.weightBalanceLoading.stationWeights,
+            ...updates.stationWeights,
+          },
+        },
+      })),
+
+      updateWeightBalanceStationWeight: (stationId, weightLb) => set((state) => ({
+        weightBalanceLoading: {
+          ...state.weightBalanceLoading,
+          stationWeights: {
+            ...state.weightBalanceLoading.stationWeights,
+            [stationId]: Number.isFinite(weightLb) ? Math.max(0, weightLb) : 0,
+          },
+        },
+      })),
+
       updatePersonalMinimums: (updates) => set((state) => ({
         personalMinimums: clampPersonalMinimums({ ...state.personalMinimums, ...updates }),
       })),
-
-      loadAccountSnapshot: (snapshot) => set(() => {
-        const next = mergeAccountSnapshotIntoPlannerState(snapshot);
-
-        return {
-          ...next,
-          activeAircraft: clampAircraftProfile(next.activeAircraft),
-          personalMinimums: clampPersonalMinimums(next.personalMinimums),
-          routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
-          renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
-          coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
-          routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
-          selectedFeature: null,
-          selectedFeatureCandidates: [],
-          sidebarPanel: 'route',
-        };
-      }),
 
       setRenderedRouteAirspaceReview: (review) => set((state) => ({
         renderedRouteAirspaceReview: review,
@@ -319,6 +371,65 @@ export const useMapStore = create<MapState>()(
       setRouteNotamReview: (review) => set({
         routeNotamReview: review,
       }),
+
+      updateTrainingWind: (updates) => set((state) => ({
+        trainingWind: {
+          directionDeg: Number.isFinite(updates.directionDeg)
+            ? Number(updates.directionDeg)
+            : state.trainingWind.directionDeg,
+          speedKts: Number.isFinite(updates.speedKts)
+            ? Math.max(0, Number(updates.speedKts))
+            : state.trainingWind.speedKts,
+        },
+      })),
+
+      updateFilingChecklist: (updates) => set((state) => ({
+        filingChecklist: {
+          ...state.filingChecklist,
+          ...updates,
+        },
+      })),
+
+      updateNotamBriefingRecord: (updates) => set((state) => ({
+        notamBriefingRecord: {
+          ...state.notamBriefingRecord,
+          ...updates,
+        },
+      })),
+
+      updateFlightPlanFilingRecord: (updates) => set((state) => ({
+        flightPlanFilingRecord: {
+          ...state.flightPlanFilingRecord,
+          ...updates,
+        },
+      })),
+
+      updateCloseReminder: (updates) => set((state) => ({
+        closeReminder: {
+          ...state.closeReminder,
+          ...updates,
+        },
+      })),
+
+      addEmergencyLandingSite: (site) => set((state) => ({
+        emergencyLandingSites: [
+          ...state.emergencyLandingSites,
+          {
+            ...site,
+            id: `emergency-site-${Date.now()}-${state.emergencyLandingSites.length + 1}`,
+          },
+        ],
+      })),
+
+      updateEmergencyLandingSite: (id, updates) => set((state) => ({
+        emergencyLandingSites: state.emergencyLandingSites.map((site) =>
+          site.id === id ? { ...site, ...updates } : site
+        ),
+      })),
+
+      removeEmergencyLandingSite: (id) => set((state) => ({
+        emergencyLandingSites: state.emergencyLandingSites.filter((site) => site.id !== id),
+      })),
     }),
     {
       name: 'halo-map-store',
@@ -332,6 +443,13 @@ export const useMapStore = create<MapState>()(
         cruiseAltitudeFt: state.cruiseAltitudeFt,
         waypoints: state.waypoints,
         activeAircraft: state.activeAircraft,
+        weightBalanceLoading: state.weightBalanceLoading,
+        trainingWind: state.trainingWind,
+        filingChecklist: state.filingChecklist,
+        notamBriefingRecord: state.notamBriefingRecord,
+        flightPlanFilingRecord: state.flightPlanFilingRecord,
+        closeReminder: state.closeReminder,
+        emergencyLandingSites: state.emergencyLandingSites,
         personalMinimums: state.personalMinimums,
       }),
       merge: (persisted, current) => {
@@ -344,6 +462,49 @@ export const useMapStore = create<MapState>()(
             ...DEFAULT_VISIBLE_LAYERS,
             ...persistedState?.visibleLayers,
           },
+          weightBalanceLoading: {
+            ...DEFAULT_WEIGHT_BALANCE_LOADING,
+            ...persistedState?.weightBalanceLoading,
+            stationWeights: {
+              ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
+              ...persistedState?.weightBalanceLoading?.stationWeights,
+            },
+          },
+          trainingWind: {
+            ...DEFAULT_TRAINING_WIND,
+            ...persistedState?.trainingWind,
+          },
+          filingChecklist: {
+            ...DEFAULT_FILING_CHECKLIST,
+            ...persistedState?.filingChecklist,
+          },
+          notamBriefingRecord: {
+            ...DEFAULT_NOTAM_BRIEFING_RECORD,
+            ...(persistedState?.filingChecklist?.notamPibObtained && !persistedState?.notamBriefingRecord
+              ? {
+                  status: 'completed' as const,
+                  method: 'Legacy Halo checklist',
+                  notes: 'Imported from previous “Official NOTAM PIB obtained” checklist state.',
+                }
+              : {}),
+            ...persistedState?.notamBriefingRecord,
+          },
+          flightPlanFilingRecord: {
+            ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+            ...(persistedState?.filingChecklist?.filedViaOfficialSource && !persistedState?.flightPlanFilingRecord
+              ? {
+                  status: 'filed-manually' as const,
+                  method: 'Legacy Halo checklist',
+                  notes: 'Imported from previous “Filed via official source” checklist state.',
+                }
+              : {}),
+            ...persistedState?.flightPlanFilingRecord,
+          },
+          closeReminder: {
+            ...DEFAULT_CLOSE_REMINDER,
+            ...persistedState?.closeReminder,
+          },
+          emergencyLandingSites: persistedState?.emergencyLandingSites ?? [],
         };
       },
     }

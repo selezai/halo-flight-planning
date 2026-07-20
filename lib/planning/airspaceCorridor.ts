@@ -22,6 +22,8 @@ export interface AirspaceGeometryMatch {
   matches: boolean;
   relationship: 'crossing' | 'corridor' | 'none';
   distanceNm?: number;
+  startDistanceNm?: number;
+  endDistanceNm?: number;
 }
 
 export interface GeoJsonPolygon {
@@ -118,13 +120,23 @@ export function routeMatchesAirspaceGeometry(
 
   for (const polygon of polygons) {
     if (routeIntersectsPolygon(route, polygon)) {
-      return { matches: true, relationship: 'crossing', distanceNm: 0 };
+      return {
+        matches: true,
+        relationship: 'crossing',
+        distanceNm: 0,
+        ...estimateRouteDistanceRange(route, polygons, corridorNm),
+      };
     }
   }
 
   const distanceNm = minRouteToPolygonsDistanceNm(route, polygons);
   if (distanceNm <= corridorNm) {
-    return { matches: true, relationship: 'corridor', distanceNm };
+    return {
+      matches: true,
+      relationship: 'corridor',
+      distanceNm,
+      ...estimateRouteDistanceRange(route, polygons, corridorNm),
+    };
   }
 
   return { matches: false, relationship: 'none', distanceNm };
@@ -215,6 +227,77 @@ function minRouteToPolygonsDistanceNm(route: Coordinates[], polygons: Coordinate
           const distance = segmentDistanceNm(routeStart, routeEnd, ring[ringIndex], ring[ringIndex + 1]);
           minDistance = Math.min(minDistance, distance);
         }
+      }
+    }
+  }
+
+  return minDistance;
+}
+
+function estimateRouteDistanceRange(
+  route: Coordinates[],
+  polygons: Coordinates[][][],
+  corridorNm: number
+): Pick<AirspaceGeometryMatch, 'startDistanceNm' | 'endDistanceNm'> {
+  const samples = sampleRouteDistancePoints(route, 2);
+  const hits = samples.filter((sample) => pointMatchesPolygons(sample.coordinate, polygons, corridorNm));
+
+  if (hits.length === 0) {
+    return {};
+  }
+
+  return {
+    startDistanceNm: hits[0].distanceNm,
+    endDistanceNm: hits[hits.length - 1].distanceNm,
+  };
+}
+
+function sampleRouteDistancePoints(
+  route: Coordinates[],
+  spacingNm: number
+): Array<{ coordinate: Coordinates; distanceNm: number }> {
+  const samples: Array<{ coordinate: Coordinates; distanceNm: number }> = [];
+  let cumulativeDistanceNm = 0;
+
+  for (let index = 0; index < route.length - 1; index += 1) {
+    const from = route[index];
+    const to = route[index + 1];
+    const legDistanceNm = calculateDistanceNm(from, to);
+    const steps = Math.max(1, Math.ceil(legDistanceNm / spacingNm));
+
+    for (let step = 0; step <= steps; step += 1) {
+      if (index > 0 && step === 0) continue;
+      const progress = step / steps;
+      samples.push({
+        coordinate: interpolateCoordinate(from, to, progress),
+        distanceNm: cumulativeDistanceNm + legDistanceNm * progress,
+      });
+    }
+
+    cumulativeDistanceNm += legDistanceNm;
+  }
+
+  return samples;
+}
+
+function pointMatchesPolygons(point: Coordinates, polygons: Coordinates[][][], corridorNm: number): boolean {
+  return polygons.some((polygon) => pointInPolygon(point, polygon)) ||
+    pointToPolygonsDistanceNm(point, polygons) <= corridorNm;
+}
+
+function pointToPolygonsDistanceNm(point: Coordinates, polygons: Coordinates[][][]): number {
+  let minDistance = Number.POSITIVE_INFINITY;
+
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      for (let ringIndex = 0; ringIndex < ring.length - 1; ringIndex += 1) {
+        const start = ring[ringIndex];
+        const end = ring[ringIndex + 1];
+        const meanLat = (point[1] + start[1] + end[1]) / 3;
+        minDistance = Math.min(
+          minDistance,
+          pointToSegmentDistance(project(point, meanLat), project(start, meanLat), project(end, meanLat))
+        );
       }
     }
   }

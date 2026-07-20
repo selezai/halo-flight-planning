@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { convertOpenAipStyle, validateStyle } from '@/lib/openaip/styleConverter';
-import { withApiLogging } from '@/lib/observability/apiLogger';
+import { withApiLogging } from '@/lib/observability/api';
 
 const OPENAIP_STYLE_URL = 'https://api.tiles.openaip.net/api/styles/openaip-default-style.json';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  return withApiLogging(request, '/api/openaip/style', () => handleGet(request));
-}
-
-async function handleGet(request: NextRequest) {
+export const GET = withApiLogging('/api/openaip/style', async (request: NextRequest) => {
   const OPENAIP_API_KEY = process.env.OPENAIP_API_KEY;
   const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
@@ -75,7 +71,7 @@ async function handleGet(request: NextRequest) {
       },
     });
   }
-}
+});
 
 function getGlyphsUrl(maptilerKey?: string) {
   if (maptilerKey) {

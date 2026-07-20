@@ -2,8 +2,6 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use systematic-debugging when issues arise, verification-before-completion before claiming success.
 
-Superseded note: Playwright integration tests still exist, but the launch-readiness verification gate was changed later on 2026-07-19 to `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm build` only. Current CI no longer installs browsers or runs `pnpm test:e2e`; manual E2E inspection is handled outside the implementation batch.
-
 **Goal:** Add repeatable integration coverage and CI gates so Halo is verified as a production-built Next.js app before future flight-planning slices are released.
 
 **Architecture:** Keep Vitest responsible for pure unit tests and Playwright responsible for app/API integration tests. Playwright starts `next build && next start` rather than `next dev` to avoid lazy route compilation and dev-server streaming instability.

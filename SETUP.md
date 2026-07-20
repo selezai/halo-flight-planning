@@ -38,27 +38,33 @@ pnpm install
 3. Go to Account → Keys
 4. Copy your default API key (free tier is sufficient)
 
-### Supabase Auth (Optional for account sync)
+### South Africa NOTAM Source (Default for launch)
 
-1. Create or select a Supabase project.
-2. Enable email magic links.
-3. Configure Google OAuth in Supabase and Google Cloud if Google sign-in is needed.
-4. Add the production and local callback URL to Supabase redirect allow-list:
-   - `http://localhost:3000/auth/callback`
-   - `https://halo-flight-planning.vercel.app/auth/callback`
-5. Apply `supabase/migrations/20260719163343_launch_readiness_account_sync.sql` only after inspecting the live schema/RLS target.
-6. Configure `SUPABASE_SERVICE_ROLE_KEY` server-side only after the migration is applied and verified. This lets `/api/account/snapshot` own validated writes while browser clients have no direct table DML grants.
+Halo defaults to `NOTAM_PROVIDER=south-africa-manual`. This mode does not scrape or fake NOTAMs. It prepares the route airport/navaid locations and sends pilots to the official ATNS File2Fly/SACAA briefing path.
 
-Account sync stays disabled if the public Supabase environment variables are absent. Never expose a service-role key to the browser.
+1. Register for ATNS File2Fly at [file2fly.atns.co.za](https://file2fly.atns.co.za/aes/login.jsp)
+2. Use File2Fly for route, aerodrome, or zone PIBs before flight
+3. Keep `SOUTH_AFRICA_NOTAM_SOURCE_URL=https://file2fly.atns.co.za/aes/login.jsp`
 
-### NOTAM Provider
+If SACAA/ATNS or an authorized provider grants a legitimate JSON API, configure:
 
-Halo launches in South Africa with manual official briefing mode:
+```env
+NOTAM_PROVIDER=south-africa-live
+SOUTH_AFRICA_NOTAM_API_URL=https://authorized-provider.example/notams
+SOUTH_AFRICA_NOTAM_API_KEY=your_server_side_key_here
+SOUTH_AFRICA_NOTAM_API_AUTH_HEADER=Authorization
+SOUTH_AFRICA_NOTAM_API_AUTH_SCHEME=Bearer
+```
 
-- ATNS File2Fly: https://file2fly.atns.co.za/aes/login.jsp
-- SACAA NOTAM summaries: https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/
+Do not use browser automation, scraping, or public-summary parsing for live operational NOTAMs.
 
-Do not scrape or fake live SACAA/ATNS NOTAM data. FAA NOTAM API credentials are only needed later when `NOTAM_PROVIDER=faa` is selected for international rollout.
+### FAA NOTAM API Credentials (Optional future international rollout)
+
+1. Go to the FAA API Portal at [api.faa.gov](https://api.faa.gov/notamapi/)
+2. Request/enable access to the NOTAM API
+3. Copy the issued client ID and client secret
+
+Set `NOTAM_PROVIDER=faa` with these credentials only when FAA coverage is desired. Without them Halo will still run using the South Africa official manual briefing mode.
 
 ## Step 3: Configure Environment Variables
 
@@ -71,13 +77,17 @@ OPENAIP_API_KEY=your_actual_openaip_key_here
 # MapTiler (for glyphs/fonts)
 NEXT_PUBLIC_MAPTILER_KEY=your_actual_maptiler_key_here
 
-# Supabase account sync (public browser keys only)
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key_here
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
-
-# NOTAM launch provider
+# NOTAM provider
 NOTAM_PROVIDER=south-africa-manual
+SOUTH_AFRICA_NOTAM_SOURCE_URL=https://file2fly.atns.co.za/aes/login.jsp
+SOUTH_AFRICA_NOTAM_API_URL=
+SOUTH_AFRICA_NOTAM_API_KEY=
+SOUTH_AFRICA_NOTAM_API_AUTH_HEADER=Authorization
+SOUTH_AFRICA_NOTAM_API_AUTH_SCHEME=Bearer
+
+# FAA NOTAM API (server-side only, optional future rollout)
+FAA_NOTAM_CLIENT_ID=
+FAA_NOTAM_CLIENT_SECRET=
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -128,9 +138,7 @@ The application will start at [http://localhost:3000](http://localhost:3000)
 2. **Aviation data visible**: Airports, navaids, and airspaces should be visible
 3. **No sprite warnings**: Check browser console - there should be no "missing sprite image" warnings
 4. **Click functionality**: Click on an airport/navaid - sidebar should show details
-5. **NOTAM state**: Build a route and open Briefing. Halo should show South Africa official manual NOTAM briefing required, preserve route locations, and link the official source.
-6. **W&B state**: Open Aircraft. Presets should show W&B as “Needs POH setup” until real POH/AFM data is entered.
-7. **Account state**: If Supabase env vars are absent, the account panel should say sync is disabled. If configured, magic link and Google sign-in should be available.
+5. **NOTAM state**: Build a route and open Briefing. With the default South Africa configuration, Halo should show official NOTAM briefing required, list prepared route locations, and link ATNS File2Fly.
 
 ## Troubleshooting
 

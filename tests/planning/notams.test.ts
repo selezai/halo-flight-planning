@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRouteNotamLocations,
   categorizeNotam,
-  createNotamReview,
   getConfiguredNotamProvider,
   normalizeFaaNotamPayload,
+  normalizeSouthAfricaNotamPayload,
   sortRouteNotams,
   SOUTH_AFRICA_ATNS_FILE2FLY_URL,
+  SOUTH_AFRICA_NOTAM_LIVE_SOURCE,
 } from '@/lib/planning/notams';
 
 describe('route NOTAM planning helpers', () => {
@@ -47,18 +48,38 @@ describe('route NOTAM planning helpers', () => {
     });
   });
 
-  it('defaults launch NOTAM provider to South Africa manual official briefing', () => {
-    expect(getConfiguredNotamProvider(undefined)).toBe('south-africa-manual');
+  it('defaults to South Africa manual NOTAM provider unless explicitly overridden', () => {
+    expect(getConfiguredNotamProvider('')).toBe('south-africa-manual');
+    expect(getConfiguredNotamProvider('south-africa-live')).toBe('south-africa-live');
     expect(getConfiguredNotamProvider('faa')).toBe('faa');
+    expect(getConfiguredNotamProvider('unknown')).toBe('south-africa-manual');
+  });
 
-    const review = createNotamReview({
-      source: 'south-africa-official',
-      status: 'manual-required',
-      message: 'Manual official briefing required.',
+  it('normalizes an authorized South Africa official NOTAM feed payload', () => {
+    const notams = normalizeSouthAfricaNotamPayload({
+      notams: [
+        {
+          seriesNumber: 'A1234/26',
+          aerodrome: 'FAOR',
+          type: 'N',
+          text: 'FAOR RWY 03L/21R CLSD DUE WIP',
+          validFrom: '2026-07-19T12:00:00Z',
+          validTo: '2026-07-19T18:00:00Z',
+        },
+      ],
+    }, ['FAOR', 'FALA']);
+
+    expect(notams).toHaveLength(1);
+    expect(notams[0]).toMatchObject({
+      id: 'FAOR-A1234/26',
+      location: 'FAOR',
+      type: 'N',
+      category: 'runway',
+      severity: 'critical',
+      source: SOUTH_AFRICA_NOTAM_LIVE_SOURCE,
+      sourceUrl: SOUTH_AFRICA_ATNS_FILE2FLY_URL,
+      appliesToRoute: true,
     });
-
-    expect(review.sourceUrl).toBe(SOUTH_AFRICA_ATNS_FILE2FLY_URL);
-    expect(review.status).toBe('manual-required');
   });
 
   it('categorizes and sorts higher-risk NOTAMs first', () => {

@@ -1,6 +1,152 @@
 # Halo Session Log
 
-## 2026-07-19
+## 2026-07-20 Full Pilot Pain-Point Completion - Slice 3 Data Freshness
+
+Objective: make stale/unknown planning data visible instead of letting old weather, NOTAM, airspace, route, or W&B state appear clear.
+
+Decisions:
+
+- Freshness statuses are `current`, `stale`, and `unknown`.
+- Missing timestamps are `unknown` and require pilot review.
+- Freshness is surfaced in the Briefing tab, Pilot Digest, exported briefing text, and route status bar.
+
+Changes:
+
+- Added `DataFreshness` and `DataFreshnessStatus` types.
+- Added `assessDataFreshness`, threshold constants, labels, and worst-status helper.
+- Added route, weather, airspace, NOTAM, and W&B freshness calculations in the Briefing tab.
+- Added freshness badges and freshness export section.
+- Added compact airspace/NOTAM freshness chips to the bottom route status bar.
+- Added unit tests for current/stale/unknown classification, worst-status priority, digest inclusion, and exported briefing text.
+
+Verification:
+
+- `pnpm test -- tests/planning/freshness.test.ts`: 55 tests passed.
+- `pnpm typecheck`: passed.
+- Full slice check:
+  - `pnpm test`: 55 tests passed.
+  - `pnpm lint`: no warnings or errors after fixing the route timestamp hook dependency.
+  - `pnpm build`: production build passed.
+  - `pnpm typecheck`: passed sequentially after build completed.
+
+## 2026-07-20 Full Pilot Pain-Point Completion - Slice 2 Briefing Digest
+
+Objective: reduce briefing overload by adding a concise, prioritized Pilot Digest above the full raw briefing.
+
+Decisions:
+
+- Digest status is `stop`, `review`, or `ready` based on highest-priority critical/caution/info items.
+- Digest items are generated from the same verified route, risk, W&B, weather, airspace, and NOTAM inputs already used by the briefing.
+- The raw briefing remains available underneath the digest for backup and completeness.
+
+Changes:
+
+- Added `BriefingDigest`, `BriefingDigestItem`, and `BriefingDigestStatus` types.
+- Added `buildBriefingDigest` and digest text formatting in the briefing library.
+- Added a Pilot Digest panel in the Briefing tab and included the digest in exported briefing text.
+- Added unit tests for critical status priority, review actions, and export inclusion.
+
+Verification:
+
+- `pnpm test -- tests/planning/briefingDigest.test.ts`: 52 tests passed.
+- `pnpm typecheck`: passed.
+- Full slice check:
+  - `pnpm test`: 52 tests passed.
+  - `pnpm lint`: no warnings or errors.
+  - `pnpm build`: production build passed.
+  - `pnpm typecheck`: passed sequentially after build completed.
+
+## 2026-07-20 Full Pilot Pain-Point Completion - Slice 1 W&B
+
+Objective: finish W&B as the first required launch slice before implementing the 8 social/forum pain-point features.
+
+Decisions:
+
+- W&B is hybrid: existing aircraft presets remain available, but CG status is `unconfigured` until the pilot enters aircraft-specific POH/AFM empty weight, arms, max weights, station arms, and envelope points.
+- Halo calculates ramp, takeoff, and landing states and does not invent missing aircraft envelope data.
+- W&B status is included in Aircraft, Briefing, Risk Review, and exported briefing text.
+
+Changes:
+
+- Added W&B domain types, loading state, envelope interpolation, ramp/takeoff/landing CG calculations, station loading, and status labels.
+- Extended aircraft profiles with `weightBalance`, `glideRatio`, and `compassDeviationDeg`.
+- Added Aircraft-panel W&B setup/loading UI for empty weight/arm, max weights, fuel arm, station arms/weights, and envelope points.
+- Added Briefing-panel W&B review and briefing/risk text output.
+- Added unit tests for envelope interpolation, unconfigured setup, within-limits states, overweight/out-of-limits states, incomplete setup, and landing fuel state.
+
+Verification:
+
+- `pnpm test -- tests/planning/weightBalance.test.ts`: 49 tests passed.
+- `pnpm typecheck`: passed.
+- Full slice check:
+  - `pnpm test`: 49 tests passed.
+  - `pnpm lint`: no warnings or errors.
+  - `pnpm build`: production build passed.
+  - `pnpm typecheck`: passed sequentially after build completed.
+
+## 2026-07-19 Live South Africa NOTAM Data Path
+
+Objective: build the live SACAA/ATNS NOTAM data path without scraping, faking data, or using FAA as the South Africa launch default.
+
+Research:
+
+- SACAA's NOTAM page says the public daily summary should not be used for flight preparation and directs pilots to AIMU/File2Fly for latest NOTAMs.
+- ATNS File2Fly provides online pre-flight preparation, NOTAM briefing, MET, and e-AIP behind a registered login.
+- The File2Fly manual documents route, aerodrome, and zone PIBs produced in browser HTML or PDF.
+- No public unauthenticated SACAA/ATNS machine-readable NOTAM API was found.
+
+Decision:
+
+- Keep `NOTAM_PROVIDER=south-africa-manual` as the production-safe default.
+- Add an authorized live JSON adapter behind `NOTAM_PROVIDER=south-africa-live`.
+- Require real `SOUTH_AFRICA_NOTAM_API_URL` and `SOUTH_AFRICA_NOTAM_API_KEY` from SACAA/ATNS or an authorized provider before enabling the live provider.
+- Do not scrape File2Fly, automate a logged-in File2Fly browser session, parse SACAA's public summary as operational data, or fake NOTAM results.
+- Keep `NOTAM_PROVIDER=faa` available only for later international rollout.
+
+Changes:
+
+- Extended `RouteNotamReview` with `source=south-africa-official` and `status=manual-required`.
+- Refactored `/api/notams/route` to choose between South Africa manual, South Africa live, and FAA providers.
+- Added a South Africa live adapter that posts route locations/waypoints to an authorized JSON endpoint with server-side auth, rejects unsafe config, and normalizes flexible provider payloads.
+- Updated route sync, default persisted state, risk review, briefing export, and sidebar NOTAM panel copy for South Africa-first behavior.
+- Updated env templates, README, setup docs, provider research, and launch TODOs.
+- Added Vercel production env vars:
+  - `SOUTH_AFRICA_NOTAM_SOURCE_URL`
+  - `SOUTH_AFRICA_NOTAM_API_AUTH_HEADER`
+  - `SOUTH_AFRICA_NOTAM_API_AUTH_SCHEME`
+- Did not add `SOUTH_AFRICA_NOTAM_API_URL` or `SOUTH_AFRICA_NOTAM_API_KEY` because no authorized SACAA/ATNS API endpoint/key was available.
+
+Verification:
+
+- `pnpm test -- tests/planning/notams.test.ts tests/planning/navigation.test.ts`: 44 tests passed.
+- `pnpm test`: 44 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Final verification rerun:
+  - `pnpm test`: 44 tests passed.
+  - `pnpm lint`: no warnings or errors.
+  - `pnpm build`: production build passed.
+  - `pnpm typecheck`: passed when rerun sequentially after build completed. A parallel verification attempt produced TS6053 missing `.next/types` errors because `next build` regenerated `.next` while `tsc` was reading generated type files.
+- Local production API smoke on port 3011:
+  - `POST /api/notams/route` with FAOR/FALA returned `source=south-africa-official`, `status=manual-required`, `locations=["FAOR","FALA"]`, `sourceUrl=https://file2fly.atns.co.za/aes/login.jsp`.
+- Local live-provider safety smoke on port 3012:
+  - `NOTAM_PROVIDER=south-africa-live` without `SOUTH_AFRICA_NOTAM_API_URL` / `SOUTH_AFRICA_NOTAM_API_KEY` returned HTTP 503, `source=south-africa-official`, `status=unavailable`, and explicit official File2Fly/SACAA guidance.
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: `https://halo-flight-planning-9dyovsrz6-pilotmerch-gmailcoms-projects.vercel.app`
+  - Production alias: `https://halo-flight-planning.vercel.app`
+  - Deployment ID: `dpl_8PHrikwis9AtCni66hjVDinSX8y2`
+- Production API smoke:
+  - `POST https://halo-flight-planning.vercel.app/api/notams/route` with FAOR/FALA returned HTTP 200 and `status=manual-required`.
+- Vercel runtime log stream emitted no runtime errors during the post-deploy smoke window.
+
+Prevention guidelines:
+
+- Provider failure or missing credentials must never be interpreted as "no NOTAMs."
+- Public SACAA summaries are not operational flight-prep data.
+- All live NOTAM credentials stay server-side and must never use `NEXT_PUBLIC_`.
+
+## 2026-07-19 Initial Completion
 
 Objective: complete the Halo flight planning project into a deployable, useful browser-first planning app.
 
@@ -334,75 +480,263 @@ Verification:
 - `pnpm test:e2e`: 2 Playwright tests passed against `next build && next start`, including the no-credential NOTAM unavailable API/UI path.
 - Follow-up route-location fix verification: `pnpm typecheck`, `pnpm test:e2e`, `pnpm test`, `pnpm lint`, and `pnpm build` passed.
 
-## 2026-07-19 Launch Readiness: Auth, W&B, South Africa NOTAM, Observability
+## 2026-07-20 Full Pilot Pain-Point Slice 4: Training / Checkride Navlog
 
-Objective: implement the remaining launch-readiness batch without using Playwright/E2E as a completion gate.
+Objective: add a checkride-friendly navlog view without changing Halo's operational route math.
 
 Decisions:
 
-- Halo launches South Africa-first, so the default NOTAM provider is official manual briefing mode, not FAA.
-- SACAA/ATNS live NOTAM scraping is deferred until an authorized data path exists.
-- FAA NOTAM integration remains available only behind `NOTAM_PROVIDER=faa`.
-- W&B presets remain available for performance, but operational W&B requires user-entered aircraft-specific POH/AFM data.
-- Supabase account sync code can ship, but production database mutation is blocked until the live schema and RLS policies are inspected, migration is applied, and authenticated RLS smoke tests pass.
-- Authentic OpenAIP sprites remain active/default, but commercial/paid launch is blocked until written OpenAIP permission is obtained or replacement assets are used.
-- Manual E2E/browser testing is owned outside this implementation batch; automated gate is unit tests, typecheck, lint, and build.
+- Keep training calculations as a separate view/export section driven by one manually entered route-wind value.
+- Reuse existing route legs, aircraft true airspeed, magnetic variation, compass deviation, and fuel burn.
+- Preserve the normal route ETE/fuel calculations above the training panel so teaching/checkride math cannot silently alter the operational summary.
 
 Changes:
 
-- Added optional W&B configuration/loading to `AircraftProfile`.
-- Added W&B calculation for ramp, takeoff, and landing with `unconfigured`, `incomplete`, `within-limits`, `caution`, and `out-of-limits` statuses.
-- Added Aircraft tab W&B setup UI for POH/AFM empty weight/arm, aircraft limits, fuel config, loading stations, and CG envelope.
-- Added W&B status to Briefing, risk review, and exported briefing text.
-- Refactored NOTAM review to provider-neutral source/status types.
-- Added South Africa official/manual NOTAM provider with ATNS File2Fly/SACAA source links and route-location preparation.
-- Kept FAA provider path behind `NOTAM_PROVIDER=faa`.
-- Added Supabase SSR/browser clients, auth callback route, magic link/Google sign-in UI, account sync panel, API-only snapshot persistence, and local/cloud merge controls.
-- Added local Supabase migration for `saved_routes`, `aircraft_profiles`, and `user_preferences` with owner-scoped RLS policies using `TO authenticated` and `auth.uid() = user_id`.
-- Added Vercel Analytics and Speed Insights.
-- Added app/global error boundaries that log non-secret failure metadata.
-- Added structured API request logging with route, method, status, duration, and Vercel request id.
-- Removed Playwright from CI launch verification path.
-- Strengthened OpenAIP sprite attribution and added commercial permission checklist.
+- Added `TrainingWind`, `TrainingNavLogLeg`, and `TrainingNavLog` planning types.
+- Added `lib/planning/trainingNavlog.ts` for WCA, true heading, magnetic heading, compass heading, groundspeed, ETE, and fuel calculations.
+- Persisted route-wind inputs in local Zustand state.
+- Added a Training / Checkride Navlog panel to the Briefing tab.
+- Added a `TRAINING / CHECKRIDE NAVLOG` section to briefing text exports with formula explanation.
+- Added unit tests for calm wind, headwind/tailwind, crosswind correction, heading derivation, fuel/time, and export text.
 
-Local verification so far:
+Verification:
 
-- `pnpm test -- tests/planning/weightBalance.test.ts`: passed.
-- `pnpm test -- tests/planning/notams.test.ts tests/planning/navigation.test.ts`: passed.
-- `pnpm test -- tests/supabase/accountSnapshot.test.ts`: passed.
-- `pnpm typecheck`: passed after the Supabase/auth/account snapshot slice.
-
-Review-driven hardening:
-
-- Upgraded Next.js from 14.2.0 to 15.5.18 after `pnpm audit --prod --audit-level high` identified launch-blocking Next advisories.
-- Migrated dashboard client boundary and dynamic route params for Next 15 build compatibility.
-- Removed global wildcard API CORS headers.
-- Restricted Supabase middleware to app/auth/account paths.
-- Fixed auth callback redirect handling to allow same-origin relative paths only.
-- Changed Supabase persistence to require server-only `SUPABASE_SERVICE_ROLE_KEY`, revoke direct browser DML grants, and save through an atomic `save_account_snapshot` RPC in the migration.
-- Restricted account snapshot route id to `primary`.
-- Connected W&B loaded fuel after taxi to route fuel status/risk/briefing.
-- Preserved station overloads through aircraft-profile sanitization and added regression coverage.
-- Fixed NOTAM client location fallback to avoid user waypoint pseudo-idents.
-- Fixed FAA-provider unavailable source URL.
-- Updated stale Playwright specs for the new South Africa manual default even though Playwright is not part of this batch gate.
-
-Final local verification:
-
-- `pnpm audit --prod --audit-level high`: passed; remaining audit output is moderate-only.
-- `pnpm test`: 11 files / 59 tests passed.
+- `pnpm test -- tests/planning/trainingNavlog.test.ts`: 13 test files passed, 59 tests passed.
 - `pnpm typecheck`: passed.
-- `pnpm lint`: no ESLint warnings or errors. Next 15 reports `next lint` deprecation for future migration.
-- `pnpm build`: passed on Next.js 15.5.18.
+- `pnpm test`: 13 test files passed, 59 tests passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Post-build `pnpm typecheck`: passed.
+- No Playwright/E2E command was run; manual E2E remains user-owned.
 
-GitHub and production deployment:
+Production deployment:
 
-- Committed and pushed branch `agent/complete-halo-flight-planner-20260719`.
-- Commit: `8aba0a5`.
-- Added Vercel Production env `NOTAM_PROVIDER=south-africa-manual`.
-- Production deployment inspected as Ready:
-  - Deployment URL: https://halo-flight-planning-d1uv960qo-pilotmerch-gmailcoms-projects.vercel.app
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-m9my9k0uy-pilotmerch-gmailcoms-projects.vercel.app
   - Production alias: https://halo-flight-planning.vercel.app
-  - Deployment ID: `dpl_CaYcr7LucjNAP8dPZZVdvqrzwVDX`
-- Production NOTAM smoke request for FAOR→FALA returned HTTP 200 with `source=south-africa-official` and `status=manual-required`.
-- Vercel live JSON logs showed the structured `/api/notams/route` `api_request` log with `status=200` and no error-level output for the smoke request.
+  - Deployment ID: `dpl_rsVbQ6vXu8epQsTHNSPWWUq4hBJP`
+
+## 2026-07-20 Full Pilot Pain-Point Slice 5: Backup / Print Pack
+
+Objective: add a one-click printable/text backup pack that gives pilots an offline cockpit reference and explicit official-source reminders.
+
+Decisions:
+
+- Build the pack as a pure text-export helper so it is testable and reusable by later filing/emergency slices.
+- Keep raw briefing export unchanged, and add a separate backup-pack download button for pilots who want a fuller offline worksheet.
+- Include emergency and filing worksheet fields now, then enrich them with calculated state in later slices.
+
+Changes:
+
+- Added `lib/planning/backupPack.ts` and exported `buildBackupPackText(...)`.
+- Backup pack includes pilot digest, freshness warnings, dispatch snapshot, waypoint list, operational navlog, training navlog, fuel, W&B, weather, airspace, NOTAM source/status, risk review, filing worksheet, emergency worksheet, official-source links, and pilot notes.
+- Added a Backup pack download button in the Briefing package panel.
+- Added unit tests for backup-pack inclusion of W&B, digest, NOTAM official source, stale warnings, emergency section, and training formula text.
+
+Verification:
+
+- `pnpm test -- tests/planning/backupPack.test.ts`: 14 test files passed, 60 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm test`: 14 test files passed, 60 tests passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Post-build `pnpm typecheck`: passed.
+- No Playwright/E2E command was run; manual E2E remains user-owned.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-is13397w6-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_AAHTqxt1oKFM8RUbBAgZ6GtQGFHd`
+
+## 2026-07-20 Full Pilot Pain-Point Slice 6: Airspace Vertical Profile
+
+Objective: make airspace review more usable by showing where along the route airspace bands occur relative to the selected cruise altitude.
+
+Decisions:
+
+- Extend existing airspace alerts with optional along-route distance ranges instead of creating a separate hidden review model.
+- Estimate Core API ranges by sampling the planned route against matched OpenAIP geometry and corridor distance.
+- Estimate rendered-browser ranges by aggregating the route sample distances that hit each rendered airspace feature.
+- Keep profile visualization compact and aligned with existing critical/caution/info risk colors.
+
+Changes:
+
+- Added `AirspaceVerticalProfile` and `AirspaceVerticalProfileItem` planning types.
+- Added `lib/planning/airspaceProfile.ts` for route-distance clamping and profile status generation.
+- Added optional `startDistanceNm` and `endDistanceNm` to route airspace alerts.
+- Extended Core and rendered airspace review paths to populate approximate route ranges where possible.
+- Added vertical profile UI inside the airspace review panel.
+- Added `AIRSPACE VERTICAL PROFILE` sections to briefing and backup-pack text exports.
+- Added unit tests for profile distance/altitude mapping, range clamping, Core geometry range estimation, and briefing export text.
+
+Verification:
+
+- `pnpm test -- tests/planning/airspaceProfile.test.ts tests/planning/airspaceCorridor.test.ts`: 15 test files passed, 64 tests passed.
+- Initial `pnpm typecheck` failed because `airspaceVerticalProfile` was accidentally passed into `buildBriefingDigest`; root cause was corrected by moving the profile argument to `buildBriefingText`.
+- Rerun `pnpm typecheck`: passed.
+- `pnpm test`: 15 test files passed, 64 tests passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Post-build `pnpm typecheck`: passed.
+- No Playwright/E2E command was run; manual E2E remains user-owned.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-q9r730x59-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_9eENWf4d3PPvXxmYYmhjrLnBKGkJ`
+
+## 2026-07-20 Full Pilot Pain-Point Slice 7: Filing + Close Reminder
+
+Objective: add a South Africa-safe official filing handoff and close-flight reminder workflow without automating File2Fly/SACAA/ATNS filing.
+
+Decisions:
+
+- Do not file, close, scrape, or fake any official SACAA/ATNS/File2Fly state.
+- Persist the checklist and reminder locally in Zustand.
+- Use explicit pilot action for browser notification permission; notifications only work while the app remains open.
+- Treat missing close reminder and incomplete filing handoff as review items, and overdue close reminder as critical.
+
+Changes:
+
+- Added `FilingChecklistState`, `FlightCloseReminder`, `FilingReminderStatus`, and `FilingWorkflowReview` planning types.
+- Added `lib/planning/filingReminder.ts` for not-planned/planned/due-soon/overdue/closed state calculation, checklist completion, route-ETE time seeding, and export lines.
+- Added persisted filing checklist and close-reminder state/actions.
+- Added Briefing-tab Filing + Close Reminder panel with checklist toggles, File2Fly handoff link, planned/arrival/close-by fields, route-ETE seeding, close acknowledgement, and optional browser notification.
+- Added filing/close state to briefing digest, risk review, briefing export, and backup-pack export.
+- Added unit tests for planned, due-soon, overdue, closed, digest, and briefing export states.
+
+Verification:
+
+- `pnpm test -- tests/planning/filingReminder.test.ts`: 16 test files passed, 68 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm test`: 16 test files passed, 68 tests passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Post-build `pnpm typecheck`: passed.
+- No Playwright/E2E command was run; manual E2E remains user-owned.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-98voiojdb-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_AhpRthQKXsb3FMiDBRJ6yci1wQt4`
+
+## 2026-07-20 Full Pilot Pain-Point Slice 8: Emergency / Forced-Landing Layer
+
+Objective: add emergency planning surfaces for glide radius, nearest available landing candidates, and pilot-marked forced-landing sites.
+
+Decisions:
+
+- Use available local route airport waypoints, starter aerodromes, and user-marked sites. Do not invent live aerodrome suitability.
+- Treat glide rings as approximate still-air planning aids from selected cruise altitude and aircraft glide ratio.
+- Persist user forced-landing sites locally.
+- Feed emergency state into digest, risk review, briefing export, backup pack, and map overlays.
+
+Changes:
+
+- Added `EmergencyLandingSite`, `EmergencyAerodromeCandidate`, `EmergencyPlanningReview`, and suitability types.
+- Added `lib/planning/emergencyPlanning.ts` for glide radius, candidate scoring, route-distance calculation, candidate generation, and export lines.
+- Added persisted user emergency landing sites and store actions.
+- Added Briefing-tab Emergency / Forced Landing panel with candidate list, glide radius, user site creation/editing/removal, suitability, notes, and last verified date.
+- Added map overlays for approximate glide rings around route waypoints and colored user forced-landing site markers.
+- Added emergency state to briefing digest, risk review, briefing export, and backup-pack export.
+- Added unit tests for glide radius, scoring, candidate generation, user-site inclusion, digest, and briefing export.
+
+Verification:
+
+- `pnpm test -- tests/planning/emergencyPlanning.test.ts`: 17 test files passed, 72 tests passed.
+- `pnpm typecheck`: passed.
+- `pnpm test`: 17 test files passed, 72 tests passed.
+- `pnpm lint`: no warnings or errors.
+- `pnpm build`: production build passed.
+- Post-build `pnpm typecheck`: passed.
+- No Playwright/E2E command was run; manual E2E remains user-owned.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-hbq24i38h-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_GbC5RHeHg9DkaruaXS9ghVpEGBC9`
+
+## 2026-07-20 Full Pilot Pain-Point Completion + Flight Admin
+
+Objective: complete the remaining launch-readiness pilot pain-point work without Playwright/E2E and keep South Africa as the default launch market.
+
+Completed:
+
+- Hybrid W&B with editable POH/AFM setup, ramp/takeoff/landing CG checks, custom stations, caution/out-of-limits states, and insufficient loaded trip fuel detection.
+- Pilot Digest, data freshness badges, training/checkride navlog, backup/print pack, airspace vertical profile, filing/close reminders, emergency/forced-landing layer, and rubber-band routing.
+- Optional Flight Admin records for official NOTAM briefing and manual flight-plan filing:
+  - NOTAM statuses: `not-recorded`, `completed`, `not-applicable`, `needs-rebrief`.
+  - Filing statuses: `not-filing`, `preparing`, `filed-manually`, `accepted`, `rejected`, `cancelled`, `closed`.
+  - Copyable route PIB request text and File2Fly handoff link.
+  - Stale official NOTAM record detection when route or ETD changes.
+  - Missing admin records are informational; rejected filing and overdue close remain stop-level states.
+- Next.js upgraded to `15.5.18`; dynamic route handlers updated to the Next 15 async params contract.
+- Broad global API CORS removed; public tile/sprite CORS remains route-specific.
+
+Verification:
+
+- `pnpm test`: passed, 19 files / 83 tests for the Flight Admin deployment.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/browser E2E command was run; manual E2E remains user-owned.
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-jwfl6opsq-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_EK27rQDsTKn8dbrZsRL8wMnfxvki`
+
+## 2026-07-20 Observability + GitHub Sync
+
+Objective: add production observability instrumentation and sync the local codebase to GitHub.
+
+Changes:
+
+- Added `@vercel/analytics` and `@vercel/speed-insights`.
+- Mounted Vercel Analytics and Speed Insights in the root App Router layout.
+- Added `lib/observability/api.ts` for structured API route logging with route, method, status, duration, Vercel request id, and safe error names for unhandled failures.
+- Wrapped all app API route handlers with the structured logging helper.
+- Added `app/error.tsx` and `app/global-error.tsx` safe client error boundaries that log failures without exposing secret values.
+- Added unit coverage for structured logging output, wrapper completion logs, and safe generic failure responses.
+- Updated the TODO list to mark observability implemented.
+- Updated GitHub Actions CI to run only the approved automated gate: unit tests, typecheck, lint, and production build. Playwright/E2E remains excluded for this implementation path.
+
+Verification:
+
+- `pnpm test`: passed, 20 files / 86 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/browser E2E command was run; manual E2E remains user-owned.
+
+Production deployment and smoke verification:
+
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-2o2fsh9qe-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_72rPhuL3XXL5rxYResFAssGajduK`
+- Production API: `/api/openaip/style` returned HTTP 200 with style version 8 and 96 layers.
+- Production API: `/api/notams/route` for FAOR → FALA returned HTTP 200 with `source=south-africa-official` and `status=manual-required`.
+- Vercel runtime log stream showed structured `api_request_start` and `api_request_complete` entries for `/api/notams/route` with route, method, request id, status, and duration.
+- This Vercel CLI version does not support `vercel logs --level`; downstream JSON filtering is required for error-only scans.
+
+GitHub sync scope:
+
+- Sync target is the existing GitHub PR branch `agent/complete-halo-flight-planner-20260719` on `selezai/halo-flight-planning`.
+- The local app source is being mirrored into that Git checkout without `.env.local`, `.vercel`, `.next`, `node_modules`, or other local/generated artifacts.
+
+Remaining external blockers:
+
+- Live SACAA/ATNS NOTAM data remains deferred until an authorized feed/API exists.
+- Automatic File2Fly/SACAA/ATNS filing remains deferred until authorized integration access exists.
+- Paid/commercial launch remains blocked until OpenAIP grants written permission for authentic sprite/icon usage or the icon set is replaced.

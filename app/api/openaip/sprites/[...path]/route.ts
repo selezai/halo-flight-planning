@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
-import { withApiLogging } from '@/lib/observability/apiLogger';
+import { withApiLogging } from '@/lib/observability/api';
 
 const SPRITE_RE = /^openaip(@2x)?(\.(json|png))?$/;
 
-export async function GET(
+export const GET = withApiLogging('/api/openaip/sprites/[...path]', async (
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  return withApiLogging(request, '/api/openaip/sprites/[...path]', async () => handleGet(request, await params));
-}
-
-async function handleGet(
-  request: NextRequest,
-  params: { path: string[] }
-) {
+  context: { params: Promise<{ path: string[] }> }
+) => {
   try {
+    const params = await context.params;
     // Reconstruct sprite path: openaip.json, openaip.png, openaip@2x.json, etc.
     const spritePath = params.path.join('/');
     if (!SPRITE_RE.test(spritePath)) {
@@ -55,7 +49,7 @@ async function handleGet(
       { status: 404 }
     );
   }
-}
+});
 
 async function serveSprite(spritePath: string, contentType: string): Promise<NextResponse> {
   // Sprites are stored in public/sprites/

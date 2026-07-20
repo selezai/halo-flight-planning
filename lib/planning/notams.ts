@@ -8,14 +8,16 @@ import type {
 
 export const FAA_NOTAM_SOURCE = 'FAA NOTAM API';
 export const FAA_NOTAM_SOURCE_URL = 'https://notams.aim.faa.gov/notamSearch/';
-export const SOUTH_AFRICA_NOTAM_SOURCE = 'South Africa official briefing';
+export const SOUTH_AFRICA_NOTAM_MANUAL_SOURCE = 'South Africa official NOTAM briefing';
+export const SOUTH_AFRICA_NOTAM_LIVE_SOURCE = 'South Africa official NOTAM feed';
 export const SOUTH_AFRICA_ATNS_FILE2FLY_URL = 'https://file2fly.atns.co.za/aes/login.jsp';
-export const SOUTH_AFRICA_SACAA_NOTAM_SUMMARIES_URL = 'https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/';
+export const SOUTH_AFRICA_SACAA_NOTAM_SUMMARY_URL =
+  'https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/';
+
+export type NotamProvider = 'south-africa-manual' | 'south-africa-live' | 'faa';
 
 const NOTAM_LOCATION_RE = /^[A-Z0-9]{2,5}$/;
 const DEFAULT_MAX_LOCATIONS = 12;
-
-export type NotamProvider = 'south-africa-manual' | 'faa';
 
 export function buildRouteNotamLocations(
   waypoints: Pick<Waypoint, 'ident' | 'type'>[],
@@ -44,20 +46,17 @@ export function createNotamReview(
     notams: [],
     locations: [],
     queryCount: 0,
-    sourceUrl: getNotamSourceUrl(review.source),
+    sourceUrl: review.sourceUrl ?? defaultNotamSourceUrl(review.source),
     updatedAt: new Date().toISOString(),
     ...review,
   };
 }
 
 export function getConfiguredNotamProvider(value = process.env.NOTAM_PROVIDER): NotamProvider {
-  return value?.trim().toLowerCase() === 'faa' ? 'faa' : 'south-africa-manual';
-}
-
-export function getNotamSourceUrl(source: RouteNotamReview['source']): string {
-  if (source === 'faa-notam-api') return FAA_NOTAM_SOURCE_URL;
-  if (source === 'south-africa-official') return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
-  return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'faa') return 'faa';
+  if (normalized === 'south-africa-live') return 'south-africa-live';
+  return 'south-africa-manual';
 }
 
 export function normalizeFaaNotamPayload(
@@ -65,7 +64,35 @@ export function normalizeFaaNotamPayload(
   requestedLocation: string
 ): RouteNotam[] {
   return extractNotamRecords(payload)
-    .map((record, index) => normalizeFaaNotamRecord(record, requestedLocation, index))
+    .map((record, index) => normalizeNotamRecord({
+      record,
+      requestedLocations: [requestedLocation],
+      index,
+      source: FAA_NOTAM_SOURCE,
+      sourceUrl: FAA_NOTAM_SOURCE_URL,
+      fallbackLocation: requestedLocation,
+    }))
+    .filter((notam): notam is RouteNotam => Boolean(notam));
+}
+
+export function normalizeSouthAfricaNotamPayload(
+  payload: unknown,
+  requestedLocations: string[],
+  sourceUrl = SOUTH_AFRICA_ATNS_FILE2FLY_URL
+): RouteNotam[] {
+  const normalizedLocations = requestedLocations
+    .map((location) => location.trim().toUpperCase())
+    .filter((location) => NOTAM_LOCATION_RE.test(location));
+
+  return extractNotamRecords(payload)
+    .map((record, index) => normalizeNotamRecord({
+      record,
+      requestedLocations: normalizedLocations,
+      index,
+      source: SOUTH_AFRICA_NOTAM_LIVE_SOURCE,
+      sourceUrl,
+      fallbackLocation: normalizedLocations[0],
+    }))
     .filter((notam): notam is RouteNotam => Boolean(notam));
 }
 
@@ -156,7 +183,18 @@ function extractNotamRecords(payload: unknown): Record<string, unknown>[] {
 
   if (!isRecord(payload)) return [];
 
-  const directKeys = ['items', 'notams', 'NOTAMs', 'notamList', 'NotamList', 'data', 'results'];
+  const directKeys = [
+    'items',
+    'notams',
+    'NOTAMs',
+    'notamList',
+    'NotamList',
+    'records',
+    'data',
+    'results',
+    'briefing',
+    'pib',
+  ];
   for (const key of directKeys) {
     const value = payload[key];
     if (Array.isArray(value)) {
@@ -174,40 +212,60 @@ function extractNotamRecords(payload: unknown): Record<string, unknown>[] {
   return [];
 }
 
-function normalizeFaaNotamRecord(
-  record: Record<string, unknown>,
-  requestedLocation: string,
-  index: number
-): RouteNotam | null {
+function normalizeNotamRecord(params: {
+  record: Record<string, unknown>;
+  requestedLocations: string[];
+  index: number;
+  source: string;
+  sourceUrl: string;
+  fallbackLocation?: string;
+}): RouteNotam | null {
+  const { record, requestedLocations, index, source, sourceUrl, fallbackLocation } = params;
   const text = stringValue(
     record.rawText,
     record.raw_text,
     record.rawNotam,
     record.notamText,
+    record.notam_text,
     record.text,
     record.message,
     record.description,
     record.body,
+    record.subject,
     record.all
   );
 
   if (!text) return null;
 
+  const requestedSet = new Set(requestedLocations);
   const location = (stringValue(
     record.icaoLocation,
+    record.icao_location,
     record.location,
     record.facilityDesignator,
+    record.facility_designator,
     record.accountId,
-    record.aerodrome
-  ) ?? requestedLocation).toUpperCase();
+    record.account_id,
+    record.aerodrome,
+    record.ad,
+    record.fir
+  ) ?? inferLocationFromText(text, requestedSet) ?? fallbackLocation ?? 'ZZZZ').toUpperCase();
   const id = stringValue(
     record.notamNumber,
+    record.notam_number,
+    record.seriesNumber,
+    record.series_number,
     record.number,
     record.id,
     record.notamId,
     record.notam_id
   ) ?? `${location}-${index + 1}`;
   const { category, severity } = categorizeNotam(text);
+  const appliesToRoute = requestedSet.size === 0
+    ? true
+    : requestedSet.has(location) || Array.from(requestedSet).some((requestedLocation) =>
+        text.toUpperCase().includes(requestedLocation)
+      );
 
   return {
     id: `${location}-${id}`,
@@ -216,12 +274,37 @@ function normalizeFaaNotamRecord(
     category,
     severity,
     text,
-    effectiveFrom: stringValue(record.effectiveStart, record.effective_start, record.startDate, record.start),
-    effectiveTo: stringValue(record.effectiveEnd, record.effective_end, record.endDate, record.end),
-    source: FAA_NOTAM_SOURCE,
-    sourceUrl: FAA_NOTAM_SOURCE_URL,
-    appliesToRoute: location === requestedLocation,
+    effectiveFrom: stringValue(
+      record.effectiveStart,
+      record.effective_start,
+      record.validFrom,
+      record.valid_from,
+      record.startDate,
+      record.start
+    ),
+    effectiveTo: stringValue(
+      record.effectiveEnd,
+      record.effective_end,
+      record.validTo,
+      record.valid_to,
+      record.endDate,
+      record.end
+    ),
+    source,
+    sourceUrl,
+    appliesToRoute,
   };
+}
+
+function defaultNotamSourceUrl(source: RouteNotamReview['source']): string {
+  if (source === 'south-africa-official') return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
+  if (source === 'faa-notam-api') return FAA_NOTAM_SOURCE_URL;
+  return SOUTH_AFRICA_ATNS_FILE2FLY_URL;
+}
+
+function inferLocationFromText(text: string, requestedLocations: Set<string>): string | undefined {
+  const normalized = text.toUpperCase();
+  return Array.from(requestedLocations).find((location) => normalized.includes(location));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

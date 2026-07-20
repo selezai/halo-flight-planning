@@ -1,18 +1,32 @@
 import type {
   AircraftProfile,
+  AirspaceVerticalProfile,
+  AirspaceVerticalProfileItem,
+  BriefingDigest,
+  BriefingDigestItem,
   BriefingRisk,
+  DataFreshness,
+  EmergencyPlanningReview,
+  FlightAdminReview,
+  FilingWorkflowReview,
   PersonalMinimums,
   RouteAirspaceAlert,
   RouteAnalysis,
   RouteNotam,
   RouteNotamReview,
+  TrainingNavLog,
+  TrainingNavLogLeg,
+  WeightBalanceResult,
+  WeightBalanceStateResult,
   Waypoint,
   WeatherReport,
-  WeightBalanceResult,
 } from '@/types/planning';
 import { formatCourse, formatDistance, formatDuration, formatFuel } from './navigation';
 import { isBelowPersonalMinimums } from './weather';
-import { formatWeightBalanceStatus } from './weightBalance';
+import { formatEmergencyPlanningLines } from './emergencyPlanning';
+import { formatFilingWorkflowLines } from './filingReminder';
+import { formatFlightAdminLines } from './flightAdmin';
+import { getWeightBalanceStatusLabel } from './weightBalance';
 
 export function buildRiskAssessment(
   route: RouteAnalysis,
@@ -20,7 +34,10 @@ export function buildRiskAssessment(
   minimums: PersonalMinimums,
   routeAirspaceAlerts: RouteAirspaceAlert[] = [],
   routeNotamReview?: RouteNotamReview,
-  weightBalanceResult?: WeightBalanceResult
+  weightBalanceResult?: WeightBalanceResult,
+  filingReview?: FilingWorkflowReview,
+  emergencyReview?: EmergencyPlanningReview,
+  flightAdminReview?: FlightAdminReview
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -37,12 +54,8 @@ export function buildRiskAssessment(
     risks.push({
       id: 'fuel-critical',
       level: 'critical',
-      title: route.summary.loadedFuelGal !== undefined
-        ? 'Fuel exceeds loaded dispatch fuel'
-        : 'Fuel exceeds usable capacity',
-      detail: route.summary.loadedFuelGal !== undefined
-        ? `Trip, reserve, and contingency fuel require ${formatFuel(route.summary.totalFuelRequiredGal)}, but loaded fuel after taxi is ${formatFuel(route.summary.dispatchFuelGal ?? 0)}.`
-        : 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
+      title: 'Fuel exceeds usable capacity',
+      detail: 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
     });
   } else if (route.summary.fuelStatus === 'caution') {
     risks.push({
@@ -96,15 +109,18 @@ export function buildRiskAssessment(
     });
   }
 
-  addNotamRisks(risks, routeNotamReview);
   addWeightBalanceRisks(risks, weightBalanceResult);
+  addNotamRisks(risks, routeNotamReview);
+  addFilingWorkflowRisks(risks, filingReview);
+  addFlightAdminRisks(risks, flightAdminReview);
+  addEmergencyRisks(risks, emergencyReview);
 
   if (risks.length === 0) {
     risks.push({
       id: 'route-ready',
       level: 'ok',
       title: 'Planning data consistent',
-      detail: 'Route, fuel, available weather, airspace review, NOTAM review, and W&B review are internally consistent. Continue official preflight review before flight.',
+      detail: 'Route, fuel, available weather, airspace review, and optional admin records are internally consistent. Continue official preflight review before flight.',
     });
   }
 
@@ -119,8 +135,14 @@ export function buildBriefingText(params: {
   weather: WeatherReport[];
   risks: BriefingRisk[];
   routeAirspaceAlerts?: RouteAirspaceAlert[];
+  airspaceVerticalProfile?: AirspaceVerticalProfile;
   routeNotamReview?: RouteNotamReview;
   weightBalanceResult?: WeightBalanceResult;
+  dataFreshness?: DataFreshness[];
+  trainingNavLog?: TrainingNavLog;
+  filingReview?: FilingWorkflowReview;
+  flightAdminReview?: FlightAdminReview;
+  emergencyReview?: EmergencyPlanningReview;
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -133,8 +155,14 @@ export function buildBriefingText(params: {
     weather,
     risks,
     routeAirspaceAlerts = [],
+    airspaceVerticalProfile,
     routeNotamReview,
     weightBalanceResult,
+    dataFreshness = [],
+    trainingNavLog,
+    filingReview,
+    flightAdminReview,
+    emergencyReview,
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -144,6 +172,21 @@ export function buildBriefingText(params: {
     'HALO FLIGHT BRIEFING',
     `Generated: ${new Date().toISOString()}`,
     '',
+    'PILOT DIGEST',
+    ...formatBriefingDigest(buildBriefingDigest({
+      routeName,
+      route,
+      risks,
+      routeNotamReview,
+      routeAirspaceAlerts,
+      weightBalanceResult,
+      weather,
+      dataFreshness,
+      filingReview,
+      flightAdminReview,
+      emergencyReview,
+    })),
+    '',
     'FLIGHT SUMMARY',
     `Route: ${routeName || routeLabel(waypoints)}`,
     `Aircraft: ${aircraft.registration} ${aircraft.type} (${aircraft.name})`,
@@ -152,12 +195,6 @@ export function buildBriefingText(params: {
     `Distance: ${formatDistance(route.summary.totalDistanceNm)}`,
     `ETE: ${formatDuration(route.summary.estimatedTimeMinutes)}`,
     `Fuel required: ${formatFuel(route.summary.totalFuelRequiredGal)}`,
-    ...(route.summary.loadedFuelGal !== undefined
-      ? [
-          `Fuel loaded: ${formatFuel(route.summary.loadedFuelGal)}`,
-          `Fuel after taxi: ${formatFuel(route.summary.dispatchFuelGal ?? 0)}`,
-        ]
-      : []),
     `Fuel remaining: ${formatFuel(route.summary.fuelRemainingGal)}`,
     '',
     'NAVIGATION LOG',
@@ -169,6 +206,9 @@ export function buildBriefingText(params: {
       )}, ${formatFuel(leg.fuelRequiredGal)}`;
     }),
     '',
+    'TRAINING / CHECKRIDE NAVLOG',
+    ...formatTrainingNavLog(trainingNavLog),
+    '',
     'WEATHER',
     ...(weather.length
       ? weather.map((report) => `${report.icao}: ${report.flightCategory} ${report.raw}`)
@@ -179,14 +219,29 @@ export function buildBriefingText(params: {
       ? routeAirspaceAlerts.map(formatBriefingAirspaceAlert)
       : ['No rendered OpenAIP airspace intersections recorded for the visible route samples. Continue with official chart and NOTAM review.']),
     '',
-    'WEIGHT AND BALANCE',
+    'AIRSPACE VERTICAL PROFILE',
+    ...formatAirspaceVerticalProfile(airspaceVerticalProfile),
+    '',
+    'WEIGHT & BALANCE',
     ...formatBriefingWeightBalance(weightBalanceResult),
+    '',
+    'DATA FRESHNESS',
+    ...formatBriefingFreshness(dataFreshness),
     '',
     'RISK REVIEW',
     ...risks.map((risk) => `${risk.level.toUpperCase()}: ${risk.title} - ${risk.detail}`),
     '',
     'NOTAM REVIEW',
     ...formatBriefingNotamReview(routeNotamReview),
+    '',
+    'FLIGHT ADMIN',
+    ...formatFlightAdminLines(flightAdminReview, filingReview),
+    '',
+    'FILING & CLOSE REMINDER',
+    ...formatFilingWorkflowLines(filingReview),
+    '',
+    'EMERGENCY / FORCED-LANDING',
+    ...formatEmergencyPlanningLines(emergencyReview),
     '',
     'NOTES',
     notes || 'No pilot notes entered.',
@@ -195,9 +250,401 @@ export function buildBriefingText(params: {
   return lines.join('\n');
 }
 
+export function buildBriefingDigest(params: {
+  routeName: string;
+  route: RouteAnalysis;
+  risks: BriefingRisk[];
+  weather: WeatherReport[];
+  routeAirspaceAlerts?: RouteAirspaceAlert[];
+  routeNotamReview?: RouteNotamReview;
+  weightBalanceResult?: WeightBalanceResult;
+  dataFreshness?: DataFreshness[];
+  filingReview?: FilingWorkflowReview;
+  flightAdminReview?: FlightAdminReview;
+  emergencyReview?: EmergencyPlanningReview;
+}): BriefingDigest {
+  const items: BriefingDigestItem[] = [];
+
+  for (const risk of params.risks) {
+    if (risk.level === 'ok') continue;
+    items.push({
+      id: risk.id,
+      level: risk.level === 'critical' ? 'critical' : 'caution',
+      title: risk.title,
+      action: risk.detail,
+      source: sourceForRisk(risk.id),
+    });
+  }
+
+  if (params.route.summary.legCount > 0 && params.route.summary.fuelStatus === 'ok') {
+    items.push({
+      id: 'fuel-ready',
+      level: 'info',
+      title: 'Fuel margin calculated',
+      action: `${formatFuel(params.route.summary.totalFuelRequiredGal)} required with ${formatFuel(params.route.summary.fuelRemainingGal)} remaining after planned reserve/contingency.`,
+      source: 'Fuel',
+    });
+  }
+
+  const reviewableAirspaces = params.routeAirspaceAlerts?.filter((alert) => alert.requiresReview) ?? [];
+  if (reviewableAirspaces.length === 0 && params.routeAirspaceAlerts && params.routeAirspaceAlerts.length > 0) {
+    items.push({
+      id: 'airspace-reviewed',
+      level: 'info',
+      title: 'Airspace reviewed',
+      action: `${params.routeAirspaceAlerts.length} airspace crossing${params.routeAirspaceAlerts.length === 1 ? '' : 's'} found outside the selected cruise altitude or informational only.`,
+      source: 'Airspace',
+    });
+  }
+
+  if (params.weightBalanceResult?.status === 'within-limits') {
+    items.push({
+      id: 'weight-balance-ready',
+      level: 'info',
+      title: 'W&B within limits',
+      action: params.weightBalanceResult.message,
+      source: 'W&B',
+    });
+  }
+
+  if (params.weather.length === 0 && params.route.summary.legCount > 0) {
+    items.push({
+      id: 'weather-digest-missing',
+      level: 'caution',
+      title: 'Weather digest incomplete',
+      action: 'Load route METAR/TAF data or obtain official weather before dispatch.',
+      source: 'Weather',
+    });
+  }
+
+  addFilingDigestItems(items, params.filingReview);
+  addFlightAdminDigestItems(items, params.flightAdminReview);
+  addEmergencyDigestItems(items, params.emergencyReview);
+
+  for (const freshness of params.dataFreshness ?? []) {
+    if (freshness.status === 'current') continue;
+    items.push({
+      id: `freshness-${freshness.source.toLowerCase().replace(/\W+/g, '-')}`,
+      level: 'caution',
+      title: `${freshness.source} freshness ${freshness.status}`,
+      action: freshness.label,
+      source: 'Freshness',
+    });
+  }
+
+  const sortedItems = sortDigestItems(items).slice(0, 6);
+  const hasCritical = sortedItems.some((item) => item.level === 'critical');
+  const hasCaution = sortedItems.some((item) => item.level === 'caution');
+  const status = hasCritical ? 'stop' : hasCaution ? 'review' : 'ready';
+
+  return {
+    status,
+    title: digestTitle(status),
+    summary: digestSummary(status, params.routeName, sortedItems),
+    items: sortedItems.length ? sortedItems : [{
+      id: 'digest-ready',
+      level: 'info',
+      title: 'No blocking items found',
+      action: 'Planning data is internally consistent. Continue official preflight briefing before flight.',
+      source: 'Halo',
+    }],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function addWeightBalanceRisks(risks: BriefingRisk[], result?: WeightBalanceResult) {
+  if (!result || result.status === 'unconfigured') {
+    risks.push({
+      id: 'weight-balance-unconfigured',
+      level: 'caution',
+      title: 'W&B needs POH setup',
+      detail: result?.message ?? 'Enter aircraft-specific POH/AFM W&B data before using Halo for balance checks.',
+    });
+    return;
+  }
+
+  if (result.status === 'incomplete') {
+    risks.push({
+      id: 'weight-balance-incomplete',
+      level: 'caution',
+      title: 'W&B setup incomplete',
+      detail: result.issues.join(' '),
+    });
+    return;
+  }
+
+  if (result.status === 'out-of-limits') {
+    risks.push({
+      id: 'weight-balance-out-of-limits',
+      level: 'critical',
+      title: 'W&B out of limits',
+      detail: result.issues.join(' '),
+    });
+    return;
+  }
+
+  if (result.status === 'caution') {
+    risks.push({
+      id: 'weight-balance-caution',
+      level: 'caution',
+      title: 'W&B near limit',
+      detail: result.message,
+    });
+  }
+}
+
+function addFilingWorkflowRisks(risks: BriefingRisk[], review?: FilingWorkflowReview) {
+  if (!review || review.status === 'not-planned') {
+    return;
+  }
+
+  if (review.status === 'overdue') {
+    risks.push({
+      id: 'filing-close-overdue',
+      level: 'critical',
+      title: 'Flight close reminder overdue',
+      detail: review.message,
+    });
+    return;
+  }
+
+  if (review.status === 'due-soon') {
+    risks.push({
+      id: 'filing-close-due-soon',
+      level: 'caution',
+      title: 'Flight close reminder due soon',
+      detail: review.message,
+    });
+  }
+
+}
+
+function addFlightAdminRisks(risks: BriefingRisk[], review?: FlightAdminReview) {
+  if (!review) return;
+
+  if (review.filingStatus === 'rejected') {
+    risks.push({
+      id: 'flight-admin-filing-rejected',
+      level: 'critical',
+      title: 'Flight plan filing rejected',
+      detail: review.filingMessage,
+    });
+    return;
+  }
+
+  if (review.notamStatus === 'needs-rebrief') {
+    risks.push({
+      id: 'flight-admin-notam-rebrief',
+      level: 'caution',
+      title: 'Recorded NOTAM briefing needs rebrief',
+      detail: review.notamMessage,
+    });
+  }
+}
+
+function addEmergencyRisks(risks: BriefingRisk[], review?: EmergencyPlanningReview) {
+  if (!review || review.status === 'needs-route') return;
+
+  if (review.status === 'review' || review.candidates.length === 0) {
+    risks.push({
+      id: 'emergency-candidates-missing',
+      level: 'caution',
+      title: 'Emergency landing options need review',
+      detail: review.message,
+    });
+  }
+}
+
+function addFilingDigestItems(items: BriefingDigestItem[], review?: FilingWorkflowReview) {
+  if (!review) return;
+
+  if (review.status === 'overdue') {
+    items.push({
+      id: 'filing-overdue',
+      level: 'critical',
+      title: 'Close-flight reminder overdue',
+      action: review.message,
+      source: 'Filing',
+    });
+    return;
+  }
+
+  if (review.status === 'not-planned') {
+    return;
+  }
+
+  if (review.status === 'due-soon') {
+    items.push({
+      id: 'filing-due-soon',
+      level: 'caution',
+      title: 'Close-flight reminder due soon',
+      action: review.message,
+      source: 'Filing',
+    });
+  }
+
+  if (review.status === 'planned' || review.status === 'closed') {
+    items.push({
+      id: 'filing-ready',
+      level: 'info',
+      title: 'Filing workflow tracked',
+      action: review.message,
+      source: 'Filing',
+    });
+  }
+}
+
+function addFlightAdminDigestItems(items: BriefingDigestItem[], review?: FlightAdminReview) {
+  if (!review) return;
+
+  if (review.filingStatus === 'rejected') {
+    items.push({
+      id: 'flight-admin-filing-rejected',
+      level: 'critical',
+      title: 'Flight plan filing rejected',
+      action: review.filingMessage,
+      source: 'Flight Admin',
+    });
+  }
+
+  if (review.notamStatus === 'needs-rebrief') {
+    items.push({
+      id: 'flight-admin-notam-rebrief',
+      level: 'caution',
+      title: 'Official NOTAM record needs rebrief',
+      action: review.notamMessage,
+      source: 'Flight Admin',
+    });
+    return;
+  }
+
+  if (review.notamStatus === 'not-recorded') {
+    items.push({
+      id: 'flight-admin-notam-not-recorded',
+      level: 'info',
+      title: 'NOTAM record optional',
+      action: 'Official NOTAM briefing is not recorded in Halo. Use File2Fly/official sources before flight if required.',
+      source: 'Flight Admin',
+    });
+  } else if (review.notamStatus === 'not-applicable') {
+    items.push({
+      id: 'flight-admin-notam-not-applicable',
+      level: 'info',
+      title: 'NOTAM record marked not applicable',
+      action: review.notamMessage,
+      source: 'Flight Admin',
+    });
+  } else if (review.notamStatus === 'completed') {
+    items.push({
+      id: 'flight-admin-notam-completed',
+      level: 'info',
+      title: 'Official NOTAM briefing recorded',
+      action: review.notamMessage,
+      source: 'Flight Admin',
+    });
+  }
+
+  if (review.filingStatus === 'not-filing') {
+    items.push({
+      id: 'flight-admin-not-filing',
+      level: 'info',
+      title: 'Flight plan filing optional',
+      action: review.filingMessage,
+      source: 'Flight Admin',
+    });
+  } else if (review.filingStatus !== 'rejected') {
+    items.push({
+      id: 'flight-admin-filing-recorded',
+      level: 'info',
+      title: 'Flight plan filing record',
+      action: review.filingMessage,
+      source: 'Flight Admin',
+    });
+  }
+}
+
+function addEmergencyDigestItems(items: BriefingDigestItem[], review?: EmergencyPlanningReview) {
+  if (!review) return;
+
+  if (review.status === 'review' || review.candidates.length === 0) {
+    items.push({
+      id: 'emergency-review',
+      level: 'caution',
+      title: 'Mark emergency landing options',
+      action: review.message,
+      source: 'Emergency',
+    });
+    return;
+  }
+
+  if (review.status === 'available') {
+    items.push({
+      id: 'emergency-available',
+      level: 'info',
+      title: 'Emergency options available',
+      action: `${review.candidates.length} candidate${review.candidates.length === 1 ? '' : 's'} listed; glide radius ${review.glideRadiusNm.toFixed(1)} nm from selected cruise altitude.`,
+      source: 'Emergency',
+    });
+  }
+}
+
 function routeLabel(waypoints: Waypoint[]): string {
   if (waypoints.length === 0) return 'Untitled route';
   return waypoints.map((waypoint) => waypoint.ident ?? waypoint.name).join(' -> ');
+}
+
+function formatBriefingDigest(digest: BriefingDigest): string[] {
+  return [
+    `Status: ${digest.status.toUpperCase()} - ${digest.title}`,
+    digest.summary,
+    ...digest.items.map((item, index) =>
+      `${index + 1}. ${item.level.toUpperCase()}: ${item.title} [${item.source}] - ${item.action}`
+    ),
+  ];
+}
+
+function sortDigestItems(items: BriefingDigestItem[]): BriefingDigestItem[] {
+  const rank: Record<BriefingDigestItem['level'], number> = {
+    critical: 0,
+    caution: 1,
+    info: 2,
+  };
+
+  return [...items].sort((a, b) => rank[a.level] - rank[b.level] || a.title.localeCompare(b.title));
+}
+
+function digestTitle(status: BriefingDigest['status']): string {
+  if (status === 'stop') return 'Resolve critical items before flight';
+  if (status === 'review') return 'Pilot review required';
+  return 'Planning data ready for official briefing';
+}
+
+function digestSummary(
+  status: BriefingDigest['status'],
+  routeName: string,
+  items: BriefingDigestItem[]
+): string {
+  const route = routeName || 'the planned route';
+  if (status === 'stop') {
+    return `${route} has ${items.filter((item) => item.level === 'critical').length} critical item${items.filter((item) => item.level === 'critical').length === 1 ? '' : 's'} that must be resolved before dispatch.`;
+  }
+  if (status === 'review') {
+    return `${route} has review items that require pilot confirmation before dispatch.`;
+  }
+  return `${route} has no Halo-blocking items; continue official weather, NOTAM, chart, and aircraft checks.`;
+}
+
+function sourceForRisk(riskId: string): string {
+  if (riskId.startsWith('weather')) return 'Weather';
+  if (riskId.startsWith('airspace')) return 'Airspace';
+  if (riskId.startsWith('notam')) return 'NOTAM';
+  if (riskId.startsWith('weight-balance')) return 'W&B';
+  if (riskId.startsWith('filing')) return 'Filing';
+  if (riskId.startsWith('flight-admin')) return 'Flight Admin';
+  if (riskId.startsWith('emergency')) return 'Emergency';
+  if (riskId.startsWith('fuel')) return 'Fuel';
+  if (riskId.startsWith('route')) return 'Route';
+  return 'Risk';
 }
 
 function formatAirspaceAlertSummary(alerts: RouteAirspaceAlert[]): string {
@@ -212,7 +659,8 @@ function formatAirspaceAlertSummary(alerts: RouteAirspaceAlert[]): string {
 function formatBriefingAirspaceAlert(alert: RouteAirspaceAlert): string {
   const category = [alert.airspaceType, alert.airspaceClass].filter(Boolean).join(' ');
   const vertical = [alert.lowerLimit ?? 'lower unknown', alert.upperLimit ?? 'upper unknown'].join(' to ');
-  return `${alert.level.toUpperCase()}: ${alert.name}${category ? ` (${category})` : ''}, ${vertical} - ${alert.reason}`;
+  const range = formatAirspaceDistanceRange(alert);
+  return `${alert.level.toUpperCase()}: ${alert.name}${category ? ` (${category})` : ''}${range ? `, ${range}` : ''}, ${vertical} - ${alert.reason}`;
 }
 
 function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
@@ -221,7 +669,7 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
       id: 'notam-review',
       level: 'caution',
       title: 'NOTAM review required',
-      detail: 'Add a route and complete official NOTAM review before treating the briefing as usable.',
+      detail: 'Add a route and complete live NOTAM review before treating the briefing as usable.',
     });
     return;
   }
@@ -231,18 +679,12 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
       id: 'notam-checking',
       level: 'caution',
       title: 'NOTAM review still checking',
-      detail: 'Wait for route NOTAM review to finish before dispatch.',
+      detail: 'Wait for live NOTAM review to finish before dispatch.',
     });
     return;
   }
 
   if (review.status === 'manual-required') {
-    risks.push({
-      id: 'notam-manual-required',
-      level: 'caution',
-      title: 'Official NOTAM briefing required',
-      detail: review.message,
-    });
     return;
   }
 
@@ -250,7 +692,7 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
     risks.push({
       id: 'notam-unavailable',
       level: 'caution',
-      title: 'NOTAM review unavailable',
+      title: 'Live NOTAM review unavailable',
       detail: review.message,
     });
     return;
@@ -285,53 +727,12 @@ function addNotamRisks(risks: BriefingRisk[], review?: RouteNotamReview) {
   }
 }
 
-function addWeightBalanceRisks(risks: BriefingRisk[], result?: WeightBalanceResult) {
-  if (!result) {
-    risks.push({
-      id: 'wb-review',
-      level: 'caution',
-      title: 'Weight and balance review required',
-      detail: 'Complete aircraft-specific weight and balance before treating the briefing as usable.',
-    });
-    return;
-  }
-
-  if (result.status === 'unconfigured' || result.status === 'incomplete') {
-    risks.push({
-      id: 'wb-incomplete',
-      level: 'caution',
-      title: 'Weight and balance not operational',
-      detail: result.messages[0] ?? 'Enter aircraft-specific POH/AFM data before using W&B operationally.',
-    });
-    return;
-  }
-
-  if (result.status === 'out-of-limits') {
-    risks.push({
-      id: 'wb-critical',
-      level: 'critical',
-      title: 'Weight and balance out of limits',
-      detail: result.messages[0] ?? 'One or more W&B phases are outside configured limits.',
-    });
-    return;
-  }
-
-  if (result.status === 'caution') {
-    risks.push({
-      id: 'wb-caution',
-      level: 'caution',
-      title: 'Weight and balance margin is tight',
-      detail: result.messages[0] ?? 'One or more W&B phases are close to configured limits.',
-    });
-  }
-}
-
 function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
   if (!review) {
     return ['Live NOTAM review has not run. Check the official NOTAM source before flight.'];
   }
 
-  const sourceLine = `Source: ${formatNotamSource(review.source)} (${review.sourceUrl})`;
+  const sourceLine = `Source: ${formatNotamReviewSource(review.source)} (${review.sourceUrl})`;
   const locationLabel = review.status === 'complete' || review.status === 'partial'
     ? 'Route locations checked'
     : 'Route locations prepared';
@@ -345,7 +746,9 @@ function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
       sourceLine,
       locationLine,
       statusLine,
-      'No route-location NOTAM records are available in Halo for this briefing. Continue official preflight NOTAM review.',
+      review.status === 'manual-required'
+        ? 'Halo prepared the route locations but did not retrieve NOTAM records. Obtain the official PIB through the linked official source before flight.'
+        : 'No route-location NOTAM records are available in Halo for this briefing. Continue official preflight NOTAM review.',
     ];
   }
 
@@ -358,35 +761,109 @@ function formatBriefingNotamReview(review?: RouteNotamReview): string[] {
   ];
 }
 
+function formatBriefingNotam(notam: RouteNotam): string {
+  const period = [notam.effectiveFrom, notam.effectiveTo].filter(Boolean).join(' to ');
+  return `${notam.severity.toUpperCase()}: ${notam.location} ${notam.id} ${notam.category}${period ? ` (${period})` : ''} - ${notam.text}`;
+}
+
 function formatBriefingWeightBalance(result?: WeightBalanceResult): string[] {
   if (!result) {
-    return ['Weight and balance has not been calculated.'];
+    return ['Status: UNCONFIGURED - W&B has not been calculated.'];
   }
 
   const lines = [
-    `Status: ${formatWeightBalanceStatus(result.status)}`,
-    ...result.phases.map((phase) => {
-      const arm = phase.armIn !== undefined ? `${phase.armIn.toFixed(2)} in` : 'unknown arm';
-      const limits = phase.forwardLimitIn !== undefined && phase.aftLimitIn !== undefined
-        ? `limits ${phase.forwardLimitIn.toFixed(2)}-${phase.aftLimitIn.toFixed(2)} in`
-        : 'limits unavailable';
-      return `${phase.phase.toUpperCase()}: ${Math.round(phase.weightLb)} lb, CG ${arm}, ${limits}, ${formatWeightBalanceStatus(phase.status)}`;
-    }),
-    ...result.messages.slice(0, 5),
+    `Status: ${getWeightBalanceStatusLabel(result.status).toUpperCase()} - ${result.message}`,
   ];
+
+  for (const state of [result.ramp, result.takeoff, result.landing].filter(isWeightBalanceStateResult)) {
+    lines.push(
+      `${state.label.toUpperCase()}: ${Math.round(state.weightLb)} lb @ ${state.armIn.toFixed(2)} in CG` +
+      `${state.forwardLimitIn !== undefined && state.aftLimitIn !== undefined ? ` (limits ${state.forwardLimitIn.toFixed(2)}-${state.aftLimitIn.toFixed(2)} in)` : ''}` +
+      `${state.maxWeightLb !== undefined ? `, max ${Math.round(state.maxWeightLb)} lb` : ''}`
+    );
+  }
+
+  if (result.issues.length > 0) {
+    lines.push(...result.issues.map((issue) => `ISSUE: ${issue}`));
+  }
 
   return lines;
 }
 
-function formatNotamSource(source: RouteNotamReview['source']): string {
-  if (source === 'faa-notam-api') return 'FAA NOTAM API';
-  if (source === 'south-africa-official') return 'South Africa official briefing';
-  return 'Unavailable';
+function formatBriefingFreshness(dataFreshness: DataFreshness[]): string[] {
+  if (dataFreshness.length === 0) {
+    return ['Freshness metadata unavailable. Re-check official sources before flight.'];
+  }
+
+  return dataFreshness.map((item) =>
+    `${item.status.toUpperCase()}: ${item.label}${item.updatedAt ? `, updated ${item.updatedAt}` : ''}`
+  );
 }
 
-function formatBriefingNotam(notam: RouteNotam): string {
-  const period = [notam.effectiveFrom, notam.effectiveTo].filter(Boolean).join(' to ');
-  return `${notam.severity.toUpperCase()}: ${notam.location} ${notam.id} ${notam.category}${period ? ` (${period})` : ''} - ${notam.text}`;
+function formatAirspaceVerticalProfile(profile?: AirspaceVerticalProfile): string[] {
+  if (!profile || profile.items.length === 0) {
+    return ['No airspace profile bands available. Continue official chart review.'];
+  }
+
+  return [
+    `Route distance: ${formatDistance(profile.routeDistanceNm)}, cruise altitude: ${Math.round(profile.cruiseAltitudeFt)} ft, status: ${profile.status.toUpperCase()}`,
+    ...profile.items.slice(0, 12).map(formatAirspaceProfileItem),
+    ...(profile.items.length > 12 ? [`+${profile.items.length - 12} more profile bands hidden in exported summary.`] : []),
+  ];
+}
+
+function formatAirspaceProfileItem(item: AirspaceVerticalProfileItem): string {
+  const vertical = [item.lowerLimit ?? 'lower unknown', item.upperLimit ?? 'upper unknown'].join(' to ');
+  return `${item.level.toUpperCase()}: ${item.name}, ${formatAirspaceDistanceRange(item)}, ${vertical}`;
+}
+
+function formatAirspaceDistanceRange(item: Pick<RouteAirspaceAlert, 'startDistanceNm' | 'endDistanceNm'>): string {
+  if (item.startDistanceNm === undefined || item.endDistanceNm === undefined) {
+    return 'route range unknown';
+  }
+
+  if (Math.abs(item.startDistanceNm - item.endDistanceNm) < 0.1) {
+    return `near ${formatDistance(item.startDistanceNm)}`;
+  }
+
+  return `${formatDistance(item.startDistanceNm)}-${formatDistance(item.endDistanceNm)} along route`;
+}
+
+function formatTrainingNavLog(navLog?: TrainingNavLog): string[] {
+  if (!navLog || navLog.legs.length === 0) {
+    return ['No training navlog legs available. Add at least two waypoints and set route wind for checkride calculations.'];
+  }
+
+  return [
+    `Route wind: ${Math.round(navLog.wind.directionDeg).toString().padStart(3, '0')} deg at ${Math.round(navLog.wind.speedKts)} kt`,
+    `Totals: ${formatDuration(navLog.totalTimeMinutes)}, ${formatFuel(navLog.totalFuelGal)}`,
+    `Formula: ${navLog.legs[0].formula}`,
+    ...navLog.legs.map(formatTrainingNavLogLeg),
+  ];
+}
+
+function formatTrainingNavLogLeg(leg: TrainingNavLogLeg, index: number): string {
+  return `${index + 1}. ${leg.from} to ${leg.to}: ` +
+    `TC ${formatCourse(leg.trueCourseDeg)}, MC ${formatCourse(leg.magneticCourseDeg)}, ` +
+    `WCA ${formatSignedDegrees(leg.windCorrectionAngleDeg)}, TH ${formatCourse(leg.trueHeadingDeg)}, ` +
+    `MH ${formatCourse(leg.magneticHeadingDeg)}, CH ${formatCourse(leg.compassHeadingDeg)}, ` +
+    `GS ${Math.round(leg.groundSpeedKts)} kt, ETE ${formatDuration(leg.estimatedTimeMinutes)}, ` +
+    `Fuel ${formatFuel(leg.fuelRequiredGal)}`;
+}
+
+function formatSignedDegrees(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded > 0 ? '+' : ''}${rounded} deg`;
+}
+
+function isWeightBalanceStateResult(value: WeightBalanceStateResult | undefined): value is WeightBalanceStateResult {
+  return Boolean(value);
+}
+
+function formatNotamReviewSource(source: RouteNotamReview['source']): string {
+  if (source === 'south-africa-official') return 'South Africa official NOTAM briefing';
+  if (source === 'faa-notam-api') return 'FAA NOTAM API';
+  return 'Unavailable';
 }
 
 function formatNotamSummary(notams: RouteNotam[]): string {

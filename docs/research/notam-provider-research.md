@@ -4,33 +4,46 @@ Research date: 2026-07-19
 
 ## Decision
 
-Halo should integrate NOTAMs through a provider-neutral server-side adapter.
+Halo is South Africa-first for launch. The default NOTAM provider is `south-africa-manual`, which prepares route airport/navaid locations and directs pilots to official ATNS File2Fly / SACAA AIMU briefing channels.
 
-Launch default is South Africa official manual briefing mode. FAA NOTAM API remains available only when `NOTAM_PROVIDER=faa` is configured for international rollout.
+The live data path is implemented as an authorized JSON adapter behind `NOTAM_PROVIDER=south-africa-live`. It must only be enabled after SACAA/ATNS or an authorized provider supplies a legitimate API endpoint and key. Halo must not scrape File2Fly, automate a logged-in browser session, parse the public daily SACAA summary as operational data, or fake NOTAMs.
+
+FAA remains available behind `NOTAM_PROVIDER=faa` for later international rollout.
 
 ## Sources Checked
 
-- FAA API catalog entry: `https://api.faa.gov/notamapi/` redirects to the FAA API Portal and the catalog lists base URL `https://external-api.faa.gov/notamapi/v1`.
-- FAA unauthenticated endpoint probe: `GET https://external-api.faa.gov/notamapi/v1/notams?icaoLocation=KJFK` returned HTTP 401, confirming credentials are required.
-- FAA NOTAM Search: `https://notams.aim.faa.gov/notamSearch/` remains the official manual source linked from Halo.
-- AviationWeather.gov Data API: `https://aviationweather.gov/data/api/` provides METAR, TAF, PIREP/AIREP, SIGMET, G-AIRMET, airport info, station info, navaids/fixes/features/obstacles, and weather/advisory products, but not NOTAMs.
-- ATNS File2Fly is the official South Africa preflight filing/briefing entry point: `https://file2fly.atns.co.za/aes/login.jsp`.
-- SACAA publishes NOTAM summary references at `https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/`.
+- SACAA NOTAM Summaries page: `https://www.caa.co.za/industry-information/aeronautical-information-notam-summaries/`
+  - The page says PIB access is via the briefing office.
+  - It states the public NOTAM summary is only valid at creation time and should not be used for flight preparation.
+  - It points users to AIMU / File2Fly for latest NOTAMs.
+  - It lists route, aerodrome, and zone briefing types.
+  - It states pilots remain responsible for consulting the latest NOTAM before flight.
+- ATNS File2Fly login page: `https://file2fly.atns.co.za/aes/login.jsp`
+  - File2Fly offers online pre-flight preparation, flight plans, NOTAM briefing, MET, and e-AIP.
+  - Registration is free.
+- ATNS File2Fly self-briefing manual: `https://file2fly.atns.co.za/AesRepository/pdf/selfbriefingManual_e.pdf`
+  - Route, zone, and aerodrome briefings are generated inside the authenticated web application.
+  - PIB results are available as browser HTML or PDF.
+- FAA API catalog / FAA NOTAM Search remain relevant only for future FAA rollout.
 
-## Implementation Decision
+No public SACAA/ATNS machine-readable NOTAM API was found during this research. The official public flow is File2Fly/briefing office, not an unauthenticated data feed.
 
-- Default `NOTAM_PROVIDER` to `south-africa-manual`.
-- In South Africa launch mode, prepare route airport/navaid identifiers and direct pilots to ATNS File2Fly/SACAA official briefing sources.
-- Do not scrape, parse unofficially, or fake live SACAA/ATNS NOTAM data.
-- Keep FAA NOTAM credentials server-side only.
-- Use `FAA_NOTAM_CLIENT_ID` and `FAA_NOTAM_CLIENT_SECRET` for the legacy FAA external NOTAM API headers `client_id` and `client_secret` only when `NOTAM_PROVIDER=faa`.
-- Query route airport/navaid identifiers from the active route. This is a route-location filter, not a full corridor geospatial NOTAM engine.
-- Normalize provider payloads defensively because the public FAA portal requires login and the exact response schema cannot be verified without credentials.
-- Never treat missing credentials, 401/403, or provider failure as "no NOTAMs." Halo returns an unavailable/partial state and links the official NOTAM Search page.
-- ICAO Q-line/Q-code parsing is not implemented in the launch build. Do not claim live ICAO/SACAA NOTAM parsing or vertical filtering until Q-line fixtures and parser tests exist.
+## Implementation
 
-## Future Upgrade
+- `NOTAM_PROVIDER=south-africa-manual`
+  - Default and production-safe.
+  - Returns `source=south-africa-official`, `status=manual-required`.
+  - Lists the prepared route airport/navaid locations.
+  - Links `SOUTH_AFRICA_NOTAM_SOURCE_URL`, defaulting to ATNS File2Fly.
+- `NOTAM_PROVIDER=south-africa-live`
+  - Calls `SOUTH_AFRICA_NOTAM_API_URL` with a server-side key from `SOUTH_AFRICA_NOTAM_API_KEY`.
+  - Sends a POST JSON body with `briefingType=route`, route locations, waypoints, and source `halo`.
+  - Supports configurable auth header/scheme through `SOUTH_AFRICA_NOTAM_API_AUTH_HEADER` and `SOUTH_AFRICA_NOTAM_API_AUTH_SCHEME`.
+  - Rejects missing config, invalid header names, non-HTTPS remote URLs, and URLs containing credentials.
+  - Normalizes flexible authorized-provider JSON payloads into Halo `RouteNotam` records.
+- `NOTAM_PROVIDER=faa`
+  - Keeps the existing FAA external NOTAM API path using server-side `FAA_NOTAM_CLIENT_ID` and `FAA_NOTAM_CLIENT_SECRET`.
 
-When authorized SACAA/ATNS data access exists, add a South Africa live provider behind the same provider-neutral route review contract.
+## Operational Rule
 
-When FAA NMS API access is granted, add a second FAA provider implementation for the NMS OAuth/client-credentials flow and keep the existing route-level UI contract unchanged.
+Never treat provider failure, missing credentials, public-summary unavailability, or empty Halo results as proof that there are no NOTAMs. Halo must show unavailable, partial, or manual-required states and continue to direct the pilot to the official briefing path.

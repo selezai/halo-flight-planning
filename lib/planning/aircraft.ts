@@ -1,9 +1,5 @@
-import type {
-  AircraftProfile,
-  AircraftWeightBalanceConfig,
-  PersonalMinimums,
-  WeightBalanceLoading,
-} from '@/types/planning';
+import type { AircraftProfile, PersonalMinimums, WeightBalanceConfig } from '@/types/planning';
+import { createDefaultWeightBalanceConfig } from './weightBalance';
 
 export const DEFAULT_PERSONAL_MINIMUMS: PersonalMinimums = {
   minimumCeilingFt: 2500,
@@ -25,6 +21,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'pa28-181',
@@ -37,6 +36,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'c182t',
@@ -49,6 +51,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'sr22',
@@ -61,6 +66,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9.5,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'da40',
@@ -73,6 +81,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 10,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'be36',
@@ -85,6 +96,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'tbm960',
@@ -97,6 +111,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 12,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'pc12',
@@ -109,6 +126,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 11,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'c208',
@@ -121,6 +141,9 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
   {
     id: 'rv7',
@@ -133,14 +156,15 @@ export const PRESET_AIRCRAFT: AircraftProfile[] = [
     reserveMinutes: 45,
     contingencyPercent: 10,
     magneticVariationDeg: -24,
+    compassDeviationDeg: 0,
+    glideRatio: 9,
+    weightBalance: createDefaultWeightBalanceConfig(),
   },
 ];
 
 export const DEFAULT_AIRCRAFT = PRESET_AIRCRAFT[0];
 
 export function clampAircraftProfile(profile: AircraftProfile): AircraftProfile {
-  const weightBalance = profile.weightBalance ? clampWeightBalanceConfig(profile.weightBalance) : undefined;
-
   return {
     ...profile,
     cruiseSpeedKts: clampNumber(profile.cruiseSpeedKts, 40, 450),
@@ -149,10 +173,9 @@ export function clampAircraftProfile(profile: AircraftProfile): AircraftProfile 
     reserveMinutes: clampNumber(profile.reserveMinutes, 30, 180),
     contingencyPercent: clampNumber(profile.contingencyPercent, 0, 40),
     magneticVariationDeg: clampNumber(profile.magneticVariationDeg, -40, 40),
-    weightBalance,
-    weightBalanceLoading: weightBalance
-      ? clampWeightBalanceLoading(profile.weightBalanceLoading, weightBalance)
-      : undefined,
+    compassDeviationDeg: clampNumber(profile.compassDeviationDeg ?? 0, -30, 30),
+    glideRatio: clampNumber(profile.glideRatio ?? 9, 5, 30),
+    weightBalance: clampWeightBalanceConfig(profile.weightBalance),
   };
 }
 
@@ -171,48 +194,38 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function clampOptionalNumber(value: number | undefined, min: number, max: number): number | undefined {
-  if (value === undefined) return undefined;
-  return clampNumber(value, min, max);
-}
+function clampWeightBalanceConfig(config: WeightBalanceConfig | undefined): WeightBalanceConfig {
+  const fallback = createDefaultWeightBalanceConfig();
+  if (!config) return fallback;
 
-function clampWeightBalanceConfig(config: AircraftWeightBalanceConfig): AircraftWeightBalanceConfig {
   return {
-    ...config,
-    emptyWeightLb: clampNumber(config.emptyWeightLb, 0, 100000),
-    emptyArmIn: clampNumber(config.emptyArmIn, 0, 1000),
-    maxRampWeightLb: clampOptionalNumber(config.maxRampWeightLb, 0, 100000),
-    maxTakeoffWeightLb: clampNumber(config.maxTakeoffWeightLb, 0, 100000),
-    maxLandingWeightLb: clampOptionalNumber(config.maxLandingWeightLb, 0, 100000),
-    fuelArmIn: clampNumber(config.fuelArmIn, 0, 1000),
-    fuelWeightLbPerGal: clampNumber(config.fuelWeightLbPerGal, 1, 10),
-    stations: config.stations.map((station) => ({
-      ...station,
-      label: station.label.slice(0, 80),
-      armIn: clampNumber(station.armIn, 0, 1000),
-      maxWeightLb: clampOptionalNumber(station.maxWeightLb, 0, 10000),
+    units: 'imperial',
+    setupStatus: config.setupStatus === 'configured' ? 'configured' : 'needs-poh',
+    emptyWeightLb: clampOptional(config.emptyWeightLb, 1, 20000),
+    emptyArmIn: clampOptional(config.emptyArmIn, 1, 300),
+    maxRampWeightLb: clampOptional(config.maxRampWeightLb, 1, 25000),
+    maxTakeoffWeightLb: clampOptional(config.maxTakeoffWeightLb, 1, 25000),
+    maxLandingWeightLb: clampOptional(config.maxLandingWeightLb, 1, 25000),
+    fuel: {
+      weightPerGalLb: clampNumber(config.fuel?.weightPerGalLb ?? fallback.fuel.weightPerGalLb, 4, 8),
+      armIn: clampOptional(config.fuel?.armIn, 1, 300),
+      taxiFuelGal: clampOptional(config.fuel?.taxiFuelGal, 0, 20),
+    },
+    stations: (config.stations?.length ? config.stations : fallback.stations).map((station, index) => ({
+      id: station.id || `station-${index + 1}`,
+      name: station.name || 'Station',
+      armIn: clampOptional(station.armIn, 1, 300),
+      maxWeightLb: clampOptional(station.maxWeightLb, 0, 5000),
     })),
-    envelope: config.envelope.map((point) => ({
-      weightLb: clampNumber(point.weightLb, 0, 100000),
-      forwardArmIn: clampNumber(point.forwardArmIn, 0, 1000),
-      aftArmIn: clampNumber(point.aftArmIn, 0, 1000),
+    envelope: (config.envelope ?? []).map((point) => ({
+      weightLb: clampNumber(point.weightLb, 1, 25000),
+      forwardArmIn: clampNumber(point.forwardArmIn, 1, 300),
+      aftArmIn: clampNumber(point.aftArmIn, 1, 300),
     })),
-    notes: config.notes?.slice(0, 1000),
   };
 }
 
-function clampWeightBalanceLoading(
-  loading: WeightBalanceLoading | undefined,
-  config: AircraftWeightBalanceConfig
-): WeightBalanceLoading {
-  return {
-    fuelGallons: clampNumber(loading?.fuelGallons ?? 0, 0, 1000),
-    taxiFuelGallons: clampNumber(loading?.taxiFuelGallons ?? 0, 0, 1000),
-    stationWeightsLb: Object.fromEntries(
-      config.stations.map((station) => [
-        station.id,
-        clampNumber(loading?.stationWeightsLb?.[station.id] ?? 0, 0, 10000),
-      ])
-    ),
-  };
+function clampOptional(value: number | undefined, min: number, max: number): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(min, value));
 }

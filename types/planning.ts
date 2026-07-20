@@ -24,8 +24,9 @@ export interface AircraftProfile {
   reserveMinutes: number;
   contingencyPercent: number;
   magneticVariationDeg: number;
-  weightBalance?: AircraftWeightBalanceConfig;
-  weightBalanceLoading?: WeightBalanceLoading;
+  compassDeviationDeg?: number;
+  glideRatio?: number;
+  weightBalance?: WeightBalanceConfig;
 }
 
 export type WeightBalanceStatus =
@@ -35,54 +36,66 @@ export type WeightBalanceStatus =
   | 'caution'
   | 'out-of-limits';
 
+export interface WeightBalanceFuelConfig {
+  armIn?: number;
+  weightPerGalLb: number;
+  taxiFuelGal?: number;
+}
+
+export interface WeightBalanceStation {
+  id: string;
+  name: string;
+  armIn?: number;
+  maxWeightLb?: number;
+}
+
 export interface WeightBalanceEnvelopePoint {
   weightLb: number;
   forwardArmIn: number;
   aftArmIn: number;
 }
 
-export interface WeightBalanceStation {
-  id: string;
-  label: string;
-  armIn: number;
-  maxWeightLb?: number;
-}
-
-export interface AircraftWeightBalanceConfig {
-  emptyWeightLb: number;
-  emptyArmIn: number;
+export interface WeightBalanceConfig {
+  units: 'imperial';
+  setupStatus: 'needs-poh' | 'configured';
+  emptyWeightLb?: number;
+  emptyArmIn?: number;
   maxRampWeightLb?: number;
-  maxTakeoffWeightLb: number;
+  maxTakeoffWeightLb?: number;
   maxLandingWeightLb?: number;
-  fuelArmIn: number;
-  fuelWeightLbPerGal: number;
+  fuel: WeightBalanceFuelConfig;
   stations: WeightBalanceStation[];
   envelope: WeightBalanceEnvelopePoint[];
-  notes?: string;
 }
 
 export interface WeightBalanceLoading {
-  fuelGallons: number;
-  taxiFuelGallons: number;
-  stationWeightsLb: Record<string, number>;
+  fuelGal: number;
+  landingFuelGal?: number;
+  stationWeights: Record<string, number>;
 }
 
-export interface WeightBalancePhaseResult {
-  phase: 'ramp' | 'takeoff' | 'landing';
-  status: WeightBalanceStatus;
+export interface WeightBalanceStateResult {
+  label: 'ramp' | 'takeoff' | 'landing';
   weightLb: number;
-  armIn?: number;
-  momentLbIn?: number;
+  armIn: number;
+  momentLbIn: number;
   forwardLimitIn?: number;
   aftLimitIn?: number;
   maxWeightLb?: number;
-  messages: string[];
+  withinEnvelope: boolean;
+  withinWeight: boolean;
+  marginIn?: number;
+  marginWeightLb?: number;
 }
 
 export interface WeightBalanceResult {
   status: WeightBalanceStatus;
-  phases: WeightBalancePhaseResult[];
-  messages: string[];
+  message: string;
+  ramp?: WeightBalanceStateResult;
+  takeoff?: WeightBalanceStateResult;
+  landing?: WeightBalanceStateResult;
+  issues: string[];
+  calculatedAt?: string;
 }
 
 export interface PersonalMinimums {
@@ -114,9 +127,6 @@ export interface RouteSummary {
   contingencyFuelGal: number;
   totalFuelRequiredGal: number;
   usableFuelGal: number;
-  loadedFuelGal?: number;
-  taxiFuelGal?: number;
-  dispatchFuelGal?: number;
   fuelRemainingGal: number;
   fuelStatus: 'ok' | 'caution' | 'critical';
 }
@@ -124,6 +134,34 @@ export interface RouteSummary {
 export interface RouteAnalysis {
   legs: RouteLeg[];
   summary: RouteSummary;
+}
+
+export interface TrainingWind {
+  directionDeg: number;
+  speedKts: number;
+}
+
+export interface TrainingNavLogLeg {
+  id: string;
+  from: string;
+  to: string;
+  trueCourseDeg: number;
+  magneticCourseDeg: number;
+  windCorrectionAngleDeg: number;
+  trueHeadingDeg: number;
+  magneticHeadingDeg: number;
+  compassHeadingDeg: number;
+  groundSpeedKts: number;
+  estimatedTimeMinutes: number;
+  fuelRequiredGal: number;
+  formula: string;
+}
+
+export interface TrainingNavLog {
+  wind: TrainingWind;
+  legs: TrainingNavLogLeg[];
+  totalTimeMinutes: number;
+  totalFuelGal: number;
 }
 
 export type FlightCategory = 'VFR' | 'MVFR' | 'IFR' | 'LIFR' | 'UNKNOWN';
@@ -159,6 +197,34 @@ export interface BriefingRisk {
   level: 'ok' | 'caution' | 'critical';
   title: string;
   detail: string;
+}
+
+export type BriefingDigestStatus = 'ready' | 'review' | 'stop';
+
+export interface BriefingDigestItem {
+  id: string;
+  level: 'info' | 'caution' | 'critical';
+  title: string;
+  action: string;
+  source: string;
+}
+
+export interface BriefingDigest {
+  status: BriefingDigestStatus;
+  title: string;
+  summary: string;
+  items: BriefingDigestItem[];
+  generatedAt: string;
+}
+
+export type DataFreshnessStatus = 'current' | 'stale' | 'unknown';
+
+export interface DataFreshness {
+  source: string;
+  status: DataFreshnessStatus;
+  label: string;
+  updatedAt?: string;
+  ageMinutes?: number;
 }
 
 export type NotamSeverity = 'info' | 'caution' | 'critical';
@@ -208,6 +274,59 @@ export interface RouteNotamReview {
   updatedAt?: string;
 }
 
+export type NotamBriefingRecordStatus =
+  | 'not-recorded'
+  | 'completed'
+  | 'not-applicable'
+  | 'needs-rebrief';
+
+export interface NotamBriefingRecord {
+  status: NotamBriefingRecordStatus;
+  method?: string;
+  sourceUrl?: string;
+  reference?: string;
+  completedAt?: string;
+  notes?: string;
+  routeSignature?: string;
+  departureTime?: string;
+}
+
+export type FlightPlanFilingStatus =
+  | 'not-filing'
+  | 'preparing'
+  | 'filed-manually'
+  | 'accepted'
+  | 'rejected'
+  | 'cancelled'
+  | 'closed';
+
+export interface FlightPlanFilingRecord {
+  status: FlightPlanFilingStatus;
+  method?: string;
+  reference?: string;
+  filedAt?: string;
+  acceptedAt?: string;
+  closedAt?: string;
+  responsibleContact?: string;
+  notes?: string;
+}
+
+export interface FlightAdminReview {
+  status: BriefingDigestStatus;
+  message: string;
+  officialSourceUrl: string;
+  notamRecord: NotamBriefingRecord;
+  notamStatus: NotamBriefingRecordStatus;
+  notamRecordStale: boolean;
+  notamMessage: string;
+  flightPlanRecord: FlightPlanFilingRecord;
+  filingStatus: FlightPlanFilingStatus;
+  filingMessage: string;
+  routePibRequestText: string;
+  routeSignature: string;
+  updatedAt: string;
+}
+
 export type RouteAirspaceAlertLevel = 'info' | 'caution' | 'critical';
 
 export interface RouteAirspaceAlert {
@@ -227,6 +346,101 @@ export interface RouteAirspaceAlert {
   reason: string;
   relationship?: 'crossing' | 'corridor';
   distanceNm?: number;
+  startDistanceNm?: number;
+  endDistanceNm?: number;
+}
+
+export interface AirspaceVerticalProfileItem {
+  id: string;
+  name: string;
+  level: RouteAirspaceAlertLevel;
+  lowerLimit?: string;
+  upperLimit?: string;
+  lowerLimitFt?: number;
+  upperLimitFt?: number;
+  cruiseAltitudeFt: number;
+  conflict: boolean;
+  requiresReview: boolean;
+  startDistanceNm?: number;
+  endDistanceNm?: number;
+}
+
+export interface AirspaceVerticalProfile {
+  routeDistanceNm: number;
+  cruiseAltitudeFt: number;
+  status: 'clear' | 'review' | 'critical';
+  items: AirspaceVerticalProfileItem[];
+}
+
+export interface FilingChecklistState {
+  routeReviewed: boolean;
+  weatherReviewed: boolean;
+  notamPibObtained: boolean;
+  weightBalanceReviewed: boolean;
+  fuelReviewed: boolean;
+  filedViaOfficialSource: boolean;
+}
+
+export interface FlightCloseReminder {
+  enabled: boolean;
+  plannedDepartureTime?: string;
+  plannedArrivalTime?: string;
+  closeByTime?: string;
+  acknowledgedAt?: string;
+}
+
+export type FilingReminderStatus =
+  | 'not-planned'
+  | 'planned'
+  | 'due-soon'
+  | 'overdue'
+  | 'closed';
+
+export interface FilingWorkflowReview {
+  status: FilingReminderStatus;
+  checklistComplete: boolean;
+  checklistItemsComplete: number;
+  checklistItemsTotal: number;
+  message: string;
+  officialSourceUrl: string;
+  plannedDepartureTime?: string;
+  plannedArrivalTime?: string;
+  closeByTime?: string;
+  minutesUntilClose?: number;
+}
+
+export type EmergencyLandingSuitability = 'good' | 'caution' | 'unknown' | 'unsuitable';
+
+export interface EmergencyLandingSite {
+  id: string;
+  name: string;
+  coordinates: Coordinates;
+  suitability: EmergencyLandingSuitability;
+  notes?: string;
+  lastVerifiedDate?: string;
+}
+
+export interface EmergencyAerodromeCandidate {
+  id: string;
+  name: string;
+  ident?: string;
+  coordinates: Coordinates;
+  elevationFt?: number;
+  source: 'route-waypoint' | 'starter-data' | 'user-site';
+  suitability: EmergencyLandingSuitability;
+  distanceFromRouteNm: number;
+  score: number;
+}
+
+export interface EmergencyPlanningReview {
+  status: 'needs-route' | 'available' | 'review';
+  message: string;
+  cruiseAltitudeFt: number;
+  glideRatio: number;
+  glideRadiusNm: number;
+  candidates: EmergencyAerodromeCandidate[];
+  userSites: EmergencyLandingSite[];
+  updatedAt: string;
 }
 
 export type RouteAirspaceReviewSource = 'rendered-vector' | 'openaip-core';

@@ -16,6 +16,8 @@ export function buildRouteAirspaceAlert(
   options: {
     relationship?: RouteAirspaceAlert['relationship'];
     distanceNm?: number;
+    startDistanceNm?: number;
+    endDistanceNm?: number;
   } = {}
 ): RouteAirspaceAlert | null {
   if (feature.type !== 'airspace') return null;
@@ -61,6 +63,8 @@ export function buildRouteAirspaceAlert(
     reason,
     relationship,
     distanceNm: options.distanceNm,
+    startDistanceNm: options.startDistanceNm,
+    endDistanceNm: options.endDistanceNm,
   };
 }
 
