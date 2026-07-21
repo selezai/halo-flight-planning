@@ -327,6 +327,40 @@ export interface FlightAdminReview {
   updatedAt: string;
 }
 
+export type HaloMissionStatus = 'draft' | 'needs-review' | 'ready' | 'flown' | 'archived';
+
+export interface HaloMissionPlannerState {
+  center: Coordinates;
+  zoom: number;
+  routeName: string;
+  routeNotes: string;
+  departureTime: string;
+  cruiseAltitudeFt: number;
+  waypoints: Waypoint[];
+  activeAircraft: AircraftProfile;
+  weightBalanceLoading: WeightBalanceLoading;
+  trainingWind: TrainingWind;
+  filingChecklist: FilingChecklistState;
+  notamBriefingRecord: NotamBriefingRecord;
+  flightPlanFilingRecord: FlightPlanFilingRecord;
+  closeReminder: FlightCloseReminder;
+  emergencyLandingSites: EmergencyLandingSite[];
+  personalMinimums: PersonalMinimums;
+}
+
+export interface HaloMissionRecord {
+  id: string;
+  name: string;
+  status: HaloMissionStatus;
+  routeLabel: string;
+  aircraftLabel: string;
+  waypointCount: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+  state: HaloMissionPlannerState;
+}
+
 export type RouteAirspaceAlertLevel = 'info' | 'caution' | 'critical';
 
 export interface RouteAirspaceAlert {

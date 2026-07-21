@@ -196,7 +196,7 @@ function formatMissionDetail(
   }
 ): string {
   if (status === 'idle') {
-    return 'Start with a departure and destination. Halo keeps the map primary while the mission deck collects the pilot actions.';
+    return 'Start with a departure and destination. Halo keeps the map primary while the Planner collects the pilot actions.';
   }
 
   const routeDetail = `${params.waypoints.length} waypoint${params.waypoints.length === 1 ? '' : 's'}, ${formatDistance(params.route.summary.totalDistanceNm)}, ${formatDuration(params.route.summary.estimatedTimeMinutes)}`;

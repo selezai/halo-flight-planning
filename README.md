@@ -6,7 +6,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 
 ## Current Features
 
-- Daylight luxury aviation UI with a map-first mission dashboard, responsive mobile bottom-sheet workflow, tablet/desktop command deck, and SVG halo-ring route-arrow app mark.
+- Daylight luxury aviation UI with a map-first compact mission status card, unified Planner surface, local Mission Library, responsive mobile bottom-sheet workflow, tablet/desktop Planner panel, and SVG halo-ring route-arrow app mark.
 - Interactive planning map with OpenAIP server-side proxy support.
 - Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
 - Authentic OpenAIP sprites for aviation icons, symbols, and patterned airspace overlays.
@@ -17,6 +17,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Emergency/forced-landing planning with approximate glide rings, route/starter/user landing candidates, suitability scoring, and user-marked forced-landing sites.
 - Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.
 - Route planning with global OpenAIP Core airport/navaid search, instant starter fallback results, manual coordinates, map-click waypoints, rubber-band map editing, snap-to-feature drops, reordering, removal, and persisted local routes.
+- Mission Library for saving, switching, duplicating, and archiving multiple local mission drafts while keeping one active mission on the map.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
 - Aircraft presets plus editable cruise speed, fuel burn, usable fuel, reserve, contingency, magnetic variation, compass deviation, glide ratio, and POH/AFM W&B setup.
 - Hybrid weight-and-balance with preset aircraft templates, custom station/envelope entry, ramp/takeoff/landing CG checks, and briefing/risk review status.
@@ -110,7 +111,7 @@ components/
   auth/             Clerk provider and account sync controls
   map/              MapLibre map and Halo route overlays
   planning/         Route status surface
-  shell/            Responsive map-first app shell and Halo brand mark
+  shell/            Responsive map-first app shell, unified Planner, Mission Library, and Halo brand mark
   sidebar/          Route, weather, aircraft/W&B, briefing, admin, and emergency panels
 db/                 SQL migrations for account sync
 e2e/                Playwright integration tests against a production server
@@ -137,6 +138,7 @@ types/              OpenAIP and planning TypeScript models
 
 - Design: `docs/superpowers/plans/2026-07-19-halo-flight-planning-design.md`
 - UX/UI overhaul: `docs/superpowers/plans/2026-07-21-halo-ux-ui-overhaul.md`
+- Unified Planner + Mission Library: `docs/superpowers/plans/2026-07-21-unified-planner-mission-library.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-halo-flight-planning.md`
 - OpenAIP global vector map plan: `docs/superpowers/plans/2026-07-19-openaip-global-vector-map.md`
 - Route airspace review plan: `docs/superpowers/plans/2026-07-19-route-airspace-review.md`

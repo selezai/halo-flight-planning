@@ -8,6 +8,9 @@ import type {
   FilingChecklistState,
   FlightPlanFilingRecord,
   FlightCloseReminder,
+  HaloMissionPlannerState,
+  HaloMissionRecord,
+  HaloMissionStatus,
   NotamBriefingRecord,
   PersonalMinimums,
   RouteAirspaceReview,
@@ -29,6 +32,14 @@ import {
   DEFAULT_FLIGHT_PLAN_FILING_RECORD,
   DEFAULT_NOTAM_BRIEFING_RECORD,
 } from '@/lib/planning/flightAdmin';
+import {
+  archiveMissionRecord,
+  buildMissionDisplayName,
+  cloneMissionPlannerState,
+  createMissionRecord,
+  sortMissionRecords,
+  upsertMissionRecord,
+} from '@/lib/planning/missions';
 import { insertWaypointAtRouteIndex } from '@/lib/planning/rubberBandRoute';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
 import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
@@ -66,6 +77,8 @@ export interface MapState {
   routeNotes: string;
   departureTime: string;
   cruiseAltitudeFt: number;
+  activeMissionId: string;
+  missionLibrary: HaloMissionRecord[];
   waypoints: Waypoint[];
   activeAircraft: AircraftProfile;
   weightBalanceLoading: WeightBalanceLoading;
@@ -96,6 +109,11 @@ export interface MapState {
   setRouteNotes: (notes: string) => void;
   setDepartureTime: (time: string) => void;
   setCruiseAltitudeFt: (altitudeFt: number) => void;
+  saveActiveMission: (status?: HaloMissionStatus) => void;
+  createBlankMission: () => void;
+  duplicateActiveMission: () => void;
+  loadMission: (id: string) => void;
+  archiveMission: (id: string) => void;
   addRouteWaypoint: (waypoint: Waypoint) => void;
   insertRouteWaypoint: (index: number, waypoint: Waypoint) => void;
   addUserWaypoint: (coordinates: Coordinates) => void;
@@ -161,6 +179,151 @@ const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
   sourceUrl: SOUTH_AFRICA_ATNS_FILE2FLY_URL,
 };
 
+const DEFAULT_ACTIVE_MISSION_ID = 'mission-local-active';
+
+function createMissionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `mission-${crypto.randomUUID()}`;
+  }
+
+  return `mission-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createBlankMissionPlannerState(): HaloMissionPlannerState {
+  return {
+    center: [28.0, -26.0],
+    zoom: 7,
+    routeName: 'Untitled mission',
+    routeNotes: '',
+    departureTime: '',
+    cruiseAltitudeFt: 6500,
+    waypoints: [],
+    activeAircraft: DEFAULT_AIRCRAFT,
+    weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+    trainingWind: DEFAULT_TRAINING_WIND,
+    filingChecklist: DEFAULT_FILING_CHECKLIST,
+    notamBriefingRecord: DEFAULT_NOTAM_BRIEFING_RECORD,
+    flightPlanFilingRecord: DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+    closeReminder: DEFAULT_CLOSE_REMINDER,
+    emergencyLandingSites: [],
+    personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
+  };
+}
+
+function captureMissionPlannerState(state: MapState): HaloMissionPlannerState {
+  return cloneMissionPlannerState({
+    center: state.center,
+    zoom: state.zoom,
+    routeName: state.routeName,
+    routeNotes: state.routeNotes,
+    departureTime: state.departureTime,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    waypoints: state.waypoints,
+    activeAircraft: state.activeAircraft,
+    weightBalanceLoading: state.weightBalanceLoading,
+    trainingWind: state.trainingWind,
+    filingChecklist: state.filingChecklist,
+    notamBriefingRecord: state.notamBriefingRecord,
+    flightPlanFilingRecord: state.flightPlanFilingRecord,
+    closeReminder: state.closeReminder,
+    emergencyLandingSites: state.emergencyLandingSites,
+    personalMinimums: state.personalMinimums,
+  });
+}
+
+function buildSavedActiveMission(
+  state: MapState,
+  status?: HaloMissionStatus,
+  now = new Date()
+): HaloMissionRecord {
+  const existing = state.missionLibrary.find((mission) => mission.id === state.activeMissionId);
+  const resolvedStatus = status ?? (
+    existing?.status && existing.status !== 'archived'
+      ? existing.status
+      : 'draft'
+  );
+
+  return createMissionRecord({
+    id: state.activeMissionId || DEFAULT_ACTIVE_MISSION_ID,
+    state: captureMissionPlannerState(state),
+    status: resolvedStatus,
+    now,
+    existing,
+  });
+}
+
+function getMissionActivationState(missionState: HaloMissionPlannerState): Partial<MapState> {
+  return {
+    center: missionState.center,
+    zoom: missionState.zoom,
+    routeName: missionState.routeName,
+    routeNotes: missionState.routeNotes,
+    departureTime: missionState.departureTime,
+    cruiseAltitudeFt: missionState.cruiseAltitudeFt,
+    waypoints: missionState.waypoints,
+    activeAircraft: clampAircraftProfile(missionState.activeAircraft),
+    weightBalanceLoading: {
+      ...DEFAULT_WEIGHT_BALANCE_LOADING,
+      ...missionState.weightBalanceLoading,
+      stationWeights: {
+        ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
+        ...missionState.weightBalanceLoading.stationWeights,
+      },
+    },
+    trainingWind: {
+      ...DEFAULT_TRAINING_WIND,
+      ...missionState.trainingWind,
+    },
+    filingChecklist: {
+      ...DEFAULT_FILING_CHECKLIST,
+      ...missionState.filingChecklist,
+    },
+    notamBriefingRecord: {
+      ...DEFAULT_NOTAM_BRIEFING_RECORD,
+      ...missionState.notamBriefingRecord,
+    },
+    flightPlanFilingRecord: {
+      ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+      ...missionState.flightPlanFilingRecord,
+    },
+    closeReminder: {
+      ...DEFAULT_CLOSE_REMINDER,
+      ...missionState.closeReminder,
+    },
+    emergencyLandingSites: missionState.emergencyLandingSites,
+    personalMinimums: clampPersonalMinimums(missionState.personalMinimums),
+    routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+    renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+    coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+    routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
+    selectedFeature: null,
+    selectedFeatureCandidates: [],
+    sidebarPanel: 'route',
+  };
+}
+
+function normalizeMissionLibrary(value: unknown): HaloMissionRecord[] {
+  if (!Array.isArray(value)) return [];
+
+  return sortMissionRecords(
+    value.filter((mission): mission is HaloMissionRecord => isMissionRecord(mission))
+  );
+}
+
+function isMissionRecord(value: unknown): value is HaloMissionRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<HaloMissionRecord>;
+  return (
+    typeof record.id === 'string' &&
+    typeof record.name === 'string' &&
+    typeof record.status === 'string' &&
+    typeof record.createdAt === 'string' &&
+    typeof record.updatedAt === 'string' &&
+    Boolean(record.state) &&
+    typeof record.state === 'object'
+  );
+}
+
 function chooseActiveAirspaceReview(
   coreReview: RouteAirspaceReview,
   renderedReview: RouteAirspaceReview
@@ -180,9 +343,16 @@ function mergePersistedMapState(
   persistedState: Partial<MapState> | undefined,
   current: MapState
 ): MapState {
+  const missionLibrary = normalizeMissionLibrary(persistedState?.missionLibrary);
+  const persistedActiveMissionId = typeof persistedState?.activeMissionId === 'string'
+    ? persistedState.activeMissionId
+    : undefined;
+
   return {
     ...current,
     ...persistedState,
+    activeMissionId: persistedActiveMissionId || current.activeMissionId,
+    missionLibrary,
     visibleLayers: {
       ...DEFAULT_VISIBLE_LAYERS,
       ...persistedState?.visibleLayers,
@@ -258,6 +428,8 @@ export const useMapStore = create<MapState>()(
       routeNotes: '',
       departureTime: '',
       cruiseAltitudeFt: 6500,
+      activeMissionId: DEFAULT_ACTIVE_MISSION_ID,
+      missionLibrary: [],
       waypoints: [],
       activeAircraft: DEFAULT_AIRCRAFT,
       weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
@@ -316,6 +488,106 @@ export const useMapStore = create<MapState>()(
       setDepartureTime: (time) => set({ departureTime: time }),
       setCruiseAltitudeFt: (altitudeFt) => set({
         cruiseAltitudeFt: Math.max(0, Math.min(60000, Number(altitudeFt) || 0)),
+      }),
+
+      saveActiveMission: (status) => set((state) => {
+        const record = buildSavedActiveMission(state, status);
+
+        return {
+          activeMissionId: record.id,
+          routeName: record.state.routeName,
+          missionLibrary: upsertMissionRecord(state.missionLibrary, record),
+        };
+      }),
+
+      createBlankMission: () => set((state) => {
+        const now = new Date();
+        const savedActive = buildSavedActiveMission(state, undefined, now);
+        const blankId = createMissionId();
+        const blankState = createBlankMissionPlannerState();
+        const blankRecord = createMissionRecord({
+          id: blankId,
+          state: blankState,
+          status: 'draft',
+          now,
+        });
+
+        return {
+          ...getMissionActivationState(blankRecord.state),
+          activeMissionId: blankId,
+          missionLibrary: upsertMissionRecord(
+            upsertMissionRecord(state.missionLibrary, savedActive),
+            blankRecord
+          ),
+          sidebarOpen: true,
+        };
+      }),
+
+      duplicateActiveMission: () => set((state) => {
+        const now = new Date();
+        const savedActive = buildSavedActiveMission(state, undefined, now);
+        const duplicateId = createMissionId();
+        const duplicateName = `Copy of ${buildMissionDisplayName(state.routeName, state.waypoints)}`;
+        const duplicateRecord = createMissionRecord({
+          id: duplicateId,
+          state: {
+            ...captureMissionPlannerState(state),
+            routeName: duplicateName,
+          },
+          status: 'draft',
+          now,
+          name: duplicateName,
+        });
+
+        return {
+          ...getMissionActivationState(duplicateRecord.state),
+          activeMissionId: duplicateId,
+          missionLibrary: upsertMissionRecord(
+            upsertMissionRecord(state.missionLibrary, savedActive),
+            duplicateRecord
+          ),
+          sidebarOpen: true,
+        };
+      }),
+
+      loadMission: (id) => set((state) => {
+        const target = state.missionLibrary.find((mission) => mission.id === id);
+        if (!target || target.status === 'archived') return state;
+
+        const savedActive = buildSavedActiveMission(state);
+
+        return {
+          ...getMissionActivationState(target.state),
+          activeMissionId: target.id,
+          missionLibrary: upsertMissionRecord(state.missionLibrary, savedActive),
+          sidebarOpen: true,
+        };
+      }),
+
+      archiveMission: (id) => set((state) => {
+        const target = state.missionLibrary.find((mission) => mission.id === id);
+        if (!target) return state;
+
+        const archivedMission = archiveMissionRecord(target);
+        const missionLibrary = upsertMissionRecord(state.missionLibrary, archivedMission);
+
+        if (id !== state.activeMissionId) {
+          return { missionLibrary };
+        }
+
+        const blankId = createMissionId();
+        const blankRecord = createMissionRecord({
+          id: blankId,
+          state: createBlankMissionPlannerState(),
+          status: 'draft',
+        });
+
+        return {
+          ...getMissionActivationState(blankRecord.state),
+          activeMissionId: blankId,
+          missionLibrary: upsertMissionRecord(missionLibrary, blankRecord),
+          sidebarOpen: true,
+        };
       }),
 
       addRouteWaypoint: (waypoint) => set((state) => ({
@@ -507,6 +779,8 @@ export const useMapStore = create<MapState>()(
         routeNotes: state.routeNotes,
         departureTime: state.departureTime,
         cruiseAltitudeFt: state.cruiseAltitudeFt,
+        activeMissionId: state.activeMissionId,
+        missionLibrary: state.missionLibrary,
         waypoints: state.waypoints,
         activeAircraft: state.activeAircraft,
         weightBalanceLoading: state.weightBalanceLoading,

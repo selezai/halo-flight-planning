@@ -12,6 +12,17 @@ describe('planner snapshot helpers', () => {
     const snapshot = extractPlannerSnapshotState({
       routeName: 'FAOR to FALA',
       cruiseAltitudeFt: 6500,
+      activeMissionId: 'mission-local',
+      missionLibrary: [
+        {
+          id: 'mission-local',
+          name: 'FAOR to FALA',
+          status: 'draft',
+          createdAt: '2026-07-21T08:00:00.000Z',
+          updatedAt: '2026-07-21T08:00:00.000Z',
+          state: { routeName: 'FAOR to FALA' },
+        },
+      ],
       center: [28, -26],
       waypoints: [
         { id: 'faor', type: 'airport', name: 'O.R. Tambo', coordinates: [28.246, -26.1337] },
@@ -23,6 +34,17 @@ describe('planner snapshot helpers', () => {
     expect(snapshot).toEqual({
       routeName: 'FAOR to FALA',
       cruiseAltitudeFt: 6500,
+      activeMissionId: 'mission-local',
+      missionLibrary: [
+        {
+          id: 'mission-local',
+          name: 'FAOR to FALA',
+          status: 'draft',
+          createdAt: '2026-07-21T08:00:00.000Z',
+          updatedAt: '2026-07-21T08:00:00.000Z',
+          state: { routeName: 'FAOR to FALA' },
+        },
+      ],
       center: [28, -26],
       waypoints: [
         { id: 'faor', type: 'airport', name: 'O.R. Tambo', coordinates: [28.246, -26.1337] },
@@ -68,6 +90,10 @@ describe('planner snapshot helpers', () => {
       emergencyLandingSites: [
         { id: 'site-2', name: 'Local field', coordinates: [28.3, -26.3], suitability: 'fair' },
       ],
+      activeMissionId: 'local-mission',
+      missionLibrary: [
+        { id: 'local-mission', name: 'Local mission', status: 'draft', state: { routeName: 'Local route' } },
+      ],
     }, {
       routeName: 'Remote route',
       waypoints: [
@@ -85,6 +111,10 @@ describe('planner snapshot helpers', () => {
       },
       emergencyLandingSites: [
         { id: 'site-1', name: 'Remote field', coordinates: [28.2, -26.2], suitability: 'good' },
+      ],
+      activeMissionId: 'remote-mission',
+      missionLibrary: [
+        { id: 'remote-mission', name: 'Remote mission', status: 'ready', state: { routeName: 'Remote route' } },
       ],
     });
 
@@ -105,6 +135,12 @@ describe('planner snapshot helpers', () => {
       },
     });
     expect(merged.emergencyLandingSites).toHaveLength(2);
+    expect(merged.activeMissionId).toBe('local-mission');
+    expect(merged.missionLibrary).toHaveLength(2);
+    expect(merged.missionLibrary?.map((mission) => mission.id)).toEqual([
+      'remote-mission',
+      'local-mission',
+    ]);
   });
 
   it('rejects invalid or oversized snapshots before persistence', () => {

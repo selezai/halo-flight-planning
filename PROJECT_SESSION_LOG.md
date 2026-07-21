@@ -932,3 +932,66 @@ Production deployment:
   - programmatic deck scroll changed `scrollTop` to 220;
   - mobile bottom navigation was hidden while the deck was open.
 - Production screenshot artifact: `/tmp/halo-prod-mobile-deck.png`
+
+## 2026-07-21 Unified Planner + Mission Library
+
+Objective: remove the “two decks” feeling from the redesigned shell and add a clear place for multiple mission drafts.
+
+Problem:
+
+- The left mission dashboard and right command deck were structurally different, but visually they competed.
+- The app only exposed one active planner state, so it felt like Halo opened to a single mission rather than a mission workspace.
+- User-facing “Deck” language made the planning panel sound like a second cockpit surface instead of the one primary planning surface.
+
+Product decision:
+
+- Halo should have one active mission on the map at a time.
+- Halo should also have a Mission Library for saved drafts.
+- The Planner is the only detailed planning surface.
+- Map tools remain separate because they directly manipulate the map, not mission content.
+
+Changes:
+
+- Replaced user-facing “Deck” language with “Planner”.
+- Removed the duplicate desktop floating “Open mission deck” control.
+- Replaced the large closed-state mission dashboard with a compact Mission Status card.
+- Moved detailed mission status, route/fuel/airspace/W&B/admin/data metrics, fuel margin, Save active, and Missions controls into a Planner summary header.
+- Renamed the map control concept in code from `MapControlDeck` to `MapToolsRail`.
+- Added Mission Library domain types:
+  - `HaloMissionStatus`;
+  - `HaloMissionPlannerState`;
+  - `HaloMissionRecord`.
+- Added mission helper logic in `lib/planning/missions.ts` for display names, route labels, saved mission records, upsert/sort, archive, clone, and status mapping.
+- Added Zustand Mission Library state and actions:
+  - `activeMissionId`;
+  - `missionLibrary`;
+  - `saveActiveMission`;
+  - `createBlankMission`;
+  - `duplicateActiveMission`;
+  - `loadMission`;
+  - `archiveMission`.
+- Mission switching auto-saves the current active mission before loading another saved draft.
+- Added Mission Library dialog for saving, creating, duplicating, loading, and archiving mission drafts.
+- Extended account snapshot JSON to include `activeMissionId` and `missionLibrary`; no database schema change was required.
+- Updated README and UX overhaul docs with the unified Planner/Mission Library model.
+
+Verification:
+
+- `pnpm vitest run tests/planning/missions.test.ts`: passed, 6 tests.
+- `pnpm vitest run tests/planning/missions.test.ts tests/account/plannerSnapshot.test.ts`: passed, 10 tests.
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production browser smoke with `agent-browser`:
+  - phone 408 × 593 opened to compact Mission Status card, no dialog auto-open;
+  - phone top Planner button was present in DOM but hidden with `display: none`, leaving bottom navigation as the phone Planner entry point;
+  - Mission Library dialog opened from the Missions button and showed Save active, Duplicate, New mission, saved drafts, Load, and Archive controls;
+  - saving the active mission created one saved draft row;
+  - mobile Planner sheet opened full-screen and reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2715`, `clientHeight 592`, and successful scroll;
+  - desktop 1366 × 768 had no duplicate “Open mission deck” control, only one visible Planner button, and one visible Planner panel after opening;
+  - rebuilt phone smoke confirmed old “mission deck” copy was gone and “Planner collects the pilot actions” was present.
+- Screenshot artifacts:
+  - `/tmp/halo-unified-planner-mobile.png`
+  - `/tmp/halo-unified-planner-desktop.png`
+- No Playwright/E2E command was run.

@@ -133,3 +133,21 @@ Fix:
 - The command deck is closed by default so the first view is map/dashboard/navigation, not an open panel.
 - The mission dashboard hides dense metrics on phone widths and hides entirely while the deck is open.
 - Floating map utility controls are hidden on phones; bottom navigation handles panel access.
+
+## Unified Planner + Mission Library follow-up
+
+The dashboard/deck language was tightened after user review showed the left mission dashboard and right planning deck felt like competing decks.
+
+Follow-up changes:
+
+- User-facing “Deck” language is replaced with “Planner”.
+- Halo now has one planning surface:
+  - desktop/tablet: floating Planner panel;
+  - phone: full-screen Planner sheet.
+- The former large mission dashboard is split into:
+  - a compact closed-state Mission Status card on the map;
+  - a detailed Planner summary header inside the Planner.
+- Map controls are treated as a separate `MapToolsRail` concept and only operate on map state: planning/inspect, airspace layer, emergency, and route focus.
+- The duplicate floating “Open mission deck” control is removed because the top bar and mobile bottom navigation already open the Planner.
+- A local Mission Library was added so Halo can save, switch, duplicate, and archive multiple mission drafts while keeping only one active mission on the map.
+- Mission Library state is persisted in Zustand and included in the existing account snapshot JSON. No new database tables or migrations are required.

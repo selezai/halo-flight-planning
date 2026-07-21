@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import {
   AlertTriangle,
@@ -119,9 +120,11 @@ interface OpenAipSearchState {
 
 export default function Sidebar({
   accountSyncEnabled,
+  plannerHeader,
   variant = 'desktop',
 }: {
   accountSyncEnabled: boolean;
+  plannerHeader?: ReactNode;
   variant?: 'desktop' | 'sheet';
 }) {
   const {
@@ -152,7 +155,7 @@ export default function Sidebar({
           type="button"
           onClick={() => setSidebarOpen(false)}
           className="rounded-full p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-          aria-label="Close sidebar"
+          aria-label="Close planner"
         >
           <X className="h-5 w-5" />
         </button>
@@ -161,6 +164,12 @@ export default function Sidebar({
       <div className="shrink-0">
         <AccountSyncPanel enabled={accountSyncEnabled} />
       </div>
+
+      {!selectedFeature && plannerHeader ? (
+        <div className="shrink-0 border-b border-slate-200/70 bg-white/80">
+          {plannerHeader}
+        </div>
+      ) : null}
 
       {!selectedFeature && (
         <nav className="sticky top-[65px] z-10 grid shrink-0 grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/90 p-2 backdrop-blur-xl">

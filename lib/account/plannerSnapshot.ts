@@ -11,6 +11,8 @@ export const PLANNER_SNAPSHOT_KEYS = [
   'routeNotes',
   'departureTime',
   'cruiseAltitudeFt',
+  'activeMissionId',
+  'missionLibrary',
   'waypoints',
   'activeAircraft',
   'weightBalanceLoading',
@@ -54,6 +56,8 @@ export const plannerSnapshotStateSchema = z.object({
   routeNotes: z.string().max(20_000).optional(),
   departureTime: z.string().max(80).optional(),
   cruiseAltitudeFt: z.number().finite().min(0).max(60_000).optional(),
+  activeMissionId: z.string().max(160).optional(),
+  missionLibrary: z.array(jsonObjectSchema).max(200).optional(),
   waypoints: z.array(jsonValueSchema).max(200).optional(),
   activeAircraft: jsonObjectSchema.optional(),
   weightBalanceLoading: jsonObjectSchema.optional(),
@@ -139,6 +143,7 @@ export function mergePlannerSnapshotStates(
   merged.routeName = preferNonEmptyString(localState.routeName, remoteState.routeName);
   merged.routeNotes = preferNonEmptyString(localState.routeNotes, remoteState.routeNotes);
   merged.departureTime = preferNonEmptyString(localState.departureTime, remoteState.departureTime);
+  merged.activeMissionId = preferNonEmptyString(localState.activeMissionId, remoteState.activeMissionId);
 
   if (localState.waypoints?.length) {
     merged.waypoints = localState.waypoints;
@@ -164,6 +169,10 @@ export function mergePlannerSnapshotStates(
   merged.emergencyLandingSites = mergeObjectArraysByIdentity(
     remoteState.emergencyLandingSites,
     localState.emergencyLandingSites
+  );
+  merged.missionLibrary = mergeObjectArraysByIdentity(
+    remoteState.missionLibrary,
+    localState.missionLibrary
   );
 
   return plannerSnapshotStateSchema.parse(merged);
