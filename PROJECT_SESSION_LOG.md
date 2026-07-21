@@ -1065,3 +1065,33 @@ Verification:
   - phone Planner sheet reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2481`, `clientHeight 592`, and successful scroll.
 - Screenshot artifact: `/tmp/halo-planner-hierarchy-mobile.png`
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the Planner hierarchy fix:
+  - Commit: `753d5d7` (`Fix planner hierarchy on desktop`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-a2xzvscfh-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_AU5ESFxhyhYZ3r35b3wJMUaG4CN5`
+- Production home page returned HTTP 200.
+- Production API `/api/openaip/style` returned style version 8, 96 layers, and 5 sources.
+- Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
+- Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
+- Production desktop browser smoke at 1366 × 768:
+  - closed state had no left Active Mission card;
+  - one visible Planner button remained in the top bar;
+  - no “Open mission deck” copy/control was present;
+  - opening Planner produced one visible panel;
+  - Route/Wx/W&B/Brief/Admin/Emerg buttons were all visible immediately at `top 273` / `bottom 329`;
+  - closed Active Mission heading remained hidden while Planner was open.
+- Production phone browser smoke at 408 × 593:
+  - compact Active Mission card and bottom navigation remained available;
+  - top Planner button remained hidden with `display: none`;
+  - Route/Wx/W&B/Brief/Admin/Emerg buttons were all visible immediately inside the opened sheet at `top 177` / `bottom 233`;
+  - phone Planner sheet reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2527`, `clientHeight 592`, and successful scroll.
+- Production screenshot artifacts:
+  - `/tmp/halo-prod-planner-hierarchy-desktop.png`
+  - `/tmp/halo-prod-planner-hierarchy-mobile.png`
+- Vercel runtime logs showed expected NOTAM API start/complete entries and no error-level entry during the final scan window.
