@@ -117,3 +117,19 @@ Do not run:
 - Playwright/browser E2E
 
 Manual browser/device E2E remains user-owned.
+
+## Mobile regression fix
+
+After the first production pass, mobile inspection showed two issues:
+
+- The command deck could feel trapped because the sheet used a nested flex scroll container without a reliable mobile scroll surface.
+- The opening phone view was too busy because the mission dashboard, map controls, bottom nav, and deck could compete for the same small viewport.
+
+Fix:
+
+- The mobile deck is now a full-screen sheet at phone widths.
+- The sheet itself is the scroll surface with `overflow-y-auto`, `overscroll-contain`, `touch-action: pan-y`, `100dvh`, and iOS momentum scrolling.
+- The sidebar keeps desktop internal scrolling, but the mobile sheet avoids nested scroll traps.
+- The command deck is closed by default so the first view is map/dashboard/navigation, not an open panel.
+- The mission dashboard hides dense metrics on phone widths and hides entirely while the deck is open.
+- Floating map utility controls are hidden on phones; bottom navigation handles panel access.

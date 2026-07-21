@@ -140,13 +140,13 @@ export default function Sidebar({
   return (
     <aside
       className={cn(
-        'flex h-full w-full flex-col overflow-hidden text-slate-950',
+        'flex w-full flex-col text-slate-950',
         variant === 'desktop'
-          ? 'rounded-[2rem] border border-white/70 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl'
-          : 'bg-transparent'
+          ? 'h-full min-h-0 overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl'
+          : 'min-h-full bg-transparent'
       )}
     >
-      <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
+      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/95 px-4 py-3 backdrop-blur-xl">
         <HaloLogo size="sm" />
         <button
           type="button"
@@ -158,10 +158,12 @@ export default function Sidebar({
         </button>
       </div>
 
-      <AccountSyncPanel enabled={accountSyncEnabled} />
+      <div className="shrink-0">
+        <AccountSyncPanel enabled={accountSyncEnabled} />
+      </div>
 
       {!selectedFeature && (
-        <nav className="grid grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/50 p-2">
+        <nav className="sticky top-[65px] z-10 grid shrink-0 grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/90 p-2 backdrop-blur-xl">
           {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
             <button
               key={id}
@@ -180,7 +182,14 @@ export default function Sidebar({
         </nav>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className={cn(
+          'pb-[max(1rem,env(safe-area-inset-bottom))]',
+          variant === 'desktop'
+            ? 'min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]'
+            : 'flex-1'
+        )}
+      >
         {selectedFeature ? (
           <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
         ) : (

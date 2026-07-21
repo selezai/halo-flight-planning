@@ -231,6 +231,8 @@ export default function HaloAppShell({
   };
 
   const deckOpen = sidebarOpen;
+  const showDashboard = !deckOpen;
+  const showMapControls = !deckOpen;
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#f9f3e4] text-slate-950">
@@ -277,23 +279,27 @@ export default function HaloAppShell({
         </div>
       </div>
 
-      <MissionDashboard
-        mission={mission}
-        fuelRemainingPercent={calculateFuelRemainingPercent(route.summary.fuelRemainingGal, route.summary.usableFuelGal)}
-        onStartRoute={() => openPanel('route')}
-        onOpenBriefing={() => openPanel('briefing')}
-        onUseSampleRoute={useSampleRoute}
-        onSearchAirport={() => openPanel('route')}
-      />
+      {showDashboard && (
+        <MissionDashboard
+          mission={mission}
+          fuelRemainingPercent={calculateFuelRemainingPercent(route.summary.fuelRemainingGal, route.summary.usableFuelGal)}
+          onStartRoute={() => openPanel('route')}
+          onOpenBriefing={() => openPanel('briefing')}
+          onUseSampleRoute={useSampleRoute}
+          onSearchAirport={() => openPanel('route')}
+        />
+      )}
 
-      <MapControlDeck
-        planningMode={planningMode}
-        visibleLayers={visibleLayers}
-        onTogglePlanningMode={() => setPlanningMode(!planningMode)}
-        onToggleLayer={toggleLayer}
-        onFocusRoute={focusRoute}
-        onOpenEmergency={() => openPanel('emergency')}
-      />
+      {showMapControls && (
+        <MapControlDeck
+          planningMode={planningMode}
+          visibleLayers={visibleLayers}
+          onTogglePlanningMode={() => setPlanningMode(!planningMode)}
+          onToggleLayer={toggleLayer}
+          onFocusRoute={focusRoute}
+          onOpenEmergency={() => openPanel('emergency')}
+        />
+      )}
 
       <RouteStatusBar />
 
@@ -305,15 +311,18 @@ export default function HaloAppShell({
 
       {!isDesktop && (
         <>
-          <MobileNavigation
-            activePanel={sidebarPanel}
-            selectedFeatureActive={Boolean(selectedFeature)}
-            onOpenPanel={openPanel}
-          />
+          {!deckOpen && (
+            <MobileNavigation
+              activePanel={sidebarPanel}
+              selectedFeatureActive={Boolean(selectedFeature)}
+              onOpenPanel={openPanel}
+            />
+          )}
           <Sheet open={deckOpen} onOpenChange={setSidebarOpen}>
             <SheetContent
               side="bottom"
-              className="h-[min(86vh,760px)] rounded-t-[2rem] border-white/70 bg-white/95 p-0 shadow-[0_-30px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl"
+              showCloseButton={false}
+              className="h-[100dvh] max-h-[100dvh] touch-pan-y gap-0 overflow-y-auto overscroll-contain rounded-none border-0 bg-white p-0 shadow-[0_-30px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl [-webkit-overflow-scrolling:touch] sm:inset-x-4 sm:bottom-4 sm:h-[min(82dvh,760px)] sm:max-h-[760px] sm:rounded-[2rem] sm:border sm:border-white/70 sm:bg-white/95"
             >
               <div className="sr-only">
                 <SheetTitle>Halo mission deck</SheetTitle>
@@ -336,10 +345,12 @@ export default function HaloAppShell({
         </button>
       )}
 
-      <div className="pointer-events-none absolute bottom-24 left-4 z-20 hidden max-w-xs rounded-2xl border border-white/70 bg-white/80 p-3 text-xs text-slate-600 shadow-lg shadow-slate-900/10 backdrop-blur-xl md:block lg:hidden">
+      {!deckOpen && (
+        <div className="pointer-events-none absolute bottom-24 left-4 z-20 hidden max-w-xs rounded-2xl border border-white/70 bg-white/80 p-3 text-xs text-slate-600 shadow-lg shadow-slate-900/10 backdrop-blur-xl md:block lg:hidden">
         <p className="font-semibold text-slate-950">Tablet mission mode</p>
         <p className="mt-1">Map-first planning with the command deck available from the top bar.</p>
-      </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -370,7 +381,7 @@ function MissionDashboard({
   return (
     <section className="pointer-events-none absolute left-3 right-3 top-24 z-20 sm:left-5 sm:right-auto sm:w-[min(28rem,calc(100vw-2.5rem))] lg:top-28">
       <Card className="pointer-events-auto border-white/70 bg-white/90 p-0 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-        <CardContent className="space-y-4 p-4 sm:p-5">
+        <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-5">
           <div className="flex items-start gap-3">
             <div className={cn('rounded-2xl p-2.5 ring-1', getStatusIconClass(mission.status))}>
               <StatusIcon className="h-5 w-5" />
@@ -384,14 +395,14 @@ function MissionDashboard({
                   Daylight cockpit
                 </span>
               </div>
-              <h1 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-2xl">
+              <h1 className="mt-2 text-lg font-semibold tracking-[-0.04em] text-slate-950 sm:text-2xl">
                 {mission.title}
               </h1>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{mission.detail}</p>
+              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600 sm:line-clamp-none">{mission.detail}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+          <div className="hidden grid-cols-2 gap-2 text-xs sm:grid sm:grid-cols-3">
             <MissionMetric label="Route" value={mission.routeLabel} icon={<Route className="h-3.5 w-3.5" />} />
             <MissionMetric label="Fuel" value={mission.fuelLabel} icon={<Plane className="h-3.5 w-3.5" />} />
             <MissionMetric label="Airspace" value={mission.airspaceLabel} icon={<Layers className="h-3.5 w-3.5" />} />
@@ -400,7 +411,7 @@ function MissionDashboard({
             <MissionMetric label="Data" value={mission.freshnessLabel} icon={<AlertTriangle className="h-3.5 w-3.5" />} />
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-3">
+          <div className="hidden rounded-2xl border border-slate-200/80 bg-white/70 p-3 sm:block">
             <div className="mb-2 flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-700">Fuel remaining margin</span>
               <span className="font-semibold text-slate-950">{mission.fuelLabel}</span>
@@ -496,7 +507,7 @@ function MapControlDeck({
   ];
 
   return (
-    <div className="absolute right-3 top-24 z-20 flex flex-col gap-2 sm:right-5 lg:left-5 lg:right-auto lg:top-auto lg:bottom-24">
+    <div className="absolute right-3 top-24 z-20 hidden flex-col gap-2 sm:right-5 sm:flex lg:left-5 lg:right-auto lg:top-auto lg:bottom-24">
       {controls.map((control) => (
         <Tooltip key={control.label}>
           <TooltipTrigger asChild>

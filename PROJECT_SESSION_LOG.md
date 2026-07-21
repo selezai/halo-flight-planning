@@ -871,3 +871,41 @@ Production deployment:
 - Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
 - Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
 - Vercel runtime log stream showed expected signed-out account request start/401 completion entries and no `api_request_failed` or error-level entry during the final scan.
+
+## 2026-07-21 Mobile UX Regression Fix
+
+Objective: fix the reported mobile layout/scroll regression after the UX/UI overhaul.
+
+Problem:
+
+- On phone-width inspection, too many surfaces competed for the viewport: mission dashboard, map controls, bottom nav, and the command deck.
+- The mobile command deck used a nested flex scroll area inside a Radix sheet. The nested container could overflow or feel trapped on mobile instead of behaving like one page-like scroll surface.
+
+Root cause:
+
+- The fixed-position mobile sheet had a child scroll container. Even with `overflow-y-auto`, nested flex scrolling on mobile is fragile unless every parent/child height and touch behavior is exact.
+- The app also defaulted the command deck to open, so mobile users could land directly in a dense panel instead of a clean map-first opening.
+
+Fix:
+
+- Changed the default `sidebarOpen` state to `false` so Halo opens to map/dashboard/bottom nav instead of an open deck.
+- Hid the mission dashboard and floating map controls while the deck is open.
+- Hid phone floating map controls below the small-screen breakpoint to reduce clutter.
+- Converted the phone command deck into a full-screen `100dvh` sheet.
+- Moved mobile scrolling to the sheet itself with `overflow-y-auto`, `overscroll-contain`, `touch-action: pan-y`, and iOS momentum scrolling.
+- Kept desktop behavior as a fixed command deck with internal sidebar scrolling.
+- Kept the mobile panel nav and header sticky enough to remain usable while the deck scrolls.
+
+Verification:
+
+- `pnpm test`: passed, 26 files / 106 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed.
+- Local production browser smoke at 408 × 593:
+  - initial phone state showed map/dashboard/bottom nav with no sheet auto-open;
+  - Emergency panel opened full-screen;
+  - sheet reported `overflow: auto`, `touch-action: pan-y`, `scrollHeight 851`, `clientHeight 592`;
+  - programmatic sheet scroll changed `scrollTop` to 220;
+  - no Next.js error overlay appeared.
+- Screenshot artifact: `/tmp/halo-mobile-final.png`

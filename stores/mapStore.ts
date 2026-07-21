@@ -249,7 +249,7 @@ export const useMapStore = create<MapState>()(
       visibleLayers: DEFAULT_VISIBLE_LAYERS,
       
       // Sidebar state
-      sidebarOpen: true,
+      sidebarOpen: false,
       sidebarPanel: 'route',
       planningMode: true,
 
