@@ -924,3 +924,11 @@ Production deployment:
 - Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
 - Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
 - Vercel runtime log stream showed expected structured account and NOTAM API entries and no error-level entry during the scan.
+- Production mobile browser smoke at 408 × 593 against `https://halo-flight-planning.vercel.app`:
+  - initial state opened map-first with no sheet/dialog auto-open;
+  - Deck button was available;
+  - opened deck reported full viewport bounds `408 × 593`;
+  - deck reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2216`, `clientHeight 592`;
+  - programmatic deck scroll changed `scrollTop` to 220;
+  - mobile bottom navigation was hidden while the deck was open.
+- Production screenshot artifact: `/tmp/halo-prod-mobile-deck.png`
