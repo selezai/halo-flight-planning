@@ -1138,3 +1138,30 @@ Verification so far:
   - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
   - `pnpm build`: passed on Next.js `15.5.18`.
 - No Playwright/E2E command will be run.
+
+Production deployment:
+
+- Committed and pushed the Planner tab/scroll fix:
+  - Commit: `787d62e` (`Fix planner tab scrolling`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-kehg2rxq2-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_EvTAe59jKcdQJCUKcoRbsXTwixhW`
+- Production home page returned HTTP 200.
+- Production API `/api/openaip/style` returned style version 8, 96 layers, and 5 sources.
+- Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
+- Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
+- Production desktop browser smoke at 1366 × 768:
+  - opening Planner showed Route/Wx/W&B/Brief/Admin/Emerg buttons;
+  - clicking W&B made W&B active and showed W&B content;
+  - the main Planner scroll body reported `scrollHeight 1813`, `clientHeight 409`, and successful scroll to `scrollTop 420`;
+  - clicking Brief made Brief active and showed briefing content.
+- Production phone browser smoke at 408 × 593:
+  - sample mission opened inside the Planner sheet;
+  - clicking W&B made W&B active and showed W&B/POH content;
+  - phone Planner sheet reported `overflow-y: auto`, `scrollHeight 2202`, `clientHeight 592`, and successful scroll to `scrollTop 220`.
+- Production screenshot artifacts:
+  - `/tmp/halo-prod-tab-scroll-desktop.png`
+  - `/tmp/halo-prod-tab-scroll-mobile2.png`
+- Vercel runtime log stream attached to deployment `dpl_EvTAe59jKcdQJCUKcoRbsXTwixhW` and showed no runtime error entries during the observation window.
