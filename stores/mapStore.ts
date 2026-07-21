@@ -32,8 +32,10 @@ import {
 import { insertWaypointAtRouteIndex } from '@/lib/planning/rubberBandRoute';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
 import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
+import type { HaloPanelId } from '@/lib/ui/halo';
+import { normalizeHaloPanelId } from '@/lib/ui/halo';
 
-interface MapState {
+export interface MapState {
   // Map viewport
   center: [number, number];
   zoom: number;
@@ -56,7 +58,7 @@ interface MapState {
   
   // UI state
   sidebarOpen: boolean;
-  sidebarPanel: 'feature' | 'route' | 'weather' | 'aircraft' | 'briefing' | 'research';
+  sidebarPanel: HaloPanelId;
   planningMode: boolean;
 
   // Planning state
@@ -185,6 +187,7 @@ function mergePersistedMapState(
       ...DEFAULT_VISIBLE_LAYERS,
       ...persistedState?.visibleLayers,
     },
+    sidebarPanel: normalizeHaloPanelId(persistedState?.sidebarPanel),
     weightBalanceLoading: {
       ...DEFAULT_WEIGHT_BALANCE_LOADING,
       ...persistedState?.weightBalanceLoading,
@@ -275,14 +278,14 @@ export const useMapStore = create<MapState>()(
       setZoom: (zoom) => set({ zoom }),
       setViewport: (center, zoom) => set({ center, zoom }),
       
-      setSelectedFeature: (feature, candidates) => set({
+      setSelectedFeature: (feature, candidates) => set((state) => ({
         selectedFeature: feature,
         selectedFeatureCandidates: feature
           ? candidates?.length ? candidates : [feature]
           : [],
-        sidebarPanel: feature ? 'feature' : 'route',
+        sidebarPanel: feature ? state.sidebarPanel : 'route',
         sidebarOpen: true,
-      }),
+      })),
       
       toggleLayer: (layer) => set((state) => ({
         visibleLayers: {
@@ -299,7 +302,7 @@ export const useMapStore = create<MapState>()(
       })),
       
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
-      setSidebarPanel: (panel) => set({ sidebarPanel: panel }),
+      setSidebarPanel: (panel) => set({ sidebarPanel: normalizeHaloPanelId(panel) }),
       
       clearSelection: () => set({ 
         selectedFeature: null,
@@ -499,6 +502,7 @@ export const useMapStore = create<MapState>()(
         center: state.center,
         zoom: state.zoom,
         visibleLayers: state.visibleLayers,
+        sidebarPanel: state.sidebarPanel,
         routeName: state.routeName,
         routeNotes: state.routeNotes,
         departureTime: state.departureTime,

@@ -7,14 +7,11 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
-  ChevronRight,
   ClipboardCheck,
-  CloudSun,
   Download,
   Eye,
   EyeOff,
   Gauge,
-  Info,
   Layers,
   MapPin,
   Navigation,
@@ -48,7 +45,6 @@ import { searchStarterWaypoints } from '@/lib/planning/sampleData';
 import { buildBackupPackText } from '@/lib/planning/backupPack';
 import { buildBriefingDigest, buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
 import { mergeWaypointResults } from '@/lib/planning/waypointResults';
-import { COMPETITOR_PAIN_POINTS } from '@/lib/research/competitorPainPoints';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
 import {
   calculateWeightBalance,
@@ -73,6 +69,9 @@ import { buildAirspaceVerticalProfile } from '@/lib/planning/airspaceProfile';
 import { buildEmergencyPlanningReview } from '@/lib/planning/emergencyPlanning';
 import { buildTrainingNavLog } from '@/lib/planning/trainingNavlog';
 import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
+import HaloLogo from '@/components/shell/HaloLogo';
+import { HALO_PANEL_META } from '@/components/shell/haloNavigation';
+import { cn } from '@/lib/utils';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   Coordinates,
@@ -102,8 +101,6 @@ import type {
   WaypointType,
 } from '@/types/planning';
 
-type Panel = 'route' | 'weather' | 'aircraft' | 'briefing' | 'research';
-
 interface RouteWeatherState {
   reports: Record<string, WeatherReport | null>;
   tafs: Record<string, string | null>;
@@ -120,18 +117,12 @@ interface OpenAipSearchState {
   warning: string | null;
 }
 
-const PANEL_META: Array<{ id: Panel; label: string; icon: typeof Plane }> = [
-  { id: 'route', label: 'Route', icon: Navigation },
-  { id: 'weather', label: 'Weather', icon: CloudSun },
-  { id: 'aircraft', label: 'Aircraft', icon: Plane },
-  { id: 'briefing', label: 'Briefing', icon: ClipboardCheck },
-  { id: 'research', label: 'Research', icon: Info },
-];
-
 export default function Sidebar({
   accountSyncEnabled,
+  variant = 'desktop',
 }: {
   accountSyncEnabled: boolean;
+  variant?: 'desktop' | 'sheet';
 }) {
   const {
     sidebarOpen,
@@ -143,29 +134,24 @@ export default function Sidebar({
   } = useMapStore();
 
   if (!sidebarOpen) {
-    return (
-      <button
-        type="button"
-        onClick={() => setSidebarOpen(true)}
-        className="absolute left-4 top-4 z-10 rounded-md border border-slate-200 bg-white p-2 shadow-sm hover:bg-slate-50"
-        aria-label="Open sidebar"
-      >
-        <ChevronRight className="h-5 w-5" />
-      </button>
-    );
+    return null;
   }
 
   return (
-    <aside className="z-10 flex h-full w-full max-w-[25rem] flex-col overflow-hidden border-r border-slate-200 bg-white shadow-sm sm:w-[25rem]">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <div>
-          <h1 className="text-base font-semibold text-slate-950">Halo</h1>
-          <p className="text-xs text-slate-500">Flight planning workspace</p>
-        </div>
+    <aside
+      className={cn(
+        'flex h-full w-full flex-col overflow-hidden text-slate-950',
+        variant === 'desktop'
+          ? 'rounded-[2rem] border border-white/70 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl'
+          : 'bg-transparent'
+      )}
+    >
+      <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
+        <HaloLogo size="sm" />
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          className="rounded-full p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-950"
           aria-label="Close sidebar"
         >
           <X className="h-5 w-5" />
@@ -175,20 +161,20 @@ export default function Sidebar({
       <AccountSyncPanel enabled={accountSyncEnabled} />
 
       {!selectedFeature && (
-        <nav className="grid grid-cols-5 border-b border-slate-200">
-          {PANEL_META.map(({ id, label, icon: Icon }) => (
+        <nav className="grid grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/50 p-2">
+          {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setSidebarPanel(id)}
-              className={`flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium ${
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold transition ${
                 sidebarPanel === id
                   ? 'bg-slate-950 text-white'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
               }`}
             >
               <Icon className="h-4 w-4" />
-              {label}
+              {shortLabel}
             </button>
           ))}
         </nav>
@@ -203,7 +189,8 @@ export default function Sidebar({
             {sidebarPanel === 'weather' && <WeatherPanel />}
             {sidebarPanel === 'aircraft' && <AircraftPanel />}
             {sidebarPanel === 'briefing' && <BriefingPanel />}
-            {sidebarPanel === 'research' && <ResearchPanel />}
+            {sidebarPanel === 'admin' && <AdminPanel />}
+            {sidebarPanel === 'emergency' && <EmergencyPanel />}
           </div>
         )}
       </div>
@@ -1252,17 +1239,10 @@ function BriefingPanel() {
     trainingWind,
     updateTrainingWind,
     filingChecklist,
-    updateFilingChecklist,
     notamBriefingRecord,
-    updateNotamBriefingRecord,
     flightPlanFilingRecord,
-    updateFlightPlanFilingRecord,
     closeReminder,
-    updateCloseReminder,
     emergencyLandingSites,
-    addEmergencyLandingSite,
-    updateEmergencyLandingSite,
-    removeEmergencyLandingSite,
   } = useMapStore();
   const weather = useRouteWeather(false);
   const now = useNowMinute();
@@ -1473,28 +1453,6 @@ function BriefingPanel() {
         onWindChange={updateTrainingWind}
       />
 
-      <FilingCloseReminderPanel
-        checklist={filingChecklist}
-        flightAdminReview={flightAdminReview}
-        notamRecord={notamBriefingRecord}
-        flightPlanRecord={flightPlanFilingRecord}
-        closeReminder={closeReminder}
-        review={filingReview}
-        departureTime={departureTime}
-        estimatedTimeMinutes={route.summary.estimatedTimeMinutes}
-        onChecklistChange={updateFilingChecklist}
-        onNotamRecordChange={updateNotamBriefingRecord}
-        onFlightPlanRecordChange={updateFlightPlanFilingRecord}
-        onReminderChange={updateCloseReminder}
-      />
-
-      <EmergencyPlanningPanel
-        review={emergencyReview}
-        onAddSite={addEmergencyLandingSite}
-        onUpdateSite={updateEmergencyLandingSite}
-        onRemoveSite={removeEmergencyLandingSite}
-      />
-
       <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
         <div className="space-y-2">
           {risks.map((risk) => (
@@ -1542,6 +1500,123 @@ function BriefingPanel() {
           {briefingText}
         </pre>
       </PanelBlock>
+    </div>
+  );
+}
+
+function AdminPanel() {
+  const {
+    routeName,
+    departureTime,
+    cruiseAltitudeFt,
+    waypoints,
+    activeAircraft,
+    filingChecklist,
+    updateFilingChecklist,
+    notamBriefingRecord,
+    updateNotamBriefingRecord,
+    flightPlanFilingRecord,
+    updateFlightPlanFilingRecord,
+    closeReminder,
+    updateCloseReminder,
+    routeNotamReview,
+  } = useMapStore();
+  const now = useNowMinute();
+  const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const filingReview = useMemo(
+    () => buildFilingWorkflowReview({
+      checklist: filingChecklist,
+      closeReminder,
+      now,
+    }),
+    [filingChecklist, closeReminder, now]
+  );
+  const flightAdminReview = useMemo(
+    () => buildFlightAdminReview({
+      notamRecord: notamBriefingRecord,
+      flightPlanRecord: flightPlanFilingRecord,
+      routeNotamReview,
+      waypoints,
+      departureTime,
+      cruiseAltitudeFt,
+      routeName,
+      closeReminder,
+      closeReview: filingReview,
+      now,
+    }),
+    [
+      closeReminder,
+      cruiseAltitudeFt,
+      departureTime,
+      filingReview,
+      flightPlanFilingRecord,
+      notamBriefingRecord,
+      now,
+      routeName,
+      routeNotamReview,
+      waypoints,
+    ]
+  );
+
+  return (
+    <div className="space-y-5">
+      <PanelHeader
+        title="Flight Admin"
+        action={
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+            Optional record
+          </span>
+        }
+      />
+      <FilingCloseReminderPanel
+        checklist={filingChecklist}
+        flightAdminReview={flightAdminReview}
+        notamRecord={notamBriefingRecord}
+        flightPlanRecord={flightPlanFilingRecord}
+        closeReminder={closeReminder}
+        review={filingReview}
+        departureTime={departureTime}
+        estimatedTimeMinutes={route.summary.estimatedTimeMinutes}
+        onChecklistChange={updateFilingChecklist}
+        onNotamRecordChange={updateNotamBriefingRecord}
+        onFlightPlanRecordChange={updateFlightPlanFilingRecord}
+        onReminderChange={updateCloseReminder}
+      />
+    </div>
+  );
+}
+
+function EmergencyPanel() {
+  const {
+    waypoints,
+    cruiseAltitudeFt,
+    activeAircraft,
+    emergencyLandingSites,
+    addEmergencyLandingSite,
+    updateEmergencyLandingSite,
+    removeEmergencyLandingSite,
+  } = useMapStore();
+  const now = useNowMinute();
+  const emergencyReview = useMemo(
+    () => buildEmergencyPlanningReview({
+      waypoints,
+      cruiseAltitudeFt,
+      aircraft: activeAircraft,
+      userSites: emergencyLandingSites,
+      now,
+    }),
+    [activeAircraft, cruiseAltitudeFt, emergencyLandingSites, now, waypoints]
+  );
+
+  return (
+    <div className="space-y-5">
+      <PanelHeader title="Emergency planning" />
+      <EmergencyPlanningPanel
+        review={emergencyReview}
+        onAddSite={addEmergencyLandingSite}
+        onUpdateSite={updateEmergencyLandingSite}
+        onRemoveSite={removeEmergencyLandingSite}
+      />
     </div>
   );
 }
@@ -2351,36 +2426,6 @@ function NotamRow({ notam }: { notam: RouteNotam }) {
   );
 }
 
-function ResearchPanel() {
-  return (
-    <div className="space-y-4">
-      <PanelHeader title="Pain points solved in Halo" />
-      {COMPETITOR_PAIN_POINTS.map((item) => (
-        <div key={`${item.competitor}-${item.painPoint}`} className="rounded-md border border-slate-200 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-950">{item.competitor}</p>
-              <p className="mt-1 text-sm text-slate-700">{item.painPoint}</p>
-            </div>
-            <a
-              href={item.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
-              Source
-            </a>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">{item.evidence}</p>
-          <p className="mt-3 rounded bg-emerald-50 p-2 text-xs font-medium text-emerald-800">
-            {item.haloResponse}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function useNowMinute(): Date {
   const [now, setNow] = useState(() => new Date());
 
@@ -2873,8 +2918,8 @@ function PanelBlock({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-md border border-slate-200 p-3">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-950">
+    <section className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm shadow-slate-900/5">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-slate-950">
         {icon}
         {title}
       </div>
@@ -2892,7 +2937,7 @@ function PanelHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+      <h2 className="text-base font-semibold tracking-[-0.03em] text-slate-950">{title}</h2>
       {action}
     </div>
   );

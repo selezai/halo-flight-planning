@@ -38,8 +38,8 @@ export default function RouteStatusBar() {
   const StatusIcon = route.summary.fuelStatus === 'ok' ? CheckCircle2 : AlertTriangle;
 
   return (
-    <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex justify-center">
-      <div className="pointer-events-auto flex max-w-full items-center gap-3 overflow-x-auto rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+    <div className="pointer-events-none absolute inset-x-5 bottom-5 z-20 hidden justify-center md:flex">
+      <div className="pointer-events-auto flex max-w-full items-center gap-3 overflow-x-auto rounded-full border border-white/70 bg-white/90 px-4 py-2 text-xs shadow-lg shadow-slate-900/10 backdrop-blur-xl">
         <span className="inline-flex items-center gap-1 font-semibold text-slate-950">
           <Navigation className="h-3.5 w-3.5" />
           {waypoints.length > 0

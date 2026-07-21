@@ -811,3 +811,63 @@ Neon activation follow-up:
 - Root cause: the deployed Vercel runtime can receive the real integration secrets, but this local CLI session cannot read those sensitive values back for `pnpm db:migrate`.
 - Fix: treat empty quoted env placeholders as unconfigured locally, keep GET read-only when the table is absent, and idempotently ensure the `halo_planner_snapshots` table on authenticated PUT before saving the owner-scoped planner snapshot.
 - This keeps local-only mode safe when secrets are unavailable locally while allowing production account sync to initialize through the real runtime Neon env values.
+
+## 2026-07-21 UX/UI Overhaul
+
+Objective: redesign Halo as a daylight luxury aviation planner with a map-first mission dashboard, responsive phone/tablet workflow, premium code-first design system, and no operational Research tab.
+
+Research and decisions:
+
+- Brand direction uses “halo” as a ring/light/protective aura and atmospheric light-ring concept.
+- Aviation UI direction follows FAA EFB/human-factors guidance: high legibility, consistent controls, low workload, and clear operational status colors.
+- Figma remains deferred because no live Figma MCP tool was available in this session; implementation proceeded code-first.
+- Authentic OpenAIP sprites remain active; commercial written-permission blocker is unchanged.
+- The Research tab was removed from the production pilot UI. Repository research documentation remains available in `docs/research/`.
+
+Changes:
+
+- Initialized shadcn/ui with Radix defaults and added the requested primitives.
+- Added explicit Tailwind/CSS design tokens for pearl/ivory background, navy/graphite text, muted gold accents, cyan route glow, and strict red/amber/green operational states.
+- Added a generated-logo-inspired production SVG mark: halo ring plus route arrow, plus `app/icon.svg`.
+- Added `HaloAppShell`:
+  - full-screen map as the opening workspace;
+  - top mission bar;
+  - pilot-action mission dashboard;
+  - mobile bottom navigation and bottom-sheet command deck;
+  - tablet map-first command-deck access;
+  - desktop floating right command deck;
+  - floating map controls for planning mode, airspace layer, emergency tools, and route focus.
+- Refactored sidebar navigation to production panels only: Route, Weather, Aircraft/W&B, Briefing, Admin, Emergency.
+- Promoted Flight Admin and Emergency/forced-landing workflow out of the raw briefing into first-class panels.
+- Kept existing route, W&B, weather, NOTAM, filing, emergency, OpenAIP, account sync, export, and observability logic intact.
+- Added UI state helpers for panel migration and mission summary derivation.
+- Persisted legacy `research` panel state now maps to `briefing`; legacy `feature` panel state maps to `route` while clicked-feature inspection remains controlled by selected-feature state.
+- Updated README and added `docs/superpowers/plans/2026-07-21-halo-ux-ui-overhaul.md`.
+
+Generated visual reference:
+
+- Image generation prompt: daylight luxury aviation app logo mark, halo ring and route arrow, pearl ivory background, deep navy route arrow, muted gold ring, sky cyan glow, no text, clean vector-like, premium cockpit planning feel.
+- Generated bitmap reference path: `/Users/Selezmassozi/.codex/generated_images/019f78b3-5c3d-7e92-9c5a-ebeab3cc43b5/_image_id_.png`
+- Final production mark is implemented as SVG code rather than depending on the bitmap.
+
+Verification:
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with only the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 26 files / 106 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/browser E2E command was run.
+- Local production browser smoke with `agent-browser`: page loaded, no Next.js error overlay, content was present, and key map/deck controls rendered.
+- Screenshot artifact: `/Users/Selezmassozi/.agent-browser/tmp/screenshots/screenshot-1784623261194.png`
+
+Production deployment:
+
+- Vercel production deployment inspected as Ready after final dependency cleanup:
+  - Deployment URL: https://halo-flight-planning-j3bktrjcg-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_46aSKpSvkBMJpr58jT8WfJWbrCX6`
+- Production home page returned HTTP 200.
+- Production API `/api/openaip/style` returned HTTP 200 with style version 8, 96 layers, and 5 sources.
+- Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
+- Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
+- Vercel runtime log stream showed expected signed-out account request start/401 completion entries and no `api_request_failed` or error-level entry during the final scan.

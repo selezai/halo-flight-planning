@@ -6,6 +6,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 
 ## Current Features
 
+- Daylight luxury aviation UI with a map-first mission dashboard, responsive mobile bottom-sheet workflow, tablet/desktop command deck, and SVG halo-ring route-arrow app mark.
 - Interactive planning map with OpenAIP server-side proxy support.
 - Airspace-first aviation chart rendering with OpenAIP airspaces, airways, controlled/restricted areas, airports, navaids, reporting points, and obstacles.
 - Authentic OpenAIP sprites for aviation icons, symbols, and patterned airspace overlays.
@@ -27,7 +28,7 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - South Africa-safe filing handoff checklist with File2Fly link, close-flight reminder times, overdue state, and optional browser notification while the app is open.
 - Data freshness badges for route, weather, airspace, NOTAM, and W&B states so stale or unknown data is never presented as clear.
 - Briefing generation with pilot digest, risk review, W&B, weather, fuel, airspace, NOTAM status/results, print, text export, clipboard copy, and one-click backup/print pack download.
-- Research panel documenting competitor pain points and Halo's product response.
+- Repository research docs documenting competitor pain points and Halo's product response.
 - Optional Clerk + Neon account sync path with local-only fallback, authenticated server-side snapshot APIs, and browser-to-account save/load/merge controls.
 - Unit tests for navigation and weather logic.
 
@@ -109,7 +110,8 @@ components/
   auth/             Clerk provider and account sync controls
   map/              MapLibre map and Halo route overlays
   planning/         Route status surface
-  sidebar/          Route, weather, aircraft, briefing, and research panels
+  shell/            Responsive map-first app shell and Halo brand mark
+  sidebar/          Route, weather, aircraft/W&B, briefing, admin, and emergency panels
 db/                 SQL migrations for account sync
 e2e/                Playwright integration tests against a production server
 lib/
@@ -134,6 +136,7 @@ types/              OpenAIP and planning TypeScript models
 ## Documentation
 
 - Design: `docs/superpowers/plans/2026-07-19-halo-flight-planning-design.md`
+- UX/UI overhaul: `docs/superpowers/plans/2026-07-21-halo-ux-ui-overhaul.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-halo-flight-planning.md`
 - OpenAIP global vector map plan: `docs/superpowers/plans/2026-07-19-openaip-global-vector-map.md`
 - Route airspace review plan: `docs/superpowers/plans/2026-07-19-route-airspace-review.md`
