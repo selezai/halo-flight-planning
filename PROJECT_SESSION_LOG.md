@@ -1095,3 +1095,46 @@ Production deployment:
   - `/tmp/halo-prod-planner-hierarchy-desktop.png`
   - `/tmp/halo-prod-planner-hierarchy-mobile.png`
 - Vercel runtime logs showed expected NOTAM API start/complete entries and no error-level entry during the final scan window.
+
+## 2026-07-21 Planner Tab + Scroll Follow-up
+
+Objective: address feedback that Planner tabs were visible but felt non-functional and the Planner tab content could not scroll reliably.
+
+Root cause:
+
+- The desktop Planner content scroll area was too small because account sync, panel navigation, and the Planner summary all sat outside the scrollable body.
+- Browser inspection showed the active W&B content scroll container was only about 148 px high in the problematic layout.
+- The summary itself did not participate in the scroll area, so scrolling over the summary could not move the active tab content.
+
+Fix:
+
+- Moved the Planner summary header into the Planner body scroll area.
+- Kept Route/Wx/W&B/Brief/Admin/Emerg navigation fixed above the scroll body so tabs are reachable immediately.
+- Made the desktop Planner summary compact; phone/tablet keep the fuller in-sheet summary.
+- Added a scroll reset when `sidebarPanel` or selected map feature changes so newly selected tabs start at the top.
+- Added a CSS `lg:hidden` guard to the closed-state Mission Status card to prevent desktop flicker while the media query initializes.
+
+Verification so far:
+
+- `pnpm typecheck`: passed.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production desktop browser smoke:
+  - opening Planner showed Route/Wx/W&B/Brief/Admin/Emerg buttons;
+  - clicking W&B made W&B active;
+  - W&B content was present;
+  - main Planner body scroll region measured `clientHeight 455` instead of the prior ~148 px;
+  - programmatic scroll changed `scrollTop` to 420;
+  - clicking Brief made Brief active and briefing content appeared.
+- Local production phone browser smoke:
+  - W&B tab was visible and active after click;
+  - W&B content was present;
+  - sheet reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2156`, `clientHeight 592`, and successful scroll.
+- Screenshot artifacts:
+  - `/tmp/halo-planner-tab-scroll-desktop.png`
+  - `/tmp/halo-planner-tab-scroll-mobile.png`
+- Final verification:
+  - `pnpm test`: passed, 27 files / 112 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/E2E command will be run.

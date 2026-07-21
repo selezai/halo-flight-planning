@@ -205,6 +205,13 @@ Follow-up fix after desktop review:
   - smaller fuel margin bar;
   - Save active and Missions actions retained.
 
+Second follow-up fix after tab/scroll review:
+
+- Moved the Planner summary header inside the Planner body scroll area instead of keeping it as a fixed block above content.
+- Desktop Planner uses a compact summary, while phone/tablet can keep the fuller in-sheet summary.
+- Planner body scroll now resets to the top when switching tabs or selected map features.
+- This gives the active tab content a much larger scroll region and prevents tabs from feeling non-functional after switching.
+
 Verification completed:
 
 - `pnpm test`

@@ -366,6 +366,7 @@ export default function HaloAppShell({
             accountSyncEnabled={accountSyncEnabled}
             plannerHeader={(
               <PlannerSummaryHeader
+                compact
                 mission={mission}
                 fuelRemainingPercent={calculateFuelRemainingPercent(route.summary.fuelRemainingGal, route.summary.usableFuelGal)}
                 savedMissionCount={activeSavedMissionCount}
@@ -469,7 +470,7 @@ function MissionStatusCard({
         : Sparkles;
 
   return (
-    <section className="pointer-events-none absolute left-3 right-3 top-24 z-20 sm:left-5 sm:right-auto sm:w-[min(23rem,calc(100vw-2.5rem))] lg:top-28">
+    <section className="pointer-events-none absolute left-3 right-3 top-24 z-20 sm:left-5 sm:right-auto sm:w-[min(23rem,calc(100vw-2.5rem))] lg:hidden">
       <Card className="pointer-events-auto border-white/70 bg-white/90 p-0 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl">
         <CardContent className="space-y-3 p-3 sm:p-4">
           <div className="flex items-start gap-3">
@@ -520,12 +521,14 @@ function MissionStatusCard({
 }
 
 function PlannerSummaryHeader({
+  compact = false,
   mission,
   fuelRemainingPercent,
   savedMissionCount,
   onOpenMissionLibrary,
   onSaveMission,
 }: {
+  compact?: boolean;
   mission: ReturnType<typeof buildHaloMissionSummary>;
   fuelRemainingPercent: number;
   savedMissionCount: number;
@@ -551,20 +554,24 @@ function PlannerSummaryHeader({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 text-xs">
-        <MissionMetric label="Route" value={mission.routeLabel} icon={<Route className="h-3.5 w-3.5" />} />
-        <MissionMetric label="Fuel" value={mission.fuelLabel} icon={<Plane className="h-3.5 w-3.5" />} />
-        <MissionMetric label="W&B" value={mission.weightBalanceLabel} icon={<Navigation className="h-3.5 w-3.5" />} />
-        <MissionMetric label="Admin" value={mission.adminLabel} icon={<RadioTower className="h-3.5 w-3.5" />} />
-      </div>
-
-      <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2">
-        <div className="mb-1.5 flex items-center justify-between text-[11px]">
-          <span className="font-semibold text-slate-700">Fuel margin</span>
-          <span className="truncate pl-2 font-semibold text-slate-950">{mission.fuelLabel}</span>
+      {!compact && (
+        <div className="grid grid-cols-2 gap-1.5 text-xs">
+          <MissionMetric label="Route" value={mission.routeLabel} icon={<Route className="h-3.5 w-3.5" />} />
+          <MissionMetric label="Fuel" value={mission.fuelLabel} icon={<Plane className="h-3.5 w-3.5" />} />
+          <MissionMetric label="W&B" value={mission.weightBalanceLabel} icon={<Navigation className="h-3.5 w-3.5" />} />
+          <MissionMetric label="Admin" value={mission.adminLabel} icon={<RadioTower className="h-3.5 w-3.5" />} />
         </div>
-        <Progress value={fuelRemainingPercent} className="h-1.5 bg-slate-100 [&_[data-slot=progress-indicator]]:bg-cyan-500" />
-      </div>
+      )}
+
+      {!compact && (
+        <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2">
+          <div className="mb-1.5 flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-slate-700">Fuel margin</span>
+            <span className="truncate pl-2 font-semibold text-slate-950">{mission.fuelLabel}</span>
+          </div>
+          <Progress value={fuelRemainingPercent} className="h-1.5 bg-slate-100 [&_[data-slot=progress-indicator]]:bg-cyan-500" />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" onClick={onOpenMissionLibrary} className="border-slate-200 bg-white/70">

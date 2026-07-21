@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import {
@@ -135,6 +135,11 @@ export default function Sidebar({
     selectedFeature,
     clearSelection,
   } = useMapStore();
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    scrollAreaRef.current?.scrollTo({ top: 0 });
+  }, [selectedFeature, sidebarPanel]);
 
   if (!sidebarOpen) {
     return null;
@@ -185,13 +190,8 @@ export default function Sidebar({
         </nav>
       )}
 
-      {!selectedFeature && plannerHeader ? (
-        <div className="shrink-0 border-b border-slate-200/70 bg-white/80">
-          {plannerHeader}
-        </div>
-      ) : null}
-
       <div
+        ref={scrollAreaRef}
         className={cn(
           'pb-[max(1rem,env(safe-area-inset-bottom))]',
           variant === 'desktop'
@@ -202,14 +202,21 @@ export default function Sidebar({
         {selectedFeature ? (
           <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
         ) : (
-          <div className="p-4">
-            {sidebarPanel === 'route' && <RoutePanel />}
-            {sidebarPanel === 'weather' && <WeatherPanel />}
-            {sidebarPanel === 'aircraft' && <AircraftPanel />}
-            {sidebarPanel === 'briefing' && <BriefingPanel />}
-            {sidebarPanel === 'admin' && <AdminPanel />}
-            {sidebarPanel === 'emergency' && <EmergencyPanel />}
-          </div>
+          <>
+            {plannerHeader ? (
+              <div className="border-b border-slate-200/70 bg-white/80">
+                {plannerHeader}
+              </div>
+            ) : null}
+            <div className="p-4">
+              {sidebarPanel === 'route' && <RoutePanel />}
+              {sidebarPanel === 'weather' && <WeatherPanel />}
+              {sidebarPanel === 'aircraft' && <AircraftPanel />}
+              {sidebarPanel === 'briefing' && <BriefingPanel />}
+              {sidebarPanel === 'admin' && <AdminPanel />}
+              {sidebarPanel === 'emergency' && <EmergencyPanel />}
+            </div>
+          </>
         )}
       </div>
     </aside>
