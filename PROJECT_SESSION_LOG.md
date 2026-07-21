@@ -909,3 +909,18 @@ Verification:
   - programmatic sheet scroll changed `scrollTop` to 220;
   - no Next.js error overlay appeared.
 - Screenshot artifact: `/tmp/halo-mobile-final.png`
+
+Production deployment:
+
+- Committed and pushed the mobile regression fix:
+  - Commit: `0c809ea` (`Fix mobile mission deck scrolling`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-m37v7806u-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_6C5Z2TstyAc3NK21ioKQrLV2LVxw`
+- Production home page returned HTTP 200.
+- Production API `/api/openaip/style` returned style version 8, 96 layers, 5 sources, and the active OpenAIP sprite URL.
+- Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
+- Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
+- Vercel runtime log stream showed expected structured account and NOTAM API entries and no error-level entry during the scan.
