@@ -995,3 +995,34 @@ Verification:
   - `/tmp/halo-unified-planner-mobile.png`
   - `/tmp/halo-unified-planner-desktop.png`
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the unified Planner/Mission Library slice:
+  - Commit: `92ba0c5` (`Unify planner and add mission library`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-9h5i0w2fj-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_5RhpYUBg7MLcSM44g43BZPPRt536`
+- Production home page returned HTTP 200.
+- Production API `/api/openaip/style` returned style version 8, 96 layers, 5 sources, and the active OpenAIP sprite URL.
+- Production API `/api/notams/route` for FAOR → FALA returned `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`.
+- Production API `/api/account/snapshot` returned HTTP 401 for a signed-out request, confirming the account guard remains active.
+- Production phone browser smoke at 408 × 593:
+  - old “mission deck” copy was absent;
+  - “Planner collects the pilot actions” copy was present;
+  - phone top Planner button was hidden with `display: none`;
+  - Missions button was visible;
+  - Mission Library opened and showed Save active and New mission;
+  - Planner sheet opened full-screen, reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2761`, `clientHeight 592`, and successful scroll.
+- Production desktop browser smoke at 1366 × 768:
+  - duplicate “Open mission deck” control was absent;
+  - one visible Planner button was present;
+  - opening Planner produced one visible Planner panel;
+  - Save active and Missions controls were present in the Planner summary header;
+  - closed Mission Status card was hidden while Planner was open.
+- Production screenshot artifacts:
+  - `/tmp/halo-prod-unified-mobile.png`
+  - `/tmp/halo-prod-unified-desktop.png`
+- Vercel runtime log stream showed no new error entries during the final scan window.
