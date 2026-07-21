@@ -165,12 +165,6 @@ export default function Sidebar({
         <AccountSyncPanel enabled={accountSyncEnabled} />
       </div>
 
-      {!selectedFeature && plannerHeader ? (
-        <div className="shrink-0 border-b border-slate-200/70 bg-white/80">
-          {plannerHeader}
-        </div>
-      ) : null}
-
       {!selectedFeature && (
         <nav className="sticky top-[65px] z-10 grid shrink-0 grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/90 p-2 backdrop-blur-xl">
           {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
@@ -190,6 +184,12 @@ export default function Sidebar({
           ))}
         </nav>
       )}
+
+      {!selectedFeature && plannerHeader ? (
+        <div className="shrink-0 border-b border-slate-200/70 bg-white/80">
+          {plannerHeader}
+        </div>
+      ) : null}
 
       <div
         className={cn(

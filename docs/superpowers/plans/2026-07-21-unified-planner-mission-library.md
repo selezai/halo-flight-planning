@@ -194,6 +194,17 @@ Implemented in this slice:
 - User-facing “Deck” copy removed from app code and replaced with “Planner”.
 - Map controls retained as separate map tools, not a second planning deck.
 
+Follow-up fix after desktop review:
+
+- Removed the closed-state Active Mission card at desktop widths because the top bar and right Planner already provide that context.
+- Kept the compact Mission Status card only below the desktop breakpoint.
+- Moved Route/Wx/W&B/Brief/Admin/Emerg navigation above the Planner summary header so the planning options are immediately reachable.
+- Compressed the Planner summary header so it behaves like a header instead of another dashboard:
+  - one-line detail;
+  - four compact status chips;
+  - smaller fuel margin bar;
+  - Save active and Missions actions retained.
+
 Verification completed:
 
 - `pnpm test`

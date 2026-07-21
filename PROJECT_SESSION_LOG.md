@@ -1026,3 +1026,42 @@ Production deployment:
   - `/tmp/halo-prod-unified-mobile.png`
   - `/tmp/halo-prod-unified-desktop.png`
 - Vercel runtime log stream showed no new error entries during the final scan window.
+
+## 2026-07-21 Planner Hierarchy Follow-up
+
+Objective: address the desktop feedback that the left Active Mission card duplicated the right Planner summary and that Route/Wx/W&B/Brief/Admin/Emerg were not immediately accessible inside the Planner.
+
+Root cause:
+
+- The unified Planner work correctly consolidated mission detail into the right Planner, but the closed-state Active Mission card still rendered at desktop widths.
+- The Planner summary header rendered above the panel navigation and consumed too much vertical space, so the actual planning panel options could sit below the visible right panel area.
+
+Fix:
+
+- Desktop and larger layouts no longer render the closed-state Active Mission card. The top mission bar and route status bar remain as the closed desktop context.
+- The compact Mission Status card remains available below the desktop breakpoint, where there is no right-side Planner.
+- Moved Route/Wx/W&B/Brief/Admin/Emerg navigation above the Planner summary header.
+- Compressed the Planner summary header:
+  - smaller padding;
+  - one-line mission detail;
+  - four compact metric chips instead of six;
+  - shorter fuel margin section;
+  - Save active and Missions actions retained.
+
+Verification:
+
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production browser smoke with `agent-browser`:
+  - desktop 1366 × 768 closed state had no left Active Mission card;
+  - desktop top bar retained one visible Planner button;
+  - opening desktop Planner produced one visible panel;
+  - Route/Wx/W&B/Brief/Admin/Emerg buttons were all visible immediately at `top 227` / `bottom 283`;
+  - the closed-state Active Mission heading was hidden while Planner was open;
+  - phone 408 × 593 retained the compact Active Mission card and bottom navigation;
+  - phone Planner sheet opened full-screen, with Route/Wx/W&B/Brief/Admin/Emerg buttons all visible immediately at `top 131` / `bottom 187`;
+  - phone Planner sheet reported `overflow-y: auto`, `touch-action: pan-y`, `scrollHeight 2481`, `clientHeight 592`, and successful scroll.
+- Screenshot artifact: `/tmp/halo-planner-hierarchy-mobile.png`
+- No Playwright/E2E command was run.
