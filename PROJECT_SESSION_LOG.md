@@ -1367,3 +1367,33 @@ Verification:
   - `/tmp/halo-mobile-summary-route-only-local.png`
   - `/tmp/halo-mobile-narrow-route-summary-local.png`
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the mobile Planner summary-scope fix:
+  - Commit: `7f3cf90` (`Scope planner summary to route tab`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-ojx9wti72-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_8mQBtTTBGzYKNJCTYdcVqWjvT5Fz`
+- Production phone browser smoke at 579 × 593 on `https://halo-flight-planning.vercel.app/#7.6/-26.132/27.967`:
+  - closed map bottom navigation rendered six tabs with `mapActiveCount 0`;
+  - Route panel showed one Planner summary;
+  - W&B, Brief, and Admin each showed zero Planner summary instances;
+  - W&B and Admin panel content appeared after switching.
+- Production narrow-phone browser smoke at 335 × 593 on `https://halo-flight-planning.vercel.app/#7.99/-26.071/28.148`:
+  - Route panel showed one Planner summary;
+  - summary metric grid computed one column at `305px`;
+  - Route/Fuel/W&B/Admin cards each measured `305px` wide;
+  - W&B and Admin summary cards measured 68 px high for wrapped text;
+  - bottom Planner nav remained pinned at `top 510`, `bottom 593`.
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned style version 8, 96 layers, and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Production screenshot artifacts:
+  - `/tmp/halo-summary-scope-prod.png`
+  - `/tmp/halo-narrow-summary-prod.png`
+- Vercel runtime log stream attached to deployment `dpl_8mQBtTTBGzYKNJCTYdcVqWjvT5Fz` and showed no runtime error entries during the observation window.
