@@ -1799,5 +1799,19 @@ Verification:
   - `pnpm test`: passed, 28 files / 119 tests.
   - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
   - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `934c556`
+  - Deployment URL: https://halo-flight-planning-lgkqypu7l-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_2uR3mNiCjhoz3brC37AKgwH5SJxm`
+- Production API smoke:
+  - `/api/openaip/style` returned `metadata.haloBaseMap.source = maptiler-vector`;
+  - `/api/openaip/style` returned `metadata.haloBaseMap.style = outdoor-v2`;
+  - `/api/openaip/style` returned `metadata.haloBaseMap.mode = vector-style`;
+  - `/api/openaip/style` returned 113 `halo-ground-*` vector ground layers;
+  - no `halo-raster-base` source was present;
+  - `halo-ground-City labels` was tuned to zoom 8-15;
+  - `halo-ground-Town labels` was tuned to zoom 9-15.
+- Vercel runtime log scan attached to deployment `dpl_2uR3mNiCjhoz3brC37AKgwH5SJxm` showed `/api/openaip/style` completing with HTTP 200 and no runtime error entries during the observed request.
 - No Playwright/E2E command was run.
 - No Halo browser/visual inspection was performed after the fix, per user request.
