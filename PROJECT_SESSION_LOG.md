@@ -1616,3 +1616,31 @@ Verification:
 - Local production browser smoke:
   - Johannesburg/Pretoria map view rendered ground context under the aviation overlay, including roads, place labels, water, terrain/landcover, and settlement names.
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the basemap fix:
+  - Commit: `a3f65ee` (`Restore OpenAIP-like ground basemap detail`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-lprjso2hw-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_HE6Yp5aTockyF3Rj4TnLteskR9ZR`
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned `maptiler-base` using `outdoor-v2`;
+  - `/api/openaip/style` had no converted `background` layer;
+  - `/api/openaip/style` returned 95 layers and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Production browser smoke:
+  - Johannesburg/Pretoria comparison view loaded on the production alias;
+  - map rendered MapTiler attribution;
+  - outdoor basemap details were visible under OpenAIP aviation layers, including roads, place labels, water, landcover/terrain, and settlements.
+- Production screenshot artifact:
+  - `/tmp/halo-outdoor-basemap-prod-z9.png`
+- Vercel runtime log stream attached to deployment `dpl_HE6Yp5aTockyF3Rj4TnLteskR9ZR` and showed:
+  - `/api/openaip/style` structured request logs completing with HTTP 200;
+  - `/api/account/snapshot` structured request logs completing with the expected signed-out HTTP 401 warning;
+  - no runtime error entries during the observed requests.
+- Note: the `vercel logs` command ended with Vercel's query-duration warning after the observation window; the observed request logs themselves were clean.
