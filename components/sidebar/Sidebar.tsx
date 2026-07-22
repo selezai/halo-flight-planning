@@ -136,6 +136,7 @@ export default function Sidebar({
     clearSelection,
   } = useMapStore();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const showPlannerNavigation = !selectedFeature;
 
   useEffect(() => {
     scrollAreaRef.current?.scrollTo({ top: 0 });
@@ -151,7 +152,7 @@ export default function Sidebar({
         'flex w-full flex-col text-slate-950',
         variant === 'desktop'
           ? 'h-full min-h-0 overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl'
-          : 'min-h-full bg-transparent'
+          : 'h-full min-h-0 overflow-hidden bg-transparent'
       )}
     >
       <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/95 px-4 py-3 backdrop-blur-xl">
@@ -170,34 +171,17 @@ export default function Sidebar({
         <AccountSyncPanel enabled={accountSyncEnabled} />
       </div>
 
-      {!selectedFeature && (
-        <nav className="sticky top-[65px] z-10 grid shrink-0 grid-cols-6 gap-1 border-b border-slate-200/70 bg-white/90 p-2 backdrop-blur-xl">
-          {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setSidebarPanel(id)}
-              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold transition ${
-                sidebarPanel === id
-                  ? 'bg-slate-950 text-white'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {shortLabel}
-            </button>
-          ))}
-        </nav>
+      {showPlannerNavigation && variant === 'desktop' && (
+        <PlannerPanelNavigation
+          activePanel={sidebarPanel}
+          placement="top"
+          onSelectPanel={setSidebarPanel}
+        />
       )}
 
       <div
         ref={scrollAreaRef}
-        className={cn(
-          'pb-[max(1rem,env(safe-area-inset-bottom))]',
-          variant === 'desktop'
-            ? 'min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]'
-            : 'flex-1'
-        )}
+        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
       >
         {selectedFeature ? (
           <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
@@ -219,7 +203,64 @@ export default function Sidebar({
           </>
         )}
       </div>
+
+      {showPlannerNavigation && variant === 'sheet' && (
+        <PlannerPanelNavigation
+          activePanel={sidebarPanel}
+          placement="bottom"
+          onSelectPanel={setSidebarPanel}
+        />
+      )}
     </aside>
+  );
+}
+
+function PlannerPanelNavigation({
+  activePanel,
+  placement,
+  onSelectPanel,
+}: {
+  activePanel: ReturnType<typeof useMapStore.getState>['sidebarPanel'];
+  placement: 'top' | 'bottom';
+  onSelectPanel: (panel: ReturnType<typeof useMapStore.getState>['sidebarPanel']) => void;
+}) {
+  const bottomPlacement = placement === 'bottom';
+
+  return (
+    <nav
+      aria-label="Planner sections"
+      className={cn(
+        'z-20 shrink-0 bg-white/95 backdrop-blur-xl',
+        bottomPlacement
+          ? 'border-t border-slate-200/70 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_45px_rgba(15,23,42,0.12)]'
+          : 'sticky top-[65px] border-b border-slate-200/70 p-2'
+      )}
+    >
+      <div
+        className={cn(
+          'grid grid-cols-6 gap-1',
+          bottomPlacement && 'rounded-[1.6rem] border border-white/70 bg-white p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.14)]'
+        )}
+      >
+        {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelectPanel(id)}
+            className={cn(
+              'flex flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold transition',
+              bottomPlacement ? 'min-h-12' : 'min-h-14',
+              activePanel === id
+                ? 'bg-slate-950 text-white shadow-md shadow-slate-900/20'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {shortLabel}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 

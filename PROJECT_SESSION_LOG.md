@@ -1244,3 +1244,50 @@ Production deployment:
   - `/tmp/halo-prod-mobile-card-fix.png`
   - `/tmp/halo-prod-mobile-card-fix-wb.png`
 - Vercel runtime log stream attached to deployment `dpl_wM2ttxsTYCtUQgm159BQktfV6co1` and showed no runtime error entries during the observation window.
+
+## 2026-07-22 Mobile Planner Bottom Tabs Follow-up
+
+Objective: address feedback that the Route/Wx/W&B/Brief/Admin/Emerg tab bar should stay at the bottom while the mobile Planner sheet is open, matching the closed map bottom navigation pattern.
+
+Problem:
+
+- The mobile Planner sheet reused the desktop-style section switcher, rendering the tabs near the top of the sheet below the logo/account area.
+- When pilots scrolled through dense sections such as Flight Admin or W&B, the tab controls were not under the thumb and did not match the map-first mobile interaction model.
+
+Root cause:
+
+- `components/sidebar/Sidebar.tsx` rendered one shared `nav` with `sticky top-[65px]` for all Planner variants.
+- `SheetContent` handled sheet scrolling directly, so there was no internal layout slot for a bottom-pinned sheet nav.
+
+Solution:
+
+- Extracted the Planner section switcher into `PlannerPanelNavigation`.
+- Desktop variant keeps the existing top sticky section switcher.
+- Sheet variant renders the switcher after the scrollable content as a bottom navigation bar.
+- Changed the mobile SheetContent from direct vertical scrolling to `overflow-hidden`; `Sidebar` now owns the internal scroll region above the bottom nav.
+- Kept content scroll reset on panel changes so each section opens at the top of the scrollable content.
+- Updated the unified Planner design note to require bottom-pinned tabs inside the phone Planner sheet.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `docs/superpowers/plans/2026-07-21-unified-planner-mission-library.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production phone browser smoke at 579 × 593:
+  - opening Planner from bottom navigation placed the sheet section nav at `top 510`, `bottom 593`;
+  - scrollable content area ended at `bottom 510`, above the nav;
+  - content scroll worked with `scrollTop 180`;
+  - Route → W&B → Admin tab switches updated the active section while the nav stayed at `top 510`, `bottom 593`;
+  - W&B and Admin panel content appeared after switching.
+- Screenshot artifacts:
+  - `/tmp/halo-bottom-tabs-local-route.png`
+  - `/tmp/halo-bottom-tabs-local-async.png`
+- No Playwright/E2E command was run.

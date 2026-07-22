@@ -109,6 +109,7 @@ Closed phone state should not show a mission card on top of the map. It should s
 - map controls where space allows.
 
 Mission detail, mission actions, and mission library controls belong inside the Planner sheet/dialog so the aviation map remains usable on phone.
+When the Planner sheet is open on phone, the same Route/Wx/W&B/Brief/Admin/Emerg switcher should remain pinned to the sheet bottom so pilots can tap between sections without reaching back to the top of the panel.
 
 - [ ] **Step 3: Add Planner summary header**
 

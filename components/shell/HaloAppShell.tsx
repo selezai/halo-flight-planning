@@ -337,7 +337,7 @@ export default function HaloAppShell({
             <SheetContent
               side="bottom"
               showCloseButton={false}
-              className="h-[100dvh] max-h-[100dvh] touch-pan-y gap-0 overflow-y-auto overscroll-contain rounded-none border-0 bg-white p-0 shadow-[0_-30px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl [-webkit-overflow-scrolling:touch] sm:inset-x-4 sm:bottom-4 sm:h-[min(82dvh,760px)] sm:max-h-[760px] sm:rounded-[2rem] sm:border sm:border-white/70 sm:bg-white/95"
+              className="h-[100dvh] max-h-[100dvh] touch-pan-y gap-0 overflow-hidden overscroll-contain rounded-none border-0 bg-white p-0 shadow-[0_-30px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:inset-x-4 sm:bottom-4 sm:h-[min(82dvh,760px)] sm:max-h-[760px] sm:rounded-[2rem] sm:border sm:border-white/70 sm:bg-white/95"
             >
               <div className="sr-only">
                 <SheetTitle>Halo planner</SheetTitle>
