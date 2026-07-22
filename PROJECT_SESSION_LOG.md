@@ -1558,3 +1558,61 @@ Production deployment:
   - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
   - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
 - Vercel runtime log stream attached to deployment `dpl_4Fr7L6NM7DV63eua7bY7hY6767YR` and showed structured account API logs with the expected signed-out 401 warning and no runtime error entries during the observation window.
+
+## 2026-07-22 OpenAIP-like Ground Basemap Detail
+
+Objective: make Halo's ground/context map match the useful detail level visible in OpenAIP's own map while preserving Halo's OpenAIP aviation overlay.
+
+Problem:
+
+- The aviation overlay was present, but the underlying ground map was too blank compared with OpenAIP.
+- Roads, terrain/landcover, water, settlement labels, and major place context were not visible enough for pilots to orient themselves.
+
+Root cause:
+
+- Halo replaced OpenAIP's original Mapbox outdoors-style base map with a single MapTiler `basic-v2` raster layer.
+- The converted OpenAIP style kept the original `land` background layer. That layer rendered above Halo's raster basemap and covered ground details.
+- A follow-up probe confirmed MapTiler `outdoor-v2` tiles returned real detailed image content for the Johannesburg/Pretoria tile, while the visible map stayed muted until the OpenAIP background layer was removed.
+
+Solution:
+
+- Added `lib/openaip/basemap.ts` to centralize basemap selection.
+- Changed the default MapTiler basemap from sparse `basic-v2` to OpenAIP-like `outdoor-v2`.
+- Added optional env override `NEXT_PUBLIC_MAPTILER_BASE_STYLE` for later tuning without code changes.
+- Updated OpenAIP style conversion to remove source-less `background` layers because Halo now owns the ground basemap.
+- Preserved OpenAIP vector aviation layers, authentic sprites, click behavior, and attribution.
+- Documented the new basemap env option in `README.md` and `.env.local.example`.
+
+Files modified:
+
+- `app/api/openaip/style/route.ts`
+- `lib/openaip/basemap.ts`
+- `lib/openaip/styleConverter.ts`
+- `tests/openaip/basemap.test.ts`
+- `tests/openaip/tilePath.test.ts`
+- `.env.local.example`
+- `README.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused tests:
+  - `pnpm test tests/openaip/basemap.test.ts tests/openaip/tilePath.test.ts`: passed, 2 files / 8 tests.
+  - Verified default basemap is `outdoor-v2`.
+  - Verified unsafe style overrides fall back to `outdoor-v2`.
+  - Verified OpenAIP `land` background layers are stripped.
+- Full checks:
+  - `pnpm test`: passed, 28 files / 116 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Local production API smoke:
+  - `/api/openaip/style` returned `maptiler-base` using `outdoor-v2`;
+  - `maptiler-base` remained the first layer;
+  - no converted `background` layer remained;
+  - converted style had 95 layers and 5 sources.
+- Local production tile smoke:
+  - center MapTiler `outdoor-v2` tile for the OpenAIP comparison area returned HTTP 200, `image/png`, and detailed road/place/water/terrain imagery.
+- Local production browser smoke:
+  - Johannesburg/Pretoria map view rendered ground context under the aviation overlay, including roads, place labels, water, terrain/landcover, and settlement names.
+- No Playwright/E2E command was run.

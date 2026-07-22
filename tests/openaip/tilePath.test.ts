@@ -29,6 +29,13 @@ describe('OpenAIP tile path handling', () => {
         },
         layers: [
           {
+            id: 'land',
+            type: 'background',
+            paint: {
+              'background-color': '#f3efe5',
+            },
+          },
+          {
             id: 'basemap-poi-label',
             type: 'symbol',
             source: 'composite',
@@ -109,6 +116,7 @@ describe('OpenAIP tile path handling', () => {
     expect((style.sources['openaip-data'] as { tiles: string[] }).tiles).toEqual([
       'https://example.test/api/openaip/tiles/{z}/{x}/{y}.pbf',
     ]);
+    expect(style.layers.some((layer) => layer.id === 'land')).toBe(false);
     expect(style.layers.some((layer) => layer.id === 'airspace_ctr_border')).toBe(true);
     expect(style.layers.some((layer) => layer.id === 'basemap-poi-label')).toBe(false);
     expect(style.layers.some((layer) => layer.id === 'airport_with_code')).toBe(true);

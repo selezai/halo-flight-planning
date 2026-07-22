@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBaseMapOptions } from '@/lib/openaip/basemap';
 import { convertOpenAipStyle, validateStyle } from '@/lib/openaip/styleConverter';
 import { withApiLogging } from '@/lib/observability/api';
 
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withApiLogging('/api/openaip/style', async (request: NextRequest) => {
   const OPENAIP_API_KEY = process.env.OPENAIP_API_KEY;
   const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const MAPTILER_BASE_STYLE = process.env.NEXT_PUBLIC_MAPTILER_BASE_STYLE;
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
 
   if (!OPENAIP_API_KEY) {
@@ -46,7 +48,10 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
       spriteUrl: `${baseUrl}/api/openaip/sprites/openaip`,
       glyphsUrl: getGlyphsUrl(MAPTILER_KEY),
       tilesProxyUrl: `${baseUrl}/api/openaip/tiles`,
-      ...getBaseMapOptions(MAPTILER_KEY),
+      ...getBaseMapOptions({
+        maptilerKey: MAPTILER_KEY,
+        maptilerStyleId: MAPTILER_BASE_STYLE,
+      }),
     });
 
     // Validate converted style
@@ -81,24 +86,11 @@ function getGlyphsUrl(maptilerKey?: string) {
   return 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 }
 
-function getBaseMapOptions(maptilerKey?: string) {
-  if (maptilerKey) {
-    return {
-      baseTilesUrl: `https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key=${maptilerKey}`,
-      baseAttribution: 'MapTiler and OpenStreetMap contributors',
-      baseTileSize: 512,
-    };
-  }
-
-  return {
-    baseTilesUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    baseAttribution: 'OpenStreetMap contributors',
-    baseTileSize: 256,
-  };
-}
-
 function createFallbackStyle() {
-  const baseOptions = getBaseMapOptions(process.env.NEXT_PUBLIC_MAPTILER_KEY);
+  const baseOptions = getBaseMapOptions({
+    maptilerKey: process.env.NEXT_PUBLIC_MAPTILER_KEY,
+    maptilerStyleId: process.env.NEXT_PUBLIC_MAPTILER_BASE_STYLE,
+  });
 
   return {
     version: 8,
@@ -106,6 +98,10 @@ function createFallbackStyle() {
     metadata: {
       haloDegraded: true,
       reason: 'OpenAIP is not configured or unavailable. Planning tools remain available.',
+      haloBaseMap: {
+        source: baseOptions.baseSource,
+        style: baseOptions.baseStyleId,
+      },
     },
     glyphs: getGlyphsUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY),
     sources: {

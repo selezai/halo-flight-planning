@@ -81,7 +81,7 @@ export function convertOpenAipStyle(
 function isProblematicLayer(layer: StyleLayer, sources: MapStyle['sources']): boolean {
   // Remove Mapbox basemap/terrain layers. Halo provides its own raster basemap
   // and keeps OpenAIP aviation data as the interactive vector overlay.
-  if (layer.source === 'composite' || layer.source === 'mapbox-dem') {
+  if (layer.type === 'background' || layer.source === 'composite' || layer.source === 'mapbox-dem') {
     return true;
   }
 
