@@ -49,7 +49,7 @@ The app works as a local planner without external keys, but live OpenAIP aviatio
 ```env
 OPENAIP_API_KEY=your_openaip_api_key_here
 NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
-NEXT_PUBLIC_MAPTILER_BASE_STYLE=outdoor-v2
+NEXT_PUBLIC_MAPTILER_BASE_STYLE=basic-v2
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 POSTGRES_URL=
@@ -67,7 +67,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`, a public NOTAM API key, or any public FAA credential. Aviation and NOTAM credentials must stay server-side.
 
-`NEXT_PUBLIC_MAPTILER_BASE_STYLE` defaults to `outdoor-v2` so Halo keeps OpenAIP-like road, place, water, terrain, and landcover context under the aviation overlay. Keep OpenAIP vector layers enabled for airspace/airport/nav data; the MapTiler layer is only the ground basemap.
+`NEXT_PUBLIC_MAPTILER_BASE_STYLE` defaults to `basic-v2` for close-zoom ground context. Halo keeps broad/medium zooms quiet with a neutral background, then reveals the `basic-v2` road/place/water context from zoom 11 so the app does not become a town/city map. Keep OpenAIP vector layers enabled for airspace/airport/nav data; the MapTiler layer is only the ground basemap.
 
 `NOTAM_PROVIDER=south-africa-manual` is the safe production default for South Africa launch. Set `NOTAM_PROVIDER=south-africa-live` only after SACAA/ATNS or an authorized provider supplies a legitimate JSON API endpoint and key. Halo must not scrape File2Fly or treat SACAA's public daily summary as flight-preparation data.
 

@@ -1644,3 +1644,72 @@ Production deployment:
   - `/api/account/snapshot` structured request logs completing with the expected signed-out HTTP 401 warning;
   - no runtime error entries during the observed requests.
 - Note: the `vercel logs` command ended with Vercel's query-duration warning after the observation window; the observed request logs themselves were clean.
+
+## 2026-07-22 Minimal OpenAIP-like Ground Labels
+
+Objective: correct the ground basemap after user feedback that `outdoor-v2` added too much city/town information. Keep Halo closer to OpenAIP's minimal ground context and only reveal ground town/city detail at close zoom.
+
+Research / evidence:
+
+- OpenAIP's public `openaip-map-resources` project provides the aviation map style/resources and is designed to complement a Mapbox basemap rather than replace it with a dense city map.
+- The live OpenAIP style metadata identifies an outdoors-style origin but keeps map-label/POI density intentionally constrained.
+- Candidate MapTiler raster probes over the Johannesburg/Pretoria comparison area showed:
+  - `outdoor-v2`: too much settlement/terrain/city context at medium zoom;
+  - `dataviz-light`: quieter, but still had broad city labels in rendered map tiles;
+  - `backdrop`: quieter, but still had faint labels in some medium-zoom tiles;
+  - `basic-v2`: best close-zoom match for minimal road/place/water context.
+
+Problem:
+
+- The previous `outdoor-v2` default solved missing ground detail but over-corrected the map into a city/town map.
+- Raster basemap labels are baked into the tile image, so Halo cannot selectively hide only towns/cities with MapLibre paint/layout filters.
+- The user's target behavior was ground city/town context appearing only around the close `5 km` scale, not at broad/medium route-planning zooms.
+
+Root cause:
+
+- A single raster basemap cannot provide OpenAIP-like label density controls across zooms.
+- Even low-noise MapTiler raster styles can still contain baked city/town labels at medium zoom.
+
+Solution:
+
+- Kept the real previous fix that strips OpenAIP source-less `background` layers so Halo's own basemap is not covered.
+- Changed the default close-zoom MapTiler style back to minimal `basic-v2`.
+- Removed the low-detail raster basemap layer entirely for broad/medium zooms.
+- Added a neutral `halo-ground-background` layer from zoom 0 to 11.
+- Added `maptiler-base` raster `basic-v2` only from zoom 11 to 22, aligning city/town ground detail with close planning scale.
+- Preserved OpenAIP aviation vectors/sprites/click behavior above the base.
+
+Files modified:
+
+- `app/api/openaip/style/route.ts`
+- `lib/openaip/basemap.ts`
+- `lib/openaip/styleConverter.ts`
+- `tests/openaip/basemap.test.ts`
+- `tests/openaip/tilePath.test.ts`
+- `.env.local.example`
+- `README.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test tests/openaip/basemap.test.ts tests/openaip/tilePath.test.ts`: passed, 2 files / 9 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm build`: passed.
+- Full checks:
+  - `pnpm test`: passed, 28 files / 117 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Local production API smoke:
+  - `/api/openaip/style` first layer was `halo-ground-background`, type `background`, zoom 0-11;
+  - second layer was `maptiler-base`, type `raster`, style `basic-v2`, zoom 11-22;
+  - no MapTiler low-detail raster source remained;
+  - OpenAIP aviation layers remained above the base.
+- Local production browser smoke:
+  - z10 / 5 nm scale showed no ground city/town labels; aviation labels remained visible;
+  - z11 / close scale showed `basic-v2` ground roads/place/water context under the aviation overlay.
+- Screenshot artifacts:
+  - `/tmp/halo-neutral-basemap-local-z10.png`
+  - `/tmp/halo-basic-detail-local-z11.png`
+- No Playwright/E2E command was run.

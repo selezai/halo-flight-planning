@@ -157,4 +157,60 @@ describe('OpenAIP tile path handling', () => {
       '',
     ]);
   });
+
+  it('uses a neutral background before close planning zooms when configured', () => {
+    const style = convertOpenAipStyle(
+      {
+        version: 8,
+        sources: {
+          'openaip-data': {
+            type: 'vector',
+            url: 'https://api.tiles.openaip.net/api/data/openaip.json',
+          },
+        },
+        layers: [
+          {
+            id: 'airport_with_code',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'airports',
+          },
+        ],
+      },
+      {
+        spriteUrl: 'https://example.test/sprite',
+        glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
+        tilesProxyUrl: 'https://example.test/api/openaip/tiles',
+        baseTilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
+        baseAttribution: 'test',
+        baseTileSize: 512,
+        baseDetailMinZoom: 11,
+        backgroundColor: '#f3f0e8',
+      }
+    );
+
+    expect(style.sources['maptiler-base-low-detail']).toBeUndefined();
+    expect((style.sources['maptiler-base'] as { tiles: string[] }).tiles).toEqual([
+      'https://example.test/basic/{z}/{x}/{y}.png',
+    ]);
+    expect(style.layers.slice(0, 2)).toEqual([
+      {
+        id: 'halo-ground-background',
+        type: 'background',
+        minzoom: 0,
+        maxzoom: 11,
+        paint: {
+          'background-color': '#f3f0e8',
+        },
+      },
+      {
+        id: 'maptiler-base',
+        type: 'raster',
+        source: 'maptiler-base',
+        minzoom: 11,
+        maxzoom: 22,
+      },
+    ]);
+    expect(style.layers[2]?.id).toBe('airport_with_code');
+  });
 });

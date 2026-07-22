@@ -36,6 +36,8 @@ export function convertOpenAipStyle(
     baseTilesUrl: string;
     baseAttribution: string;
     baseTileSize: number;
+    baseDetailMinZoom?: number;
+    backgroundColor?: string;
   }
 ): MapStyle {
   const converted = JSON.parse(JSON.stringify(style)) as MapStyle;
@@ -63,16 +65,53 @@ export function convertOpenAipStyle(
     .filter(layer => !isProblematicLayer(layer, converted.sources))
     .map(fixLayer);
 
-  // 6. Add base map layer at the beginning
-  converted.layers.unshift({
-    id: 'maptiler-base',
-    type: 'raster',
-    source: 'maptiler-base',
-    minzoom: 0,
-    maxzoom: 22
-  });
+  // 6. Add base map layer(s) at the beginning. Keep broad zooms quiet with a
+  // neutral Halo background and only reveal town/city context at close planning
+  // zooms.
+  converted.layers = [
+    ...buildBaseMapLayers(options),
+    ...converted.layers,
+  ];
 
   return converted;
+}
+
+function buildBaseMapLayers(options: {
+  baseDetailMinZoom?: number;
+  backgroundColor?: string;
+}): StyleLayer[] {
+  const detailMinZoom = options.baseDetailMinZoom ?? 0;
+
+  if (detailMinZoom <= 0) {
+    return [
+      {
+        id: 'maptiler-base',
+        type: 'raster',
+        source: 'maptiler-base',
+        minzoom: 0,
+        maxzoom: 22
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'halo-ground-background',
+      type: 'background',
+      minzoom: 0,
+      maxzoom: detailMinZoom,
+      paint: {
+        'background-color': options.backgroundColor ?? '#f3f0e8'
+      }
+    },
+    {
+      id: 'maptiler-base',
+      type: 'raster',
+      source: 'maptiler-base',
+      minzoom: detailMinZoom,
+      maxzoom: 22
+    },
+  ];
 }
 
 /**

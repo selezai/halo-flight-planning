@@ -101,6 +101,7 @@ function createFallbackStyle() {
       haloBaseMap: {
         source: baseOptions.baseSource,
         style: baseOptions.baseStyleId,
+        detailMinZoom: baseOptions.baseDetailMinZoom,
       },
     },
     glyphs: getGlyphsUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY),
@@ -114,13 +115,34 @@ function createFallbackStyle() {
       },
     },
     layers: [
-      {
-        id: 'maptiler-base',
-        type: 'raster',
-        source: 'maptiler-base',
-        minzoom: 0,
-        maxzoom: 22,
-      },
+      ...(baseOptions.baseDetailMinZoom
+        ? [
+            {
+              id: 'halo-ground-background',
+              type: 'background',
+              minzoom: 0,
+              maxzoom: baseOptions.baseDetailMinZoom,
+              paint: {
+                'background-color': baseOptions.backgroundColor ?? '#f3f0e8',
+              },
+            },
+            {
+              id: 'maptiler-base',
+              type: 'raster',
+              source: 'maptiler-base',
+              minzoom: baseOptions.baseDetailMinZoom,
+              maxzoom: 22,
+            },
+          ]
+        : [
+            {
+              id: 'maptiler-base',
+              type: 'raster',
+              source: 'maptiler-base',
+              minzoom: 0,
+              maxzoom: 22,
+            },
+          ]),
     ],
   };
 }
