@@ -1291,3 +1291,26 @@ Verification:
   - `/tmp/halo-bottom-tabs-local-route.png`
   - `/tmp/halo-bottom-tabs-local-async.png`
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the mobile bottom-tab fix:
+  - Commit: `da86fcf` (`Pin mobile planner tabs to bottom`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-9oez8nr4g-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_6CKmkfFKAAs6goAESCFMcd6NXY1B`
+- Production phone browser smoke at 579 × 593 on `https://halo-flight-planning.vercel.app/#7.74/-26.103/28.284`:
+  - opening Planner from bottom navigation placed the sheet section nav at `top 510`, `bottom 593`;
+  - Route → W&B → Admin tab switches updated the active section while the nav stayed at `top 510`, `bottom 593`;
+  - scrollable content stayed above the nav and reported `scrollTop 180`;
+  - W&B and Admin panel content appeared after switching.
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned style version 8, 96 layers, and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Production screenshot artifact:
+  - `/tmp/halo-bottom-tabs-prod.png`
+- Vercel runtime logs showed expected NOTAM 200 and signed-out account 401 entries, with no runtime error-level entries during the observation window.
