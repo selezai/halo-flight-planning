@@ -74,7 +74,6 @@ export default function HaloAppShell({
     planningMode,
     sidebarOpen,
     sidebarPanel,
-    selectedFeature,
     setSidebarOpen,
     setSidebarPanel,
     setPlanningMode,
@@ -328,8 +327,6 @@ export default function HaloAppShell({
         <>
           {!plannerOpen && (
             <MobileNavigation
-              activePanel={sidebarPanel}
-              selectedFeatureActive={Boolean(selectedFeature)}
               onOpenPanel={openPanel}
             />
           )}
@@ -428,7 +425,7 @@ function PlannerSummaryHeader({
       </div>
 
       {!compact && (
-        <div className="grid grid-cols-2 gap-1.5 text-xs">
+        <div className="grid grid-cols-1 gap-1.5 text-xs min-[430px]:grid-cols-2">
           <MissionMetric label="Route" value={mission.routeLabel} icon={<Route className="h-3.5 w-3.5" />} />
           <MissionMetric label="Fuel" value={mission.fuelLabel} icon={<Plane className="h-3.5 w-3.5" />} />
           <MissionMetric label="W&B" value={mission.weightBalanceLabel} icon={<Navigation className="h-3.5 w-3.5" />} />
@@ -438,9 +435,9 @@ function PlannerSummaryHeader({
 
       {!compact && (
         <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2">
-          <div className="mb-1.5 flex items-center justify-between text-[11px]">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px]">
             <span className="font-semibold text-slate-700">Fuel margin</span>
-            <span className="truncate pl-2 font-semibold text-slate-950">{mission.fuelLabel}</span>
+            <span className="min-w-0 break-words text-right font-semibold text-slate-950">{mission.fuelLabel}</span>
           </div>
           <Progress value={fuelRemainingPercent} className="h-1.5 bg-slate-100 [&_[data-slot=progress-indicator]]:bg-cyan-500" />
         </div>
@@ -669,7 +666,7 @@ function MissionMetric({
         {icon}
         {label}
       </div>
-      <p className="mt-0.5 line-clamp-1 text-xs font-semibold leading-4 text-slate-900">{value}</p>
+      <p className="mt-0.5 line-clamp-2 break-words text-xs font-semibold leading-4 text-slate-900">{value}</p>
     </div>
   );
 }
@@ -741,36 +738,24 @@ function MapToolsRail({
 }
 
 function MobileNavigation({
-  activePanel,
-  selectedFeatureActive,
   onOpenPanel,
 }: {
-  activePanel: HaloPanelId;
-  selectedFeatureActive: boolean;
   onOpenPanel: (panel: HaloPanelId) => void;
 }) {
   return (
     <nav className="absolute inset-x-3 bottom-3 z-30 rounded-[1.6rem] border border-white/70 bg-white/95 p-1.5 shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl lg:hidden">
       <div className="grid grid-cols-6 gap-1">
-        {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => {
-          const active = !selectedFeatureActive && activePanel === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onOpenPanel(id)}
-              className={cn(
-                'flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold text-slate-500 transition',
-                active
-                  ? 'bg-slate-950 text-white shadow-md shadow-slate-900/20'
-                  : 'hover:bg-slate-100 hover:text-slate-900'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {shortLabel}
-            </button>
-          );
-        })}
+        {HALO_PANEL_META.map(({ id, shortLabel, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onOpenPanel(id)}
+            className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <Icon className="h-4 w-4" />
+            {shortLabel}
+          </button>
+        ))}
       </div>
     </nav>
   );

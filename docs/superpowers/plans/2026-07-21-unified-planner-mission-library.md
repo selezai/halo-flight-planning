@@ -113,7 +113,7 @@ When the Planner sheet is open on phone, the same Route/Wx/W&B/Brief/Admin/Emerg
 
 - [ ] **Step 3: Add Planner summary header**
 
-The existing mission metrics move into the top of the Planner panel, above Route/Wx/W&B/Brief/Admin/Emerg tabs.
+The existing mission metrics belong only at the top of the Route panel. They should not repeat inside Wx, W&B, Brief, Admin, or Emergency. On narrow phones, these metrics should collapse to one column so route/fuel/W&B/admin text stays readable instead of being squeezed or clipped.
 
 - [ ] **Step 4: Keep map tools separate**
 

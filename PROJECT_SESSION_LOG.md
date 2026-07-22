@@ -1314,3 +1314,56 @@ Production deployment:
 - Production screenshot artifact:
   - `/tmp/halo-bottom-tabs-prod.png`
 - Vercel runtime logs showed expected NOTAM 200 and signed-out account 401 entries, with no runtime error-level entries during the observation window.
+
+## 2026-07-22 Mobile Planner Summary Scope Follow-up
+
+Objective: address feedback that the Planner mission summary appeared inside every mobile Planner tab, the closed map bottom nav showed a selected tab, and narrow widths clipped the four Route/Fuel/W&B/Admin summary cards.
+
+Problem:
+
+- The Planner summary appeared above Wx, W&B, Brief, Admin, and Emergency, even though it is route-planning context.
+- Closed map view highlighted whichever Planner panel was last opened, making the map state look like a selected planning tab.
+- At narrow phone widths, the four summary cards stayed in two columns and clipped route/fuel/W&B/admin text.
+
+Root cause:
+
+- `components/sidebar/Sidebar.tsx` rendered `plannerHeader` unconditionally for every non-feature Planner panel.
+- `components/shell/HaloAppShell.tsx` passed `sidebarPanel` into `MobileNavigation` and applied active styling in closed map view.
+- `PlannerSummaryHeader` used a fixed two-column metric grid and single-line metric values.
+
+Solution:
+
+- Render `plannerHeader` only when `sidebarPanel === 'route'`.
+- Remove active/selected styling from the closed map bottom navigation; active state is reserved for the open Planner sheet.
+- Change the mobile Planner summary metrics to one column below 430 px and two columns when width allows.
+- Allow metric values to wrap to two lines and allow fuel margin text to wrap instead of truncating.
+- Updated the unified Planner design note to document Route-only summary scope and narrow-phone metric behavior.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `docs/superpowers/plans/2026-07-21-unified-planner-mission-library.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production phone browser smoke at 579 × 593:
+  - closed map bottom navigation rendered six tabs with `activeCount 0`;
+  - Route panel showed exactly one Planner summary;
+  - W&B, Brief, and Admin each showed zero Planner summary instances after switching.
+- Local production narrow-phone browser smoke at 335 × 593:
+  - Route panel showed exactly one Planner summary;
+  - summary metric grid computed one column at `305px`;
+  - Route/Fuel/W&B/Admin cards each measured `305px` wide;
+  - W&B and Admin summary cards expanded to 68 px height for wrapped text;
+  - bottom Planner nav remained pinned at `top 510`, `bottom 593`.
+- Screenshot artifacts:
+  - `/tmp/halo-mobile-map-no-active-local.png`
+  - `/tmp/halo-mobile-summary-route-only-local.png`
+  - `/tmp/halo-mobile-narrow-route-summary-local.png`
+- No Playwright/E2E command was run.

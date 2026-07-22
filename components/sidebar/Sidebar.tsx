@@ -137,6 +137,7 @@ export default function Sidebar({
   } = useMapStore();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const showPlannerNavigation = !selectedFeature;
+  const showPlannerHeader = showPlannerNavigation && sidebarPanel === 'route' && Boolean(plannerHeader);
 
   useEffect(() => {
     scrollAreaRef.current?.scrollTo({ top: 0 });
@@ -187,7 +188,7 @@ export default function Sidebar({
           <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
         ) : (
           <>
-            {plannerHeader ? (
+            {showPlannerHeader ? (
               <div className="border-b border-slate-200/70 bg-white/80">
                 {plannerHeader}
               </div>
