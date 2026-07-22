@@ -1536,3 +1536,25 @@ Verification:
   - Route summary cards stacked cleanly without horizontal clipping;
   - all six planner buttons measured `top 526`, `bottom 574`, `height 48`.
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the UX scanability fix:
+  - Commit: `8432866` (`Improve mobile planner scanability`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-m1ree55gg-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_4Fr7L6NM7DV63eua7bY7hY6767YR`
+- Production phone browser smoke at 335 × 593:
+  - map view loaded with bottom nav and no selected planner tab state;
+  - Route panel headings were `Halo planner`, `Plan a new mission`, `Route builder`, `Pilot scan`, and `Waypoints and map`;
+  - Brief panel headings were `Halo planner`, `Pilot digest`, `Dispatch details`, `Operational checks`, `Checkride navlog`, and `Briefing package`;
+  - Briefing package raw text disclosure was closed by default;
+  - all six planner buttons measured `top 526`, `bottom 574`, `height 48`.
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned style version 8, 96 layers, and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Vercel runtime log stream attached to deployment `dpl_4Fr7L6NM7DV63eua7bY7hY6767YR` and showed structured account API logs with the expected signed-out 401 warning and no runtime error entries during the observation window.
