@@ -1712,4 +1712,24 @@ Verification:
 - Screenshot artifacts:
   - `/tmp/halo-neutral-basemap-local-z10.png`
   - `/tmp/halo-basic-detail-local-z11.png`
+- Production deployment:
+  - Commit: `3658ac4`
+  - Deployment URL: https://halo-flight-planning-eak6f771s-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_7BYk12tGvGRwPnMLMZnyhnGoTygd`
+- Production API smoke:
+  - `/api/openaip/style` first layer is `halo-ground-background`, type `background`, zoom 0-11;
+  - `/api/openaip/style` second layer is `maptiler-base`, type `raster`, style `basic-v2`, zoom 11-22;
+  - no `maptiler-base-low-detail` source is present;
+  - OpenAIP aviation layers remain above the base.
+- Production browser smoke:
+  - z10 comparison view showed no broad city/town basemap clutter while aviation labels remained visible;
+  - z11 comparison view showed close-zoom `basic-v2` roads/place/water context under OpenAIP aviation overlays.
+- Production screenshot artifacts:
+  - `/tmp/halo-neutral-basemap-prod-z10.png`
+  - `/tmp/halo-basic-detail-prod-z11.png`
+- Vercel runtime log scan attached to deployment `dpl_7BYk12tGvGRwPnMLMZnyhnGoTygd` showed:
+  - `/api/openaip/style` structured request logs completing with HTTP 200;
+  - `/api/account/snapshot` structured request logs completing with the expected signed-out HTTP 401 warning;
+  - no runtime error entries during the observed requests.
 - No Playwright/E2E command was run.
