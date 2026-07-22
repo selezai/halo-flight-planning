@@ -193,10 +193,10 @@ pnpm build
 
 Manual E2E inspection remains user-owned.
 
-- [ ] **Step 3: Document the session**
+- [x] **Step 3: Document the session**
 
 Add a session log entry covering the mode split, exact-click route placement, route tab cleanup, map waypoint editor, verification results, and deployment details.
 
-- [ ] **Step 4: Commit, push, deploy**
+- [x] **Step 4: Commit, push, deploy**
 
 Commit, push to GitHub, deploy to Vercel production, inspect deployment status, and run a lightweight production route check.
