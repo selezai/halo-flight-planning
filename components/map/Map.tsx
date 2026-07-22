@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { MapPin, Navigation, Trash2, X } from 'lucide-react';
 import { useMapStore } from '@/stores/mapStore';
 import {
   buildFeatureSelectionStack,
@@ -13,7 +14,7 @@ import { getClickableLayers } from '@/lib/openaip/styleConverter';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
 import { calculateGlideRadiusNm } from '@/lib/planning/emergencyPlanning';
 import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/lib/planning/navigation';
-import { chooseSnapWaypoint, getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
+import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import type { ParsedFeature } from '@/types/openaip';
 import type { Coordinates, RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
 
@@ -48,11 +49,13 @@ export default function Map({ className = '' }: MapProps) {
   const enrichmentRequestId = useRef(0);
   const missingSpriteIds = useRef<Set<string>>(new Set());
   const draggingWaypointId = useRef<string | null>(null);
+  const lastDragCoordinates = useRef<Coordinates | null>(null);
   const rubberBandHandlersAttached = useRef(false);
   const suppressNextMapClick = useRef(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedWaypointId, setSelectedWaypointId] = useState<string | null>(null);
   
   const { 
     center, 
@@ -67,9 +70,17 @@ export default function Map({ className = '' }: MapProps) {
     cruiseAltitudeFt,
     emergencyLandingSites,
     planningMode,
-    addUserWaypoint,
+    updateRouteWaypoint,
+    removeRouteWaypoint,
     setRenderedRouteAirspaceReview,
   } = useMapStore();
+  const selectedWaypoint = useMemo(
+    () => waypoints.find((waypoint) => waypoint.id === selectedWaypointId) ?? null,
+    [selectedWaypointId, waypoints]
+  );
+  const selectedWaypointIndex = selectedWaypoint
+    ? waypoints.findIndex((waypoint) => waypoint.id === selectedWaypoint.id)
+    : -1;
 
   const updateRouteOverlay = useCallback(() => {
     if (!map.current || !mapLoaded) return;
@@ -95,6 +106,7 @@ export default function Map({ className = '' }: MapProps) {
           id: waypoint.id,
           index: index + 1,
           title: waypoint.ident ?? waypoint.name,
+          selected: waypoint.id === selectedWaypointId,
         },
         geometry: {
           type: 'Point',
@@ -102,7 +114,7 @@ export default function Map({ className = '' }: MapProps) {
         },
       })),
     } as any);
-  }, [mapLoaded, waypoints]);
+  }, [mapLoaded, selectedWaypointId, waypoints]);
 
   const updateEmergencyOverlay = useCallback(() => {
     if (!map.current || !mapLoaded) return;
@@ -242,6 +254,13 @@ export default function Map({ className = '' }: MapProps) {
     waypoints,
   ]);
 
+  useEffect(() => {
+    if (!selectedWaypointId) return;
+    if (!planningMode || !waypoints.some((waypoint) => waypoint.id === selectedWaypointId)) {
+      setSelectedWaypointId(null);
+    }
+  }, [planningMode, selectedWaypointId, waypoints]);
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -310,7 +329,7 @@ export default function Map({ className = '' }: MapProps) {
           ensureEmergencyLayers(map.current!);
           const clickableLayers = getClickableLayers(style);
           setupClickHandlers(clickableLayers);
-          setupRubberBandHandlers(clickableLayers);
+          setupRubberBandHandlers();
           updateRouteOverlay();
           updateEmergencyOverlay();
         });
@@ -371,34 +390,48 @@ export default function Map({ className = '' }: MapProps) {
     const existingLayers = layers.filter(id => map.current?.getLayer(id));
     
     // Click handler
-    map.current.on('click', (e) => {
-      if (!map.current) return;
+    map.current.on('click', (event) => {
+      const mapInstance = map.current;
+      if (!mapInstance) return;
 
       if (suppressNextMapClick.current) {
         suppressNextMapClick.current = false;
         return;
       }
+
+      const state = useMapStore.getState();
+
+      if (state.planningMode) {
+        enrichmentRequestId.current += 1;
+        const routeWaypoint = getRouteWaypointAtPoint(mapInstance, event.point);
+
+        if (routeWaypoint) {
+          setSelectedWaypointId(routeWaypoint.id);
+          return;
+        }
+
+        const waypointId = state.addUserWaypoint([event.lngLat.lng, event.lngLat.lat]);
+        setSelectedWaypointId(waypointId);
+        return;
+      }
       
       const features = existingLayers.length
-        ? map.current.queryRenderedFeatures(e.point, { layers: existingLayers })
+        ? mapInstance.queryRenderedFeatures(event.point, { layers: existingLayers })
         : [];
       const featureStack = buildFeatureSelectionStack(features);
 
       if (featureStack.length > 0) {
         setSelectedFeature(featureStack[0], featureStack);
-      } else if (planningMode) {
-        enrichmentRequestId.current += 1;
-        addUserWaypoint([e.lngLat.lng, e.lngLat.lat]);
       } else {
         enrichmentRequestId.current += 1;
-        setSelectedFeature(null);
+        state.clearSelection();
       }
     });
 
     // Hover cursor change
     existingLayers.forEach(layer => {
       map.current?.on('mouseenter', layer, () => {
-        if (map.current) {
+        if (map.current && !useMapStore.getState().planningMode) {
           map.current.getCanvas().style.cursor = 'pointer';
         }
       });
@@ -411,14 +444,14 @@ export default function Map({ className = '' }: MapProps) {
     });
   };
 
-  const setupRubberBandHandlers = (clickableLayers: string[]) => {
+  const setupRubberBandHandlers = () => {
     if (!map.current || rubberBandHandlersAttached.current) return;
-    if (!map.current.getLayer('halo-route-line') || !map.current.getLayer('halo-route-points')) return;
+    if (!map.current.getLayer('halo-route-line') || !map.current.getLayer('halo-route-point-hit-target')) return;
 
     rubberBandHandlersAttached.current = true;
     const mapInstance = map.current;
 
-    mapInstance.on('mousedown', 'halo-route-points', (event) => {
+    const startWaypointDrag = (event: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
       const state = useMapStore.getState();
       if (!state.planningMode) return;
 
@@ -427,12 +460,14 @@ export default function Map({ className = '' }: MapProps) {
 
       event.preventDefault();
       draggingWaypointId.current = id;
+      lastDragCoordinates.current = [event.lngLat.lng, event.lngLat.lat];
+      setSelectedWaypointId(id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
       mapInstance.getCanvas().style.cursor = 'grabbing';
-    });
+    };
 
-    const startInsertDrag = (event: maplibregl.MapLayerMouseEvent) => {
+    const startInsertDrag = (event: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
       if (draggingWaypointId.current) return;
       const state = useMapStore.getState();
       if (!state.planningMode || state.waypoints.length < 2) return;
@@ -444,35 +479,41 @@ export default function Map({ className = '' }: MapProps) {
 
       state.insertRouteWaypoint(insertIndex, waypoint);
       draggingWaypointId.current = waypoint.id;
+      lastDragCoordinates.current = coordinates;
+      setSelectedWaypointId(waypoint.id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
       mapInstance.getCanvas().style.cursor = 'grabbing';
     };
 
+    mapInstance.on('mousedown', 'halo-route-point-hit-target', startWaypointDrag);
+    mapInstance.on('touchstart', 'halo-route-point-hit-target', startWaypointDrag);
     mapInstance.on('mousedown', 'halo-route-line', startInsertDrag);
     mapInstance.on('mousedown', 'halo-route-casing', startInsertDrag);
+    mapInstance.on('touchstart', 'halo-route-line', startInsertDrag);
+    mapInstance.on('touchstart', 'halo-route-casing', startInsertDrag);
 
-    mapInstance.on('mousemove', (event) => {
+    const updateDragPosition = (event: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
       if (!draggingWaypointId.current) return;
       const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
+      event.preventDefault();
+      lastDragCoordinates.current = coordinates;
       useMapStore.getState().updateRouteWaypoint(draggingWaypointId.current, { coordinates });
-    });
+    };
 
-    mapInstance.on('mouseup', (event) => {
+    const finishDrag = (event?: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
       if (!draggingWaypointId.current) return;
 
       const waypointId = draggingWaypointId.current;
-      const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
+      const coordinates: Coordinates | null = event
+        ? [event.lngLat.lng, event.lngLat.lat]
+        : lastDragCoordinates.current;
       const state = useMapStore.getState();
       const currentWaypoint = state.waypoints.find((waypoint) => waypoint.id === waypointId);
-      const snap = getSnapWaypoint(mapInstance, event.point, coordinates, clickableLayers);
 
-      if (snap) {
-        state.updateRouteWaypoint(waypointId, {
-          ...snap,
-          id: waypointId,
-        });
-      } else if (currentWaypoint) {
+      event?.preventDefault();
+
+      if (currentWaypoint && coordinates) {
         state.updateRouteWaypoint(waypointId, {
           coordinates,
           type: 'user',
@@ -483,11 +524,30 @@ export default function Map({ className = '' }: MapProps) {
       }
 
       draggingWaypointId.current = null;
+      lastDragCoordinates.current = null;
       mapInstance.dragPan.enable();
       mapInstance.getCanvas().style.cursor = '';
       window.setTimeout(() => {
         suppressNextMapClick.current = false;
       }, 0);
+    };
+
+    mapInstance.on('mousemove', updateDragPosition);
+    mapInstance.on('touchmove', updateDragPosition);
+    mapInstance.on('mouseup', finishDrag);
+    mapInstance.on('touchend', finishDrag);
+    mapInstance.on('touchcancel', () => finishDrag());
+
+    mapInstance.on('mouseenter', 'halo-route-point-hit-target', () => {
+      if (useMapStore.getState().planningMode) {
+        mapInstance.getCanvas().style.cursor = 'grab';
+      }
+    });
+
+    mapInstance.on('mouseleave', 'halo-route-point-hit-target', () => {
+      if (!draggingWaypointId.current) {
+        mapInstance.getCanvas().style.cursor = '';
+      }
     });
 
     mapInstance.on('mouseenter', 'halo-route-line', () => {
@@ -661,9 +721,20 @@ export default function Map({ className = '' }: MapProps) {
   return (
     <div className={`relative w-full h-full ${className}`}>
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
-      <div className="pointer-events-none absolute left-4 top-4 rounded-md border border-slate-200 bg-white/90 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
-        {planningMode ? 'Planning mode' : 'Inspect mode'}
-      </div>
+
+      {planningMode && selectedWaypoint && (
+        <RouteWaypointEditor
+          waypoint={selectedWaypoint}
+          waypointIndex={selectedWaypointIndex}
+          waypointCount={waypoints.length}
+          onClose={() => setSelectedWaypointId(null)}
+          onDelete={() => {
+            removeRouteWaypoint(selectedWaypoint.id);
+            setSelectedWaypointId(null);
+          }}
+          onUpdate={(updates) => updateRouteWaypoint(selectedWaypoint.id, updates)}
+        />
+      )}
       
       {/* Loading overlay */}
       {!mapLoaded && (
@@ -674,6 +745,81 @@ export default function Map({ className = '' }: MapProps) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function RouteWaypointEditor({
+  waypoint,
+  waypointIndex,
+  waypointCount,
+  onClose,
+  onDelete,
+  onUpdate,
+}: {
+  waypoint: Waypoint;
+  waypointIndex: number;
+  waypointCount: number;
+  onClose: () => void;
+  onDelete: () => void;
+  onUpdate: (updates: Partial<Waypoint>) => void;
+}) {
+  return (
+    <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-20 rounded-[1.35rem] border border-white/80 bg-white/95 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:bottom-24 sm:left-5 sm:right-auto sm:w-80">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
+            <Navigation className="h-3.5 w-3.5" />
+            Waypoint {waypointIndex + 1} of {waypointCount}
+          </div>
+          <p className="mt-1 truncate text-xs font-medium text-slate-500">
+            {waypoint.ident ?? waypoint.type.toUpperCase()} · {formatCoordinates(waypoint.coordinates)}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+          aria-label="Close waypoint editor"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+        Name
+      </label>
+      <input
+        value={waypoint.name}
+        onChange={(event) => onUpdate({ name: event.target.value })}
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+      />
+
+      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+        Pilot note
+      </label>
+      <textarea
+        value={waypoint.notes ?? ''}
+        onChange={(event) => onUpdate({ notes: event.target.value })}
+        placeholder="Frequency, altitude, visual cue, checkpoint reminder..."
+        rows={3}
+        className="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+      />
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Drag the point to move it.</span>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
@@ -697,26 +843,23 @@ function toParserGeometry(geometry: FeatureGeometry | undefined) {
   };
 }
 
-function getSnapWaypoint(
+function getRouteWaypointAtPoint(
   mapInstance: maplibregl.Map,
-  point: { x: number; y: number },
-  coordinates: Coordinates,
-  clickableLayers: string[]
+  point: { x: number; y: number }
 ): Waypoint | null {
-  const radiusPx = 14;
+  const radiusPx = 18;
   const bbox: [[number, number], [number, number]] = [
     [point.x - radiusPx, point.y - radiusPx],
     [point.x + radiusPx, point.y + radiusPx],
   ];
-  const existingLayers = clickableLayers.filter((layer) => mapInstance.getLayer(layer));
-  const features = existingLayers.length
-    ? mapInstance.queryRenderedFeatures(bbox, { layers: existingLayers })
-    : [];
-  const candidates = buildFeatureSelectionStack(features)
-    .map(makeWaypointFromFeature)
-    .filter((waypoint): waypoint is Waypoint => Boolean(waypoint));
+  const layers = ['halo-route-point-hit-target', 'halo-route-points'].filter((layer) => mapInstance.getLayer(layer));
+  if (layers.length === 0) return null;
 
-  return chooseSnapWaypoint(coordinates, candidates, 2);
+  const feature = mapInstance.queryRenderedFeatures(bbox, { layers })[0];
+  const waypointId = feature?.properties?.id;
+  if (typeof waypointId !== 'string') return null;
+
+  return useMapStore.getState().waypoints.find((waypoint) => waypoint.id === waypointId) ?? null;
 }
 
 function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
@@ -912,16 +1055,54 @@ function ensureRouteLayers(mapInstance: maplibregl.Map) {
     });
   }
 
+  if (!mapInstance.getLayer('halo-route-point-hit-target')) {
+    mapInstance.addLayer({
+      id: 'halo-route-point-hit-target',
+      type: 'circle',
+      source: 'halo-route-points',
+      paint: {
+        'circle-radius': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          24,
+          20,
+        ],
+        'circle-color': '#0f172a',
+        'circle-opacity': 0.01,
+      },
+    });
+  }
+
   if (!mapInstance.getLayer('halo-route-points')) {
     mapInstance.addLayer({
       id: 'halo-route-points',
       type: 'circle',
       source: 'halo-route-points',
       paint: {
-        'circle-radius': 7,
-        'circle-color': '#0f766e',
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 2,
+        'circle-radius': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          9,
+          7,
+        ],
+        'circle-color': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          '#0ea5e9',
+          '#0f766e',
+        ],
+        'circle-stroke-color': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          '#fef3c7',
+          '#ffffff',
+        ],
+        'circle-stroke-width': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          4,
+          2,
+        ],
       },
     });
   }

@@ -17,7 +17,6 @@ import {
   RadioTower,
   Route,
   Save,
-  Search,
   ShieldAlert,
 } from 'lucide-react';
 import ClientMap from '@/components/map/ClientMap';
@@ -275,8 +274,8 @@ export default function HaloAppShell({
               onClick={() => openPanel('route')}
               className="hidden border-slate-200 bg-white/70 text-slate-800 hover:bg-white sm:inline-flex"
             >
-              <Search className="h-3.5 w-3.5" />
-              Search airport
+              <Route className="h-3.5 w-3.5" />
+              Route worksheet
             </Button>
             <Button
               type="button"
@@ -292,10 +291,15 @@ export default function HaloAppShell({
       </div>
 
       {showMapControls && (
-        <MapToolsRail
+        <MapModeControl
           planningMode={planningMode}
+          onChange={setPlanningMode}
+        />
+      )}
+
+      {showMapControls && (
+        <MapToolsRail
           visibleLayers={visibleLayers}
-          onTogglePlanningMode={() => setPlanningMode(!planningMode)}
           onToggleLayer={toggleLayer}
           onFocusRoute={focusRoute}
           onOpenEmergency={() => openPanel('emergency')}
@@ -671,28 +675,72 @@ function MissionMetric({
   );
 }
 
-function MapToolsRail({
+function MapModeControl({
   planningMode,
+  onChange,
+}: {
+  planningMode: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const modes = [
+    {
+      label: 'Plan route',
+      active: planningMode,
+      onClick: () => onChange(true),
+      icon: Navigation,
+      detail: 'Tap map to place waypoints',
+    },
+    {
+      label: 'Inspect map',
+      active: !planningMode,
+      onClick: () => onChange(false),
+      icon: MapPinned,
+      detail: 'Tap aviation data for info',
+    },
+  ];
+
+  return (
+    <div className="pointer-events-none absolute inset-x-3 top-[5.35rem] z-20 flex justify-center sm:inset-x-auto sm:left-5 sm:top-24 sm:justify-start">
+      <div className="pointer-events-auto grid w-full max-w-md grid-cols-2 gap-1 rounded-[1.35rem] border border-white/70 bg-white/90 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.16)] backdrop-blur-xl sm:w-[25rem]">
+        {modes.map(({ label, active, onClick, icon: Icon, detail }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={onClick}
+            className={cn(
+              'flex min-h-12 items-center justify-center gap-2 rounded-2xl px-3 py-2 text-left transition',
+              active
+                ? 'bg-slate-950 text-white shadow-md shadow-slate-900/20'
+                : 'text-slate-600 hover:bg-white hover:text-slate-950'
+            )}
+            aria-pressed={active}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold leading-4">{label}</span>
+              <span className={cn('hidden truncate text-[10px] leading-3 sm:block', active ? 'text-slate-300' : 'text-slate-500')}>
+                {detail}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MapToolsRail({
   visibleLayers,
-  onTogglePlanningMode,
   onToggleLayer,
   onFocusRoute,
   onOpenEmergency,
 }: {
-  planningMode: boolean;
   visibleLayers: MapState['visibleLayers'];
-  onTogglePlanningMode: () => void;
   onToggleLayer: (layer: keyof MapState['visibleLayers']) => void;
   onFocusRoute: () => void;
   onOpenEmergency: () => void;
 }) {
   const controls = [
-    {
-      label: planningMode ? 'Planning mode' : 'Inspect mode',
-      icon: planningMode ? Navigation : MapPinned,
-      onClick: onTogglePlanningMode,
-      active: planningMode,
-    },
     {
       label: 'Airspace layer',
       icon: Layers,

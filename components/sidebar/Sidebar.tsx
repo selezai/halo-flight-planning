@@ -20,7 +20,6 @@ import {
   Plus,
   Printer,
   RefreshCcw,
-  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -42,10 +41,8 @@ import {
   formatDuration,
   formatFuel,
 } from '@/lib/planning/navigation';
-import { searchStarterWaypoints } from '@/lib/planning/sampleData';
 import { buildBackupPackText } from '@/lib/planning/backupPack';
 import { buildBriefingDigest, buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
-import { mergeWaypointResults } from '@/lib/planning/waypointResults';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
 import {
   calculateWeightBalance,
@@ -69,7 +66,6 @@ import {
 import { buildAirspaceVerticalProfile } from '@/lib/planning/airspaceProfile';
 import { buildEmergencyPlanningReview } from '@/lib/planning/emergencyPlanning';
 import { buildTrainingNavLog } from '@/lib/planning/trainingNavlog';
-import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import HaloLogo from '@/components/shell/HaloLogo';
 import { HALO_PANEL_META } from '@/components/shell/haloNavigation';
 import { cn } from '@/lib/utils';
@@ -109,13 +105,6 @@ interface RouteWeatherState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-}
-
-interface OpenAipSearchState {
-  waypoints: Waypoint[];
-  loading: boolean;
-  error: string | null;
-  warning: string | null;
 }
 
 export default function Sidebar({
@@ -525,8 +514,6 @@ function RoutePanel() {
     routeName,
     setRouteName,
     waypoints,
-    addRouteWaypoint,
-    addUserWaypoint,
     removeRouteWaypoint,
     moveRouteWaypoint,
     updateRouteWaypoint,
@@ -539,32 +526,14 @@ function RoutePanel() {
     visibleLayers,
     toggleLayer,
   } = useMapStore();
-  const [query, setQuery] = useState('');
-  const [manualLat, setManualLat] = useState('');
-  const [manualLng, setManualLng] = useState('');
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
-  const starterResults = useMemo(() => searchStarterWaypoints(query), [query]);
-  const openAipSearch = useOpenAipWaypointSearch(query);
-  const results = useMemo(
-    () => mergeWaypointResults(starterResults, openAipSearch.waypoints).slice(0, 12),
-    [openAipSearch.waypoints, starterResults]
-  );
-
-  const addManualPoint = () => {
-    const latitude = Number(manualLat);
-    const longitude = Number(manualLng);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-    addUserWaypoint([longitude, latitude]);
-    setManualLat('');
-    setManualLng('');
-  };
 
   return (
     <div className="space-y-5">
       <PanelGroupHeader
-        eyebrow="Build"
-        title="Route builder"
-        detail="Name the mission, choose the map-click mode, then add waypoints."
+        eyebrow="Setup"
+        title="Route worksheet"
+        detail="Use the map as the editor. This panel keeps route details, sequence, and review items quick to scan."
       />
 
       <PanelBlock title="Route setup" icon={<Navigation className="h-4 w-4" />}>
@@ -576,101 +545,114 @@ function RoutePanel() {
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-950 focus:outline-none"
         />
 
-        <div className="mt-3 flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
-          <div>
-            <p className="text-sm font-medium text-slate-900">Map clicks</p>
-            <p className="text-xs text-slate-500">{planningMode ? 'Add user waypoints' : 'Inspect aviation features'}</p>
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+          <div className="mb-2 px-1">
+            <p className="text-sm font-semibold text-slate-900">Map mode</p>
+            <p className="text-xs leading-5 text-slate-500">
+              {planningMode
+                ? 'Plan route is active: tap the map to place exact route waypoints.'
+                : 'Inspect map is active: tap OpenAIP features and airspace for details.'}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setPlanningMode(!planningMode)}
-            className={`inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium ${
-              planningMode ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            {planningMode ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            {planningMode ? 'Planning' : 'Inspect'}
-          </button>
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => setPlanningMode(true)}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                planningMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+              }`}
+              aria-pressed={planningMode}
+            >
+              <Eye className="h-4 w-4" />
+              Plan route
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlanningMode(false)}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                !planningMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+              }`}
+              aria-pressed={!planningMode}
+            >
+              <EyeOff className="h-4 w-4" />
+              Inspect map
+            </button>
+          </div>
         </div>
       </PanelBlock>
 
-      <PanelBlock title="Add waypoint" icon={<Search className="h-4 w-4" />}>
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="ICAO, navaid, or name"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
-        />
-        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span>
-            {query.trim().length >= 2
-              ? openAipSearch.loading
-                ? 'Searching OpenAIP Core...'
-                : 'Starter results plus OpenAIP Core global search'
-              : 'Type at least 2 characters for global OpenAIP search'}
-          </span>
-          {openAipSearch.waypoints.length > 0 && (
-            <span>{openAipSearch.waypoints.length} OpenAIP</span>
-          )}
-        </div>
-        {openAipSearch.error && <div className="mt-2"><WarningLine text={openAipSearch.error} /></div>}
-        {openAipSearch.warning && <div className="mt-2"><WarningLine text={openAipSearch.warning} /></div>}
-        <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
-          {results.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">
-              No airport or navaid matches found.
-            </div>
-          ) : results.map((waypoint) => (
-            <button
-              key={waypoint.id}
-              type="button"
-              onClick={() => addRouteWaypoint(waypoint)}
-              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
-            >
-              <span>
-                <span className="block text-sm font-medium text-slate-900">{waypoint.ident}</span>
-                <span className="block text-xs text-slate-500">{waypoint.name}</span>
-                {waypoint.notes?.includes('OpenAIP Core') && (
-                  <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-                    OpenAIP global
-                  </span>
-                )}
-              </span>
-              <Plus className="h-4 w-4 text-slate-500" />
-            </button>
-          ))}
-        </div>
+      <PanelGroupHeader
+        eyebrow="Sequence"
+        title="Waypoints"
+        detail="Select and drag route points on the map, or use this list for names, notes, order, and delete actions."
+      />
 
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-            <MapPin className="h-3.5 w-3.5" />
-            Manual coordinate
+      <PanelBlock title="Navigation log" icon={<Navigation className="h-4 w-4" />}>
+        {waypoints.length === 0 ? (
+          <EmptyState
+            title="No route yet"
+            detail="Switch to Plan route on the map, then tap the exact positions for departure, checkpoints, and destination."
+          />
+        ) : (
+          <div className="space-y-3">
+            {waypoints.map((waypoint, index) => {
+              const nextLeg = route.legs[index];
+              return (
+                <div key={waypoint.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-800">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-50 px-1.5 text-[10px] text-cyan-900">
+                          {index + 1}
+                        </span>
+                        {waypoint.ident ?? waypoint.type.toUpperCase()}
+                      </div>
+                      <input
+                        value={waypoint.name}
+                        onChange={(event) => updateRouteWaypoint(waypoint.id, { name: event.target.value })}
+                        className="w-full rounded border border-transparent text-sm font-semibold text-slate-900 focus:border-slate-300 focus:px-2 focus:py-1 focus:outline-none"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatCoordinates(waypoint.coordinates)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <IconButton label="Move up" onClick={() => moveRouteWaypoint(waypoint.id, 'up')} disabled={index === 0}>
+                        <ArrowUp className="h-4 w-4" />
+                      </IconButton>
+                      <IconButton label="Move down" onClick={() => moveRouteWaypoint(waypoint.id, 'down')} disabled={index === waypoints.length - 1}>
+                        <ArrowDown className="h-4 w-4" />
+                      </IconButton>
+                      <IconButton label="Remove waypoint" onClick={() => removeRouteWaypoint(waypoint.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <label className="mt-3 block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                    Pilot note
+                  </label>
+                  <textarea
+                    value={waypoint.notes ?? ''}
+                    onChange={(event) => updateRouteWaypoint(waypoint.id, { notes: event.target.value })}
+                    placeholder="Frequency, altitude, visual cue, checkpoint reminder..."
+                    rows={2}
+                    className="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-950 focus:outline-none"
+                  />
+
+                  {nextLeg && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 text-xs min-[420px]:grid-cols-4">
+                      <Metric label="Dist" value={formatDistance(nextLeg.distanceNm)} />
+                      <Metric label="TC" value={formatCourse(nextLeg.trueCourseDeg)} />
+                      <Metric label="ETE" value={formatDuration(nextLeg.estimatedTimeMinutes)} />
+                      <Metric label="Fuel" value={formatFuel(nextLeg.fuelRequiredGal)} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={manualLat}
-              onChange={(event) => setManualLat(event.target.value)}
-              placeholder="Latitude"
-              className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
-              inputMode="decimal"
-            />
-            <input
-              value={manualLng}
-              onChange={(event) => setManualLng(event.target.value)}
-              placeholder="Longitude"
-              className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
-              inputMode="decimal"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={addManualPoint}
-            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <Plus className="h-4 w-4" />
-            Add coordinate
-          </button>
-        </div>
+        )}
       </PanelBlock>
 
       <PanelGroupHeader
@@ -696,57 +678,10 @@ function RoutePanel() {
       />
 
       <PanelGroupHeader
-        eyebrow="Sequence"
-        title="Waypoints and map"
-        detail="Review legs, reorder points, and set aviation layer visibility."
+        eyebrow="Map"
+        title="Aviation layers"
+        detail="Toggle map information without changing the route-editing mode."
       />
-
-      <PanelBlock title="Navigation log" icon={<Navigation className="h-4 w-4" />}>
-        {waypoints.length === 0 ? (
-          <EmptyState title="No route yet" detail="Search, select map features, or add a coordinate." />
-        ) : (
-          <div className="space-y-3">
-            {waypoints.map((waypoint, index) => {
-              const nextLeg = route.legs[index];
-              return (
-                <div key={waypoint.id} className="rounded-md border border-slate-200 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <input
-                        value={waypoint.name}
-                        onChange={(event) => updateRouteWaypoint(waypoint.id, { name: event.target.value })}
-                        className="w-full rounded border border-transparent text-sm font-semibold text-slate-900 focus:border-slate-300 focus:px-2 focus:py-1 focus:outline-none"
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
-                        {waypoint.ident ?? waypoint.type.toUpperCase()} · {formatCoordinates(waypoint.coordinates)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 gap-1">
-                      <IconButton label="Move up" onClick={() => moveRouteWaypoint(waypoint.id, 'up')} disabled={index === 0}>
-                        <ArrowUp className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton label="Move down" onClick={() => moveRouteWaypoint(waypoint.id, 'down')} disabled={index === waypoints.length - 1}>
-                        <ArrowDown className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton label="Remove waypoint" onClick={() => removeRouteWaypoint(waypoint.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </IconButton>
-                    </div>
-                  </div>
-                  {nextLeg && (
-                    <div className="mt-3 grid grid-cols-4 gap-2 rounded bg-slate-50 p-2 text-xs">
-                      <Metric label="Dist" value={formatDistance(nextLeg.distanceNm)} />
-                      <Metric label="TC" value={formatCourse(nextLeg.trueCourseDeg)} />
-                      <Metric label="ETE" value={formatDuration(nextLeg.estimatedTimeMinutes)} />
-                      <Metric label="Fuel" value={formatFuel(nextLeg.fuelRequiredGal)} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </PanelBlock>
 
       <PanelBlock title="Map layers" icon={<Layers className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-2">
@@ -768,7 +703,7 @@ function RoutePanel() {
       </PanelBlock>
 
       {waypoints.length > 0 && (
-        <PanelBlock title="Route actions" icon={<Trash2 className="h-4 w-4" />}>
+        <PanelBlock title="Danger zone" icon={<Trash2 className="h-4 w-4" />}>
           <div className="flex flex-col gap-3 rounded-xl border border-rose-100 bg-rose-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-rose-900">Clear this route</p>
@@ -958,73 +893,6 @@ function AirspaceVerticalProfilePanel({ profile }: { profile: AirspaceVerticalPr
       )}
     </div>
   );
-}
-
-function useOpenAipWaypointSearch(query: string): OpenAipSearchState {
-  const [state, setState] = useState<OpenAipSearchState>({
-    waypoints: [],
-    loading: false,
-    error: null,
-    warning: null,
-  });
-  const normalizedQuery = query.trim();
-
-  useEffect(() => {
-    if (normalizedQuery.length < 2) {
-      setState({
-        waypoints: [],
-        loading: false,
-        error: null,
-        warning: null,
-      });
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => {
-      setState((current) => ({
-        ...current,
-        loading: true,
-        error: null,
-        warning: null,
-      }));
-
-      fetch(`/api/openaip/search?q=${encodeURIComponent(normalizedQuery)}&limit=10`, {
-        signal: controller.signal,
-      })
-        .then(async (response) => {
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload?.error || 'OpenAIP global search failed.');
-          }
-          return payload as OpenAipWaypointSearchResponse;
-        })
-        .then((payload) => {
-          setState({
-            waypoints: payload.waypoints,
-            loading: false,
-            error: null,
-            warning: payload.warning ?? null,
-          });
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return;
-          setState({
-            waypoints: [],
-            loading: false,
-            error: error instanceof Error ? error.message : 'OpenAIP global search failed.',
-            warning: null,
-          });
-        });
-    }, 350);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [normalizedQuery]);
-
-  return state;
 }
 
 function WeatherPanel() {

@@ -1892,3 +1892,63 @@ Verification:
   - `/api/openaip/style` structured request logs completed with HTTP 200;
   - no runtime error entries appeared during the observed style request.
 - No Playwright/E2E command was run.
+
+## 2026-07-22 Map-First Route Planning UX
+
+Objective: make route planning happen on the map, separate route editing from aviation-feature inspection, and remove the Route tab's add-point/search/manual-coordinate flow.
+
+Problem:
+
+- Planning and inspection were mixed together: clicking the map could add a waypoint, open OpenAIP/airspace information, and open the planner.
+- Map-created waypoints and rubber-band inserted waypoints opened the Route panel automatically, which interrupted map-first planning.
+- The Route tab duplicated map responsibilities and felt overloaded because it included route setup, search/add controls, review material, map layers, and destructive actions in one scan path.
+- Touch planning needed selected-waypoint behavior for move/delete/notes without relying on the side panel.
+
+Root cause:
+
+- The map click handler queried OpenAIP clickable layers and opened feature/sidebar state from the same interaction path used for planning.
+- The click handler captured planning mode too early instead of reading the latest store value at click time.
+- Store actions for map-created/inserted route points mutated sidebar state.
+- Route waypoint addition still depended on a panel-first workflow instead of treating the map as the editor.
+
+Solution:
+
+- Added an explicit map mode split:
+  - `Plan route`: tapping/clicking the map places an exact waypoint and does not open panels.
+  - `Inspect map`: tapping/clicking OpenAIP aviation data opens feature/airspace information.
+- Changed `addUserWaypoint` to return the new waypoint ID and leave `sidebarOpen` / `sidebarPanel` untouched.
+- Changed `insertRouteWaypoint` so rubber-band insertion no longer opens the planner.
+- Added a larger transparent route-point hit target layer for mouse/touch selection.
+- Added map-side waypoint selection and a floating waypoint editor for rename, pilot notes, coordinates, delete, and close.
+- Added mouse and touch drag support for moving existing route points and rubber-band inserting points on the route line.
+- Removed automatic snap-on-drop so planned points remain exactly where the pilot dropped them.
+- Added a visible `Plan route` / `Inspect map` segmented control when the planner is closed.
+- Removed the duplicate icon-only planning toggle from the map rail.
+- Streamlined the Route tab into a worksheet:
+  - route setup and mode guidance;
+  - waypoint sequence with inline names, notes, reorder, and delete;
+  - navigation log;
+  - pilot scan / route review;
+  - aviation layers;
+  - danger zone.
+- Removed the Route tab add-point search/manual-coordinate block per user decision.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/sidebar/Sidebar.tsx`
+- `stores/mapStore.ts`
+- `tests/stores/mapStore.test.ts`
+- `docs/superpowers/plans/2026-07-22-map-route-planning-design.md`
+- `docs/superpowers/plans/2026-07-22-map-route-planning.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 29 files / 122 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.

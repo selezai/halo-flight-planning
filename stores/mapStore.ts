@@ -116,7 +116,7 @@ export interface MapState {
   archiveMission: (id: string) => void;
   addRouteWaypoint: (waypoint: Waypoint) => void;
   insertRouteWaypoint: (index: number, waypoint: Waypoint) => void;
-  addUserWaypoint: (coordinates: Coordinates) => void;
+  addUserWaypoint: (coordinates: Coordinates) => string;
   removeRouteWaypoint: (id: string) => void;
   moveRouteWaypoint: (id: string, direction: 'up' | 'down') => void;
   updateRouteWaypoint: (id: string, updates: Partial<Waypoint>) => void;
@@ -406,7 +406,7 @@ function mergePersistedMapState(
 
 export const useMapStore = create<MapState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Default viewport - South Africa
       center: [28.0, -26.0],
       zoom: 7,
@@ -611,20 +611,23 @@ export const useMapStore = create<MapState>()(
         }, index),
         selectedFeature: null,
         selectedFeatureCandidates: [],
-        sidebarPanel: 'route',
-        sidebarOpen: true,
       })),
 
-      addUserWaypoint: (coordinates) => set((state) => ({
-        waypoints: [
-          ...state.waypoints,
-          createUserWaypoint(coordinates, state.waypoints.length + 1),
-        ],
-        selectedFeature: null,
-        selectedFeatureCandidates: [],
-        sidebarPanel: 'route',
-        sidebarOpen: true,
-      })),
+      addUserWaypoint: (coordinates) => {
+        const state = get();
+        const waypoint = createUserWaypoint(coordinates, state.waypoints.length + 1);
+
+        set({
+          waypoints: [
+            ...state.waypoints,
+            waypoint,
+          ],
+          selectedFeature: null,
+          selectedFeatureCandidates: [],
+        });
+
+        return waypoint.id;
+      },
 
       removeRouteWaypoint: (id) => set((state) => ({
         waypoints: state.waypoints.filter((waypoint) => waypoint.id !== id),
