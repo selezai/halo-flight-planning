@@ -1447,3 +1447,34 @@ Verification:
   - `/tmp/halo-wx-tab-normalized-local-335.png`
   - `/tmp/halo-wx-tab-normalized-local-579.png`
 - No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the mobile tab alignment fix:
+  - Commit: `0d0258b` (`Normalize mobile planner tab alignment`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-h6ggt1d7e-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_FFLUozYGr62vXvNpDNDfd9BkRVkb`
+- Production phone browser smoke at 335 × 593:
+  - nav stayed at `top 510`, `bottom 593`;
+  - all six tab buttons measured `top 526`, `bottom 574`, `height 48`;
+  - all six icon slots measured `top 534`;
+  - all six label slots measured `top 554`;
+  - active Wx had no bottom active shadow.
+- Production phone browser smoke at 579 × 593:
+  - nav stayed at `top 510`, `bottom 593`;
+  - all six tab buttons measured `top 526`, `bottom 574`, `height 48`;
+  - all six icon slots measured `top 534`;
+  - all six label slots measured `top 554`;
+  - active Wx had no bottom active shadow.
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned style version 8, 96 layers, and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA`;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Production screenshot artifacts:
+  - `/tmp/halo-wx-tab-normalized-prod-335.png`
+  - `/tmp/halo-wx-tab-normalized-prod-579.png`
+- Vercel runtime log stream attached to deployment `dpl_FFLUozYGr62vXvNpDNDfd9BkRVkb` and showed no runtime error entries during the observation window.
