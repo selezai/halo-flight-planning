@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  AlertTriangle,
   Archive,
   BookOpen,
-  CheckCircle2,
   Copy,
   Crosshair,
   FolderOpen,
@@ -21,7 +19,6 @@ import {
   Save,
   Search,
   ShieldAlert,
-  Sparkles,
 } from 'lucide-react';
 import ClientMap from '@/components/map/ClientMap';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
@@ -30,7 +27,6 @@ import RouteStatusBar from '@/components/planning/RouteStatusBar';
 import Sidebar from '@/components/sidebar/Sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -48,7 +44,6 @@ import { buildFlightAdminReview } from '@/lib/planning/flightAdmin';
 import { buildFilingWorkflowReview } from '@/lib/planning/filingReminder';
 import { getMissionStatusFromHaloStatus, sortMissionRecords } from '@/lib/planning/missions';
 import { calculateRoute } from '@/lib/planning/navigation';
-import { STARTER_WAYPOINTS } from '@/lib/planning/sampleData';
 import { calculateWeightBalance } from '@/lib/planning/weightBalance';
 import { buildHaloMissionSummary, type HaloPanelId, type HaloStatusTone } from '@/lib/ui/halo';
 import { cn } from '@/lib/utils';
@@ -85,9 +80,6 @@ export default function HaloAppShell({
     setPlanningMode,
     toggleLayer,
     setViewport,
-    clearRoute,
-    addRouteWaypoint,
-    setRouteName,
     saveActiveMission,
     createBlankMission,
     duplicateActiveMission,
@@ -214,44 +206,8 @@ export default function HaloAppShell({
     setSidebarOpen(true);
   };
 
-  const runPrimaryMissionAction = () => {
-    if (mission.primaryAction === 'Fix W&B') {
-      openPanel('aircraft');
-      return;
-    }
-
-    if (mission.primaryAction === 'Resolve admin') {
-      openPanel('admin');
-      return;
-    }
-
-    if (mission.primaryAction === 'Open briefing' || mission.primaryAction === 'Export backup pack') {
-      openPanel('briefing');
-      return;
-    }
-
-    openPanel('route');
-  };
-
   const saveMissionFromCurrentStatus = () => {
     saveActiveMission(getMissionStatusFromHaloStatus(mission.status));
-  };
-
-  const useSampleRoute = () => {
-    const sampleRoute = ['FAOR', 'FALA', 'FAWB']
-      .map((ident) => STARTER_WAYPOINTS.find((waypoint) => waypoint.ident === ident))
-      .filter((waypoint): waypoint is (typeof STARTER_WAYPOINTS)[number] => Boolean(waypoint));
-
-    clearRoute();
-    setRouteName('Gauteng training triangle');
-    sampleRoute.forEach((waypoint) => {
-      addRouteWaypoint({
-        ...waypoint,
-        id: `${waypoint.id}-sample-${Date.now()}`,
-      });
-    });
-    openPanel('route');
-    focusWaypointSet(sampleRoute, 42);
   };
 
   const focusRoute = () => {
@@ -285,7 +241,6 @@ export default function HaloAppShell({
   };
 
   const plannerOpen = sidebarOpen;
-  const showMissionStatusCard = !plannerOpen && !isDesktop;
   const showMapControls = !plannerOpen;
 
   return (
@@ -336,16 +291,6 @@ export default function HaloAppShell({
           </div>
         </div>
       </div>
-
-      {showMissionStatusCard && (
-        <MissionStatusCard
-          mission={mission}
-          activeMissionCount={activeSavedMissionCount}
-          onPrimaryAction={runPrimaryMissionAction}
-          onUseSampleRoute={useSampleRoute}
-          onOpenMissionLibrary={() => setMissionLibraryOpen(true)}
-        />
-      )}
 
       {showMapControls && (
         <MapToolsRail
@@ -445,78 +390,6 @@ export default function HaloAppShell({
         onArchiveMission={archiveMission}
       />
     </main>
-  );
-}
-
-function MissionStatusCard({
-  mission,
-  activeMissionCount,
-  onPrimaryAction,
-  onUseSampleRoute,
-  onOpenMissionLibrary,
-}: {
-  mission: ReturnType<typeof buildHaloMissionSummary>;
-  activeMissionCount: number;
-  onPrimaryAction: () => void;
-  onUseSampleRoute: () => void;
-  onOpenMissionLibrary: () => void;
-}) {
-  const StatusIcon = mission.status === 'ready'
-    ? CheckCircle2
-    : mission.status === 'stop'
-      ? ShieldAlert
-      : mission.status === 'review'
-        ? AlertTriangle
-        : Sparkles;
-
-  return (
-    <section className="pointer-events-none absolute left-3 right-3 top-24 z-20 sm:left-5 sm:right-auto sm:w-[min(23rem,calc(100vw-2.5rem))] lg:hidden">
-      <Card className="pointer-events-auto border-white/70 bg-white/90 p-0 shadow-[0_28px_90px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-        <CardContent className="space-y-3 p-3 sm:p-4">
-          <div className="flex items-start gap-3">
-            <div className={cn('rounded-2xl p-2.5 ring-1', getStatusIconClass(mission.status))}>
-              <StatusIcon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className={cn('border px-2 py-1 capitalize', getStatusBadgeClass(mission.status))}>
-                  {mission.status}
-                </Badge>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-700">
-                  Active mission
-                </span>
-              </div>
-              <h1 className="mt-2 text-lg font-semibold tracking-[-0.035em] text-slate-950">
-                {mission.title}
-              </h1>
-              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{mission.detail}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 text-xs">
-            <span className="font-semibold text-slate-700">Mission library</span>
-            <span className="font-semibold text-slate-950">
-              {activeMissionCount} saved draft{activeMissionCount === 1 ? '' : 's'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" onClick={onPrimaryAction} className="bg-slate-950 text-white hover:bg-slate-800">
-              <Navigation className="h-3.5 w-3.5" />
-              {mission.primaryAction}
-            </Button>
-            <Button type="button" variant="outline" onClick={onOpenMissionLibrary} className="border-slate-200 bg-white/70">
-              <FolderOpen className="h-3.5 w-3.5" />
-              Missions
-            </Button>
-            <Button type="button" variant="outline" onClick={onUseSampleRoute} className="col-span-2 border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100/80">
-              <Sparkles className="h-3.5 w-3.5" />
-              Use sample route
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </section>
   );
 }
 
@@ -914,17 +787,6 @@ function getStatusBadgeClass(status: HaloStatusTone): string {
     ready: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     review: 'border-amber-200 bg-amber-50 text-amber-900',
     stop: 'border-rose-200 bg-rose-50 text-rose-800',
-  };
-
-  return classes[status];
-}
-
-function getStatusIconClass(status: HaloStatusTone): string {
-  const classes: Record<HaloStatusTone, string> = {
-    idle: 'bg-cyan-50 text-cyan-900 ring-cyan-100',
-    ready: 'bg-emerald-50 text-emerald-800 ring-emerald-100',
-    review: 'bg-amber-50 text-amber-900 ring-amber-100',
-    stop: 'bg-rose-50 text-rose-800 ring-rose-100',
   };
 
   return classes[status];

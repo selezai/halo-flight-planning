@@ -1165,3 +1165,51 @@ Production deployment:
   - `/tmp/halo-prod-tab-scroll-desktop.png`
   - `/tmp/halo-prod-tab-scroll-mobile2.png`
 - Vercel runtime log stream attached to deployment `dpl_EvTAe59jKcdQJCUKcoRbsXTwixhW` and showed no runtime error entries during the observation window.
+
+## 2026-07-22 Mobile Map Overlay Follow-up
+
+Objective: address feedback that the phone viewport still showed a redundant Active Mission card and that the overlay blocked too much of the aviation map.
+
+Problem:
+
+- At phone width, the closed Planner state rendered the top brand bar, a large Active Mission card, and the bottom Planner navigation at the same time.
+- The Active Mission card duplicated the mission summary already available inside Planner and covered the primary map area, making the map feel unusable.
+
+Root cause:
+
+- `components/shell/HaloAppShell.tsx` rendered `MissionStatusCard` whenever `!plannerOpen && !isDesktop`.
+- A previous desktop-specific cleanup intentionally kept the card for mobile, but that conflicted with the locked map-first mobile design.
+
+Solution:
+
+- Removed the closed-state `MissionStatusCard` render path and component from `HaloAppShell`.
+- Removed the now-unused sample-route/primary-action overlay handlers and related imports.
+- Kept mission status/actions inside the Planner sheet and Mission Library dialog.
+- Kept the mobile bottom navigation as the entry point for Route, Wx, W&B, Brief, Admin, and Emergency.
+- Updated the unified Planner design note: closed phone state must be map-first and must not render a mission card over the map.
+
+Files modified:
+
+- `components/shell/HaloAppShell.tsx`
+- `docs/superpowers/plans/2026-07-21-unified-planner-mission-library.md`
+- `PROJECT_SESSION_LOG.md`
+
+Prevention:
+
+- Closed mobile state should be reviewed as a map-availability surface first.
+- Mission summaries may appear inside Planner/Missions, but not as a persistent phone overlay unless the user explicitly opens a planning surface.
+
+Verification so far:
+
+- `pnpm typecheck`: passed.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production phone browser smoke at 408 × 593:
+  - no `Active mission` copy present in the closed state;
+  - map region present;
+  - bottom Route/Wx/W&B/Brief/Admin/Emerg navigation present;
+  - no large mission-card overlay present;
+  - bottom navigation opened the Planner sheet;
+  - Planner sheet retained all six planning tabs and reported `scrollHeight 3090`, `clientHeight 592`.
+- Screenshot artifacts:
+  - `/tmp/halo-mobile-card-fix.png`
+  - `/tmp/halo-mobile-card-fix-planner.png`

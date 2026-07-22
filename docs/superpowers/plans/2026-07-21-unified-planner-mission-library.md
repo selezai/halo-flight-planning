@@ -100,15 +100,15 @@ Update account snapshot tests to prove mission library data is extracted and mer
 
 Top bar button text becomes `Planner`. Desktop floating fallback becomes `Open planner`.
 
-- [ ] **Step 2: Convert large map dashboard to compact closed-state status**
+- [ ] **Step 2: Keep closed mobile state map-first**
 
-Closed map state should show a compact `MissionStatusCard` with:
+Closed phone state should not show a mission card on top of the map. It should show only:
 
-- status;
-- title;
-- one-line detail;
-- primary action;
-- mission library action.
+- top brand/status bar;
+- bottom Route/Wx/W&B/Brief/Admin/Emerg navigation;
+- map controls where space allows.
+
+Mission detail, mission actions, and mission library controls belong inside the Planner sheet/dialog so the aviation map remains usable on phone.
 
 - [ ] **Step 3: Add Planner summary header**
 
