@@ -1733,3 +1733,71 @@ Verification:
   - `/api/account/snapshot` structured request logs completing with the expected signed-out HTTP 401 warning;
   - no runtime error entries during the observed requests.
 - No Playwright/E2E command was run.
+
+## 2026-07-22 OpenAIP Ground Rendering Deep Dive + Vector Basemap Correction
+
+Objective: correct the previous ground-map fix after user feedback that a blank/neutral ground layer until zoom 11 does not match how OpenAIP actually behaves. User requested no Halo visual inspection after the fix; manual visual acceptance remains user-owned.
+
+Research / evidence:
+
+- OpenAIP's public map page is a Svelte app that initializes `mapbox-gl` with `style: PUBLIC_MAPBOX_STYLE_DEFAULT_URI`.
+- OpenAIP's public constants identify the default style endpoint as `https://api.tiles.openaip.net/api/styles/openaip-default-style.json`.
+- The fetched OpenAIP default style is named `openaip-mono`, style spec version 8, with 176 layers.
+- OpenAIP does not render ground detail as one raster tile layer. Its style uses:
+  - `composite`: `mapbox://mapbox.mapbox-terrain-v2,mapbox.mapbox-streets-v8`;
+  - `mapbox-dem`;
+  - `openaip-data`;
+  - GeoJSON helper sources for selected/highlighted features.
+- The OpenAIP ground map is approximately 81 vector layers from the `composite` source, including `landcover`, `landuse`, `water`, `waterway`, `hillshade`, `contour`, `road`, `admin`, `natural_label`, `place_label`, and `poi_label`.
+- City/town/place labels are vector symbol layers, not raster text. OpenAIP gates settlement visibility with filters such as `filterrank` and zoom/rank expressions.
+
+Problem:
+
+- Halo's previous correction removed detailed ground raster at broad/medium zoom and replaced it with a neutral background. That reduced clutter, but it did not match OpenAIP's actual rendering model.
+- Halo also cannot directly use OpenAIP's original `mapbox://` composite source in MapLibre without a compatible Mapbox source/token path.
+
+Root cause:
+
+- Halo was treating the ground map as a single raster basemap.
+- OpenAIP's map is a layered vector composition where ground features and labels can be individually filtered/tuned beneath aviation layers.
+
+Solution:
+
+- Changed the default Halo ground provider back to `outdoor-v2`, but as a MapTiler vector style, not a raster tile layer.
+- The OpenAIP style route now fetches the MapTiler vector style JSON server-side and merges its vector sources/layers underneath OpenAIP aviation layers.
+- The converter still removes OpenAIP's Mapbox-only `composite` and `mapbox-dem` sources/layers because Halo runs MapLibre.
+- Ground layers are prefixed with `halo-ground-*` to avoid collisions.
+- Ground symbol layers keep text but remove unrelated MapTiler/Mapbox `icon-image` references so Halo's OpenAIP sprite sheet is not polluted with basemap POI icons.
+- Duplicate ground aerodrome labels are removed because OpenAIP aviation layers already provide aerodrome labels/icons.
+- Label density is tuned closer to OpenAIP:
+  - city labels start at zoom 8 and stop at zoom 15;
+  - town labels start at zoom 9 and stop at zoom 15;
+  - village labels start at zoom 10 and stop at zoom 15;
+  - local place/suburb labels start at zoom 11;
+  - road labels start at zoom 10;
+  - POI/outdoor POI labels start no earlier than zoom 14.
+- If the vector style cannot be fetched, Halo falls back to a full-zoom basic raster layer rather than a blank map.
+- Quoted MapTiler env values are normalized before provider URLs are built.
+
+Files modified:
+
+- `app/api/openaip/style/route.ts`
+- `lib/openaip/basemap.ts`
+- `lib/openaip/styleConverter.ts`
+- `tests/openaip/basemap.test.ts`
+- `tests/openaip/tilePath.test.ts`
+- `.env.local.example`
+- `README.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test tests/openaip/basemap.test.ts tests/openaip/tilePath.test.ts`: passed, 2 files / 11 tests.
+  - `pnpm typecheck`: passed.
+- Full checks:
+  - `pnpm test`: passed, 28 files / 119 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- No Playwright/E2E command was run.
+- No Halo browser/visual inspection was performed after the fix, per user request.

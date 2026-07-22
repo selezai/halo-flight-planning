@@ -3,7 +3,9 @@
  * Transforms OpenAIP's Mapbox GL style to work with MapLibre GL
  */
 
-interface StyleLayer {
+import type { RasterBaseMapOptions } from '@/lib/openaip/basemap';
+
+export interface StyleLayer {
   id: string;
   type: string;
   source?: string;
@@ -15,11 +17,17 @@ interface StyleLayer {
   maxzoom?: number;
 }
 
-interface MapStyle {
+export interface MapStyle {
   version: number;
   name?: string;
   sprite?: string;
   glyphs?: string;
+  metadata?: Record<string, unknown>;
+  sources: Record<string, unknown>;
+  layers: StyleLayer[];
+}
+
+export interface VectorBaseMapStyle {
   sources: Record<string, unknown>;
   layers: StyleLayer[];
 }
@@ -33,10 +41,8 @@ export function convertOpenAipStyle(
     spriteUrl: string;
     glyphsUrl: string;
     tilesProxyUrl: string;
-    baseTilesUrl: string;
-    baseAttribution: string;
-    baseTileSize: number;
-    baseDetailMinZoom?: number;
+    baseMapStyle?: VectorBaseMapStyle;
+    rasterBaseMap: RasterBaseMapOptions;
     backgroundColor?: string;
   }
 ): MapStyle {
@@ -48,26 +54,27 @@ export function convertOpenAipStyle(
   // 2. Replace glyphs URL (MapTiler or self-hosted)
   converted.glyphs = options.glyphsUrl;
 
-  // 3. Add a base map source
-  converted.sources['maptiler-base'] = {
-    type: 'raster',
-    tiles: [options.baseTilesUrl],
-    tileSize: options.baseTileSize,
-    attribution: options.baseAttribution,
-    maxzoom: 19
-  };
-
-  // 4. Rewrite source tile URLs to go through our proxy
+  // 3. Rewrite OpenAIP source tile URLs to go through our proxy and remove
+  // Mapbox-only sources. Halo uses a MapLibre-compatible vector basemap instead
+  // of OpenAIP's original mapbox:// composite source.
   converted.sources = rewriteSources(converted.sources, options.tilesProxyUrl);
 
-  // 5. Fix layers for MapLibre compatibility and filter out problematic ones
+  // 4. Add MapLibre-compatible base-map sources after rewriting the OpenAIP
+  // sources so MapTiler/OSM URLs are preserved.
+  converted.sources = {
+    ...buildBaseMapSources(options),
+    ...converted.sources,
+  };
+
+  // 5. Fix OpenAIP aviation layers for MapLibre compatibility and filter out
+  // Mapbox-only composite ground layers. Replacement vector ground layers are
+  // added below.
   converted.layers = converted.layers
     .filter(layer => !isProblematicLayer(layer, converted.sources))
     .map(fixLayer);
 
-  // 6. Add base map layer(s) at the beginning. Keep broad zooms quiet with a
-  // neutral Halo background and only reveal town/city context at close planning
-  // zooms.
+  // 6. Add vector base-map layer(s) at the beginning. This mirrors OpenAIP's
+  // real architecture: ground vector layers below OpenAIP aviation vectors.
   converted.layers = [
     ...buildBaseMapLayers(options),
     ...converted.layers,
@@ -76,22 +83,36 @@ export function convertOpenAipStyle(
   return converted;
 }
 
+function buildBaseMapSources(options: {
+  baseMapStyle?: VectorBaseMapStyle;
+  rasterBaseMap: RasterBaseMapOptions;
+}): Record<string, unknown> {
+  if (options.baseMapStyle) {
+    return JSON.parse(JSON.stringify(options.baseMapStyle.sources)) as Record<string, unknown>;
+  }
+
+  return {
+    'halo-raster-base': {
+      type: 'raster',
+      tiles: [options.rasterBaseMap.tilesUrl],
+      tileSize: options.rasterBaseMap.tileSize,
+      attribution: options.rasterBaseMap.attribution,
+      maxzoom: 19,
+    },
+  };
+}
+
 function buildBaseMapLayers(options: {
-  baseDetailMinZoom?: number;
+  baseMapStyle?: VectorBaseMapStyle;
+  rasterBaseMap: RasterBaseMapOptions;
   backgroundColor?: string;
 }): StyleLayer[] {
-  const detailMinZoom = options.baseDetailMinZoom ?? 0;
-
-  if (detailMinZoom <= 0) {
-    return [
-      {
-        id: 'maptiler-base',
-        type: 'raster',
-        source: 'maptiler-base',
-        minzoom: 0,
-        maxzoom: 22
-      },
-    ];
+  if (options.baseMapStyle) {
+    return options.baseMapStyle.layers
+      .filter(isUsableVectorBaseLayer)
+      .map(normalizeVectorBaseLayer)
+      .filter((layer): layer is StyleLayer => layer !== null)
+      .map(fixLayer);
   }
 
   return [
@@ -99,27 +120,120 @@ function buildBaseMapLayers(options: {
       id: 'halo-ground-background',
       type: 'background',
       minzoom: 0,
-      maxzoom: detailMinZoom,
       paint: {
         'background-color': options.backgroundColor ?? '#f3f0e8'
       }
     },
     {
-      id: 'maptiler-base',
+      id: 'halo-raster-base',
       type: 'raster',
-      source: 'maptiler-base',
-      minzoom: detailMinZoom,
+      source: 'halo-raster-base',
+      minzoom: 0,
       maxzoom: 22
     },
   ];
+}
+
+function isUsableVectorBaseLayer(layer: StyleLayer): boolean {
+  if (!['background', 'fill', 'hillshade', 'line', 'raster', 'symbol'].includes(layer.type)) {
+    return false;
+  }
+
+  const id = layer.id.toLowerCase();
+  const sourceLayer = layer['source-layer']?.toLowerCase();
+
+  // OpenAIP already supplies aerodrome symbols/labels. Keeping provider ground
+  // aerodrome labels creates duplicate airport names and non-OpenAIP icons.
+  if (sourceLayer === 'aerodrome_label' || id.includes('airport label')) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeVectorBaseLayer(layer: StyleLayer): StyleLayer | null {
+  const normalized: StyleLayer = JSON.parse(JSON.stringify(layer)) as StyleLayer;
+  normalized.id = `halo-ground-${layer.id}`;
+
+  if (normalized.type === 'background') {
+    normalized.paint = {
+      ...normalized.paint,
+      'background-color': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        11,
+        'hsl(35, 25%, 93%)',
+        13,
+        'hsl(35, 9%, 91%)',
+      ],
+    };
+  }
+
+  if (normalized.type === 'symbol') {
+    normalized.layout = {
+      ...normalized.layout,
+    };
+
+    // Halo serves OpenAIP sprites, not MapTiler/Mapbox POI sprites. Ground
+    // symbols keep their text labels but omit unrelated map POI icons.
+    delete normalized.layout['icon-image'];
+
+    tuneGroundLabelDensity(normalized, layer.id);
+  }
+
+  return normalized;
+}
+
+function tuneGroundLabelDensity(layer: StyleLayer, originalId: string): void {
+  const id = originalId.toLowerCase();
+  const sourceLayer = layer['source-layer']?.toLowerCase();
+
+  if (id.includes('city labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 8);
+    layer.maxzoom = Math.min(layer.maxzoom ?? 24, 15);
+    return;
+  }
+
+  if (id.includes('town labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 9);
+    layer.maxzoom = Math.min(layer.maxzoom ?? 24, 15);
+    return;
+  }
+
+  if (id.includes('village labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 10);
+    layer.maxzoom = Math.min(layer.maxzoom ?? 24, 15);
+    return;
+  }
+
+  if (id.includes('place labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 11);
+    return;
+  }
+
+  if (id.includes('road labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 10);
+    return;
+  }
+
+  if (id.includes('contour labels')) {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 12);
+    return;
+  }
+
+  if (sourceLayer === 'poi' || sourceLayer === 'outdoor_poi') {
+    layer.minzoom = Math.max(layer.minzoom ?? 0, 14);
+  }
 }
 
 /**
  * Check if a layer has known compatibility issues
  */
 function isProblematicLayer(layer: StyleLayer, sources: MapStyle['sources']): boolean {
-  // Remove Mapbox basemap/terrain layers. Halo provides its own raster basemap
-  // and keeps OpenAIP aviation data as the interactive vector overlay.
+  // Remove Mapbox basemap/terrain layers. Halo provides a MapLibre-compatible
+  // vector basemap and keeps OpenAIP aviation data as the interactive vector
+  // overlay.
   if (layer.type === 'background' || layer.source === 'composite' || layer.source === 'mapbox-dem') {
     return true;
   }

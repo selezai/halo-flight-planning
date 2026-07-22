@@ -107,9 +107,11 @@ describe('OpenAIP tile path handling', () => {
         spriteUrl: 'https://example.test/sprite',
         glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
         tilesProxyUrl: 'https://example.test/api/openaip/tiles',
-        baseTilesUrl: 'https://example.test/base/{z}/{x}/{y}.png',
-        baseAttribution: 'test',
-        baseTileSize: 256,
+        rasterBaseMap: {
+          tilesUrl: 'https://example.test/base/{z}/{x}/{y}.png',
+          attribution: 'test',
+          tileSize: 256,
+        },
       }
     );
 
@@ -158,7 +160,7 @@ describe('OpenAIP tile path handling', () => {
     ]);
   });
 
-  it('uses a neutral background before close planning zooms when configured', () => {
+  it('adds vector ground layers below OpenAIP aviation layers when configured', () => {
     const style = convertOpenAipStyle(
       {
         version: 8,
@@ -181,16 +183,147 @@ describe('OpenAIP tile path handling', () => {
         spriteUrl: 'https://example.test/sprite',
         glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
         tilesProxyUrl: 'https://example.test/api/openaip/tiles',
-        baseTilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
-        baseAttribution: 'test',
-        baseTileSize: 512,
-        baseDetailMinZoom: 11,
+        baseMapStyle: {
+          sources: {
+            maptiler_planet: {
+              type: 'vector',
+              url: 'https://example.test/maptiler/tiles.json',
+            },
+          },
+          layers: [
+            {
+              id: 'Background',
+              type: 'background',
+              paint: {
+                'background-color': '#ffffff',
+              },
+            },
+            {
+              id: 'City labels',
+              type: 'symbol',
+              source: 'maptiler_planet',
+              'source-layer': 'place',
+              minzoom: 5,
+              maxzoom: 16,
+              layout: {
+                'icon-image': 'circle-dot',
+                'text-field': '{name:en}',
+              },
+            },
+            {
+              id: 'Town labels',
+              type: 'symbol',
+              source: 'maptiler_planet',
+              'source-layer': 'place',
+              minzoom: 6,
+              maxzoom: 16,
+              layout: {
+                'icon-image': 'dot',
+                'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+              },
+            },
+            {
+              id: 'Airport labels',
+              type: 'symbol',
+              source: 'maptiler_planet',
+              'source-layer': 'aerodrome_label',
+              minzoom: 8,
+              layout: {
+                'text-field': '{name}',
+              },
+            },
+          ],
+        },
+        rasterBaseMap: {
+          tilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
+          attribution: 'test',
+          tileSize: 512,
+        },
         backgroundColor: '#f3f0e8',
       }
     );
 
-    expect(style.sources['maptiler-base-low-detail']).toBeUndefined();
-    expect((style.sources['maptiler-base'] as { tiles: string[] }).tiles).toEqual([
+    expect(style.sources['halo-raster-base']).toBeUndefined();
+    expect(style.sources.maptiler_planet).toEqual({
+      type: 'vector',
+      url: 'https://example.test/maptiler/tiles.json',
+    });
+    expect(style.layers.slice(0, 3)).toEqual([
+      {
+        id: 'halo-ground-Background',
+        type: 'background',
+        paint: {
+          'background-color': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            11,
+            'hsl(35, 25%, 93%)',
+            13,
+            'hsl(35, 9%, 91%)',
+          ],
+        },
+      },
+      {
+        id: 'halo-ground-City labels',
+        type: 'symbol',
+        source: 'maptiler_planet',
+        'source-layer': 'place',
+        minzoom: 8,
+        maxzoom: 15,
+        layout: {
+          'text-field': ['coalesce', ['to-string', ['get', 'name:en']], ''],
+        },
+      },
+      {
+        id: 'halo-ground-Town labels',
+        type: 'symbol',
+        source: 'maptiler_planet',
+        'source-layer': 'place',
+        minzoom: 9,
+        maxzoom: 15,
+        layout: {
+          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+        },
+      },
+    ]);
+    expect(style.layers.some((layer) => layer.id === 'halo-ground-Airport labels')).toBe(false);
+    expect(style.layers[3]?.id).toBe('airport_with_code');
+  });
+
+  it('falls back to a full-zoom raster base only when no vector basemap style is available', () => {
+    const style = convertOpenAipStyle(
+      {
+        version: 8,
+        sources: {
+          'openaip-data': {
+            type: 'vector',
+            url: 'https://api.tiles.openaip.net/api/data/openaip.json',
+          },
+        },
+        layers: [
+          {
+            id: 'airport_with_code',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'airports',
+          },
+        ],
+      },
+      {
+        spriteUrl: 'https://example.test/sprite',
+        glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
+        tilesProxyUrl: 'https://example.test/api/openaip/tiles',
+        rasterBaseMap: {
+          tilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
+          attribution: 'test',
+          tileSize: 512,
+        },
+        backgroundColor: '#f3f0e8',
+      }
+    );
+
+    expect((style.sources['halo-raster-base'] as { tiles: string[] }).tiles).toEqual([
       'https://example.test/basic/{z}/{x}/{y}.png',
     ]);
     expect(style.layers.slice(0, 2)).toEqual([
@@ -198,16 +331,15 @@ describe('OpenAIP tile path handling', () => {
         id: 'halo-ground-background',
         type: 'background',
         minzoom: 0,
-        maxzoom: 11,
         paint: {
           'background-color': '#f3f0e8',
         },
       },
       {
-        id: 'maptiler-base',
+        id: 'halo-raster-base',
         type: 'raster',
-        source: 'maptiler-base',
-        minzoom: 11,
+        source: 'halo-raster-base',
+        minzoom: 0,
         maxzoom: 22,
       },
     ]);

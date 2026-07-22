@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBaseMapOptions } from '@/lib/openaip/basemap';
+import type { BaseMapOptions } from '@/lib/openaip/basemap';
 import { convertOpenAipStyle, validateStyle } from '@/lib/openaip/styleConverter';
+import type { MapStyle, VectorBaseMapStyle } from '@/lib/openaip/styleConverter';
 import { withApiLogging } from '@/lib/observability/api';
 
 const OPENAIP_STYLE_URL = 'https://api.tiles.openaip.net/api/styles/openaip-default-style.json';
@@ -12,9 +14,13 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
   const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
   const MAPTILER_BASE_STYLE = process.env.NEXT_PUBLIC_MAPTILER_BASE_STYLE;
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const baseOptions = getBaseMapOptions({
+    maptilerKey: MAPTILER_KEY,
+    maptilerStyleId: MAPTILER_BASE_STYLE,
+  });
 
   if (!OPENAIP_API_KEY) {
-    return NextResponse.json(createFallbackStyle(), {
+    return NextResponse.json(await createFallbackStyle(baseOptions), {
       headers: {
         'Cache-Control': 'public, max-age=300',
         'Content-Type': 'application/json',
@@ -33,7 +39,7 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
 
     if (!response.ok) {
       console.error('Failed to fetch OpenAIP style:', response.status, response.statusText);
-      return NextResponse.json(createFallbackStyle(), {
+      return NextResponse.json(await createFallbackStyle(baseOptions), {
         headers: {
           'Cache-Control': 'public, max-age=300',
           'Content-Type': 'application/json',
@@ -42,17 +48,28 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
     }
 
     const originalStyle = await response.json();
+    const baseMapStyle = await fetchBaseMapStyle(baseOptions);
 
     // Convert style for MapLibre compatibility
     const convertedStyle = convertOpenAipStyle(originalStyle, {
       spriteUrl: `${baseUrl}/api/openaip/sprites/openaip`,
       glyphsUrl: getGlyphsUrl(MAPTILER_KEY),
       tilesProxyUrl: `${baseUrl}/api/openaip/tiles`,
-      ...getBaseMapOptions({
-        maptilerKey: MAPTILER_KEY,
-        maptilerStyleId: MAPTILER_BASE_STYLE,
-      }),
+      baseMapStyle,
+      rasterBaseMap: baseOptions.rasterFallback,
+      backgroundColor: baseOptions.backgroundColor,
     });
+
+    convertedStyle.metadata = {
+      ...(typeof convertedStyle.metadata === 'object' && convertedStyle.metadata !== null
+        ? convertedStyle.metadata
+        : {}),
+      haloBaseMap: {
+        source: baseOptions.baseSource,
+        style: baseOptions.baseStyleId,
+        mode: baseMapStyle ? 'vector-style' : 'raster-fallback',
+      },
+    };
 
     // Validate converted style
     const validation = validateStyle(convertedStyle);
@@ -69,7 +86,7 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
     });
   } catch (error) {
     console.error('Error processing OpenAIP style:', error);
-    return NextResponse.json(createFallbackStyle(), {
+    return NextResponse.json(await createFallbackStyle(baseOptions), {
       headers: {
         'Cache-Control': 'public, max-age=300',
         'Content-Type': 'application/json',
@@ -86,63 +103,68 @@ function getGlyphsUrl(maptilerKey?: string) {
   return 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 }
 
-function createFallbackStyle() {
-  const baseOptions = getBaseMapOptions({
-    maptilerKey: process.env.NEXT_PUBLIC_MAPTILER_KEY,
-    maptilerStyleId: process.env.NEXT_PUBLIC_MAPTILER_BASE_STYLE,
-  });
+async function fetchBaseMapStyle(baseOptions: BaseMapOptions): Promise<VectorBaseMapStyle | undefined> {
+  if (!baseOptions.baseStyleUrl) {
+    return undefined;
+  }
+
+  try {
+    const response = await fetch(baseOptions.baseStyleUrl, {
+      next: { revalidate: 3600 },
+    });
+
+    if (!response.ok) {
+      console.warn('Failed to fetch vector basemap style:', response.status, response.statusText);
+      return undefined;
+    }
+
+    const style = (await response.json()) as Partial<MapStyle>;
+
+    if (!style.sources || !Array.isArray(style.layers)) {
+      console.warn('Vector basemap style response was missing sources or layers.');
+      return undefined;
+    }
+
+    return {
+      sources: style.sources,
+      layers: style.layers,
+    };
+  } catch (error) {
+    console.warn('Error fetching vector basemap style:', error);
+    return undefined;
+  }
+}
+
+async function createFallbackStyle(baseOptions: BaseMapOptions) {
+  const baseMapStyle = await fetchBaseMapStyle(baseOptions);
+  const style = convertOpenAipStyle(
+    {
+      version: 8,
+      sources: {},
+      layers: [],
+    },
+    {
+      spriteUrl: '/api/openaip/sprites/openaip',
+      glyphsUrl: getGlyphsUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY),
+      tilesProxyUrl: '/api/openaip/tiles',
+      baseMapStyle,
+      rasterBaseMap: baseOptions.rasterFallback,
+      backgroundColor: baseOptions.backgroundColor,
+    }
+  );
+
+  style.name = 'Halo fallback planning map';
+  style.metadata = {
+    haloDegraded: true,
+    reason: 'OpenAIP is not configured or unavailable. Planning tools remain available.',
+    haloBaseMap: {
+      source: baseOptions.baseSource,
+      style: baseOptions.baseStyleId,
+      mode: baseMapStyle ? 'vector-style' : 'raster-fallback',
+    },
+  };
 
   return {
-    version: 8,
-    name: 'Halo fallback planning map',
-    metadata: {
-      haloDegraded: true,
-      reason: 'OpenAIP is not configured or unavailable. Planning tools remain available.',
-      haloBaseMap: {
-        source: baseOptions.baseSource,
-        style: baseOptions.baseStyleId,
-        detailMinZoom: baseOptions.baseDetailMinZoom,
-      },
-    },
-    glyphs: getGlyphsUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY),
-    sources: {
-      'maptiler-base': {
-        type: 'raster',
-        tiles: [baseOptions.baseTilesUrl],
-        tileSize: baseOptions.baseTileSize,
-        attribution: baseOptions.baseAttribution,
-        maxzoom: 19,
-      },
-    },
-    layers: [
-      ...(baseOptions.baseDetailMinZoom
-        ? [
-            {
-              id: 'halo-ground-background',
-              type: 'background',
-              minzoom: 0,
-              maxzoom: baseOptions.baseDetailMinZoom,
-              paint: {
-                'background-color': baseOptions.backgroundColor ?? '#f3f0e8',
-              },
-            },
-            {
-              id: 'maptiler-base',
-              type: 'raster',
-              source: 'maptiler-base',
-              minzoom: baseOptions.baseDetailMinZoom,
-              maxzoom: 22,
-            },
-          ]
-        : [
-            {
-              id: 'maptiler-base',
-              type: 'raster',
-              source: 'maptiler-base',
-              minzoom: 0,
-              maxzoom: 22,
-            },
-          ]),
-    ],
+    ...style,
   };
 }
