@@ -249,15 +249,17 @@ function PlannerPanelNavigation({
             type="button"
             onClick={() => onSelectPanel(id)}
             className={cn(
-              'flex flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold transition',
-              bottomPlacement ? 'min-h-12' : 'min-h-14',
+              'flex flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none transition',
+              bottomPlacement ? 'h-12' : 'h-14',
               activePanel === id
-                ? 'bg-slate-950 text-white shadow-md shadow-slate-900/20'
+                ? cn('bg-slate-950 text-white', !bottomPlacement && 'shadow-md shadow-slate-900/20')
                 : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
             )}
           >
-            <Icon className="h-4 w-4" />
-            {shortLabel}
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="block h-3 leading-3">{shortLabel}</span>
           </button>
         ))}
       </div>

@@ -1397,3 +1397,53 @@ Production deployment:
   - `/tmp/halo-summary-scope-prod.png`
   - `/tmp/halo-narrow-summary-prod.png`
 - Vercel runtime log stream attached to deployment `dpl_8mQBtTTBGzYKNJCTYdcVqWjvT5Fz` and showed no runtime error entries during the observation window.
+
+## 2026-07-22 Mobile Wx Tab Alignment Follow-up
+
+Objective: address feedback that the Wx tab looked lower than the other Planner tabs when selected.
+
+Problem:
+
+- The bottom Planner tabs had the same measured outer height, but the Wx active state could visually read as lower/uneven because the button internals were not hard-locked and the active bottom-sheet state used a vertical drop shadow.
+
+Root cause:
+
+- `PlannerPanelNavigation` and the closed map `MobileNavigation` used `min-h-12` plus direct icon/text children.
+- Active Planner tabs added a `shadow-md` below the selected button, which created a visual lower-edge difference in the bottom sheet even though measured geometry stayed stable.
+
+Solution:
+
+- Changed mobile tab buttons from `min-h-12` to fixed `h-12`.
+- Added fixed icon and label slots inside each tab button.
+- Added `leading-none` and `overflow-hidden` to remove text/icon baseline variance.
+- Removed the active-state drop shadow for bottom-sheet Planner tabs while keeping the black active fill.
+- Kept desktop top Planner tab shadow behavior unchanged.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Production pre-fix measurement at 579 × 593 and 335 × 593 showed all buttons had stable outer geometry, confirming this was a visual/internal alignment issue rather than nav movement.
+- Local production phone smoke at 335 × 593 after the fix:
+  - Route, Wx, and W&B active states all measured button `top 526`, `bottom 574`, `height 48`;
+  - every tab measured icon slot `top 534` and label slot `top 554`;
+  - active Wx used the same fixed slots as inactive tabs.
+- Local production phone smoke at 579 × 593 after the fix:
+  - nav stayed at `top 510`, `bottom 593`;
+  - all six tab buttons measured `top 526`, `bottom 574`, `height 48`;
+  - all six icon slots measured `top 534`;
+  - all six label slots measured `top 554`.
+- Screenshot artifacts:
+  - `/tmp/halo-wx-tab-jitter-prod.png`
+  - `/tmp/halo-wx-tab-jitter-335-prod.png`
+  - `/tmp/halo-wx-tab-normalized-local-335.png`
+  - `/tmp/halo-wx-tab-normalized-local-579.png`
+- No Playwright/E2E command was run.

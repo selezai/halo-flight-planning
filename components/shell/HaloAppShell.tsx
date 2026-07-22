@@ -750,10 +750,12 @@ function MobileNavigation({
             key={id}
             type="button"
             onClick={() => onOpenPanel(id)}
-            className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="flex h-12 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            <Icon className="h-4 w-4" />
-            {shortLabel}
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="block h-3 leading-3">{shortLabel}</span>
           </button>
         ))}
       </div>
