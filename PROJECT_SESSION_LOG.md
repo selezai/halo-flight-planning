@@ -1870,4 +1870,25 @@ Verification:
   - Opened a cache-busted URL in production mode and checked text output only;
   - the previous `Map degraded` / `Expected 2 arguments` text was absent;
   - MapLibre attribution text was present.
+- Production deployment:
+  - Commit: `c590aa0`
+  - Deployment URL: https://halo-flight-planning-3yuz1oq68-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_GceB58etzBjCSCywoQkAAjbELCg4`
+- Production API smoke:
+  - `/api/openaip/style` returned HTTP 200 with `Cache-Control: no-store`;
+  - `metadata.haloBaseMap.source = maptiler-vector`;
+  - `metadata.haloBaseMap.style = outdoor-v2`;
+  - `metadata.haloBaseMap.mode = vector-style`;
+  - 113 `halo-ground-*` vector ground layers were present;
+  - no `halo-raster-base` source was present;
+  - layer `106` was converted to a valid two-argument MapLibre `in` expression wrapped by `!`;
+  - no legacy suspicious generated filters remained in the production style JSON.
+- Production browser diagnostic smoke:
+  - Opened a cache-busted production URL and checked text output only;
+  - the previous `Map degraded` / `Expected 2 arguments` text was absent;
+  - MapLibre attribution text was present.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200;
+  - no runtime error entries appeared during the observed style request.
 - No Playwright/E2E command was run.
