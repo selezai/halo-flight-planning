@@ -614,18 +614,24 @@ function fixFilter(filter: unknown[]): unknown[] {
 
   const [operator, ...args] = filter;
 
-  // Fix ["in", "$type", "Point"] -> ["==", ["geometry-type"], "Point"]
-  if (operator === 'in' && args[0] === '$type') {
-    if (args.length === 2) {
-      return ['==', ['geometry-type'], args[1]];
-    }
-    // Multiple types: ["in", "$type", "Point", "LineString"]
-    return ['any', ...args.slice(1).map(type => ['==', ['geometry-type'], type])];
+  // Convert legacy Mapbox filters into MapLibre expression filters. MapTiler's
+  // vector styles still contain filters such as ["!in", "class", ...values]
+  // and ["in", "nth_line", 5, 10]. MapLibre's expression-form "in" accepts
+  // two arguments only: needle and haystack.
+  if (operator === 'in' && typeof args[0] === 'string') {
+    return buildLegacyInFilter(args[0], args.slice(1));
   }
 
-  // Fix ["==", "$type", "Point"] -> ["==", ["geometry-type"], "Point"]
-  if ((operator === '==' || operator === '!=') && args[0] === '$type') {
-    return [operator, ['geometry-type'], args[1]];
+  if (operator === '!in' && typeof args[0] === 'string') {
+    return ['!', buildLegacyInFilter(args[0], args.slice(1))];
+  }
+
+  if (operator === '!has' && typeof args[0] === 'string') {
+    return ['!', ['has', args[0]]];
+  }
+
+  if (isLegacyComparisonOperator(operator) && typeof args[0] === 'string') {
+    return [operator, getLegacyPropertyExpression(args[0]), args[1]];
   }
 
   // Fix ["has", "property"] - already valid, but ensure it's correct
@@ -635,18 +641,52 @@ function fixFilter(filter: unknown[]): unknown[] {
   }
 
   // Recursively fix nested filters (all, any, none)
-  if (['all', 'any', 'none'].includes(operator as string)) {
+  if (['all', 'any'].includes(operator as string)) {
     return [operator, ...args.map(arg => 
       Array.isArray(arg) ? fixFilter(arg) : arg
     )];
   }
 
-  // Fix legacy ["!in", ...] -> ["!", ["in", ...]]
-  if (operator === '!in') {
-    return ['!', ['in', ...args]];
+  if (operator === 'none') {
+    return [
+      '!',
+      [
+        'any',
+        ...args.map(arg => (Array.isArray(arg) ? fixFilter(arg) : arg)),
+      ],
+    ];
   }
 
   return filter;
+}
+
+function buildLegacyInFilter(property: string, values: unknown[]): unknown[] {
+  const propertyExpression = getLegacyPropertyExpression(property);
+  const normalizedValues = values.length === 1 && Array.isArray(values[0])
+    ? values[0]
+    : values;
+
+  if (normalizedValues.length === 1) {
+    return ['==', propertyExpression, normalizedValues[0]];
+  }
+
+  return ['in', propertyExpression, ['literal', normalizedValues]];
+}
+
+function getLegacyPropertyExpression(property: string): unknown[] {
+  if (property === '$type') {
+    return ['geometry-type'];
+  }
+
+  if (property === '$id') {
+    return ['id'];
+  }
+
+  return ['get', property];
+}
+
+function isLegacyComparisonOperator(operator: unknown): operator is '==' | '!=' | '>' | '>=' | '<' | '<=' {
+  return ['==', '!=', '>', '>=', '<', '<='].includes(operator as string);
 }
 
 /**

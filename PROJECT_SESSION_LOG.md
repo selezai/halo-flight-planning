@@ -1815,3 +1815,59 @@ Verification:
 - Vercel runtime log scan attached to deployment `dpl_2uR3mNiCjhoz3brC37AKgwH5SJxm` showed `/api/openaip/style` completing with HTTP 200 and no runtime error entries during the observed request.
 - No Playwright/E2E command was run.
 - No Halo browser/visual inspection was performed after the fix, per user request.
+
+## 2026-07-22 Vector Basemap Incident Fix
+
+Objective: fix the production map degradation introduced by the vector-basemap deployment and keep production usable while correcting the root cause.
+
+Problem:
+
+- Production showed Halo's degraded grid/fallback state instead of the aviation map.
+- The browser-visible MapLibre error was: `layers[106].filter[1]: Expected 2 arguments, but found 18 instead.`
+- Layer `106` was a MapTiler vector ground label layer merged below OpenAIP aviation layers.
+
+Immediate mitigation:
+
+- Promoted the last known working Vercel deployment before continuing local fixes, so the production alias was not left on the broken vector-basemap deployment.
+- Promoted deployment: `dpl_7acKpCQPo31kJtc5v29Uxxdd4AtF`.
+
+Root cause:
+
+- MapTiler's vector style uses legacy Mapbox filter syntax such as `["!in", "class", ...values]`.
+- Halo's first converter path changed `!in` into `["!", ["in", ...args]]`, but MapLibre's expression-form `in` accepts exactly two arguments after the operator.
+- This produced invalid generated style JSON, so MapLibre rejected the style and Halo fell back to the degraded planning grid.
+- The `/api/openaip/style` response was also browser/cacheable for up to one hour, which could let an already-broken generated style linger after a deploy.
+
+Solution:
+
+- Converted legacy `in`, `!in`, comparison, and `!has` filters into MapLibre expression filters.
+- Converted `$type` and `$id` legacy property selectors to MapLibre-compatible expressions.
+- Normalized single-value and array-style legacy `in` filters.
+- Changed `/api/openaip/style` responses to `Cache-Control: no-store` because the route generates a runtime-converted style from current server configuration.
+- Added unit coverage for the exact failure shape from the MapTiler ground style.
+
+Files modified:
+
+- `app/api/openaip/style/route.ts`
+- `lib/openaip/styleConverter.ts`
+- `tests/openaip/tilePath.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test tests/openaip/basemap.test.ts tests/openaip/tilePath.test.ts`: passed, 2 files / 12 tests.
+- Full approved checks:
+  - `pnpm test`: passed, 28 files / 120 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Local production API smoke:
+  - `/api/openaip/style` returned `Cache-Control: no-store`;
+  - layer `106` was converted to `["!", ["in", ["get", "class"], ["literal", [...]]]]`;
+  - no legacy suspicious generated filters remained in the local style JSON.
+- Local production browser diagnostic smoke:
+  - Opened a cache-busted URL in production mode and checked text output only;
+  - the previous `Map degraded` / `Expected 2 arguments` text was absent;
+  - MapLibre attribution text was present.
+- No Playwright/E2E command was run.

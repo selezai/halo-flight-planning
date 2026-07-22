@@ -6,6 +6,10 @@ import type { MapStyle, VectorBaseMapStyle } from '@/lib/openaip/styleConverter'
 import { withApiLogging } from '@/lib/observability/api';
 
 const OPENAIP_STYLE_URL = 'https://api.tiles.openaip.net/api/styles/openaip-default-style.json';
+const STYLE_RESPONSE_HEADERS = {
+  'Cache-Control': 'no-store',
+  'Content-Type': 'application/json',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -21,10 +25,7 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
 
   if (!OPENAIP_API_KEY) {
     return NextResponse.json(await createFallbackStyle(baseOptions), {
-      headers: {
-        'Cache-Control': 'public, max-age=300',
-        'Content-Type': 'application/json',
-      },
+      headers: STYLE_RESPONSE_HEADERS,
     });
   }
 
@@ -40,10 +41,7 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
     if (!response.ok) {
       console.error('Failed to fetch OpenAIP style:', response.status, response.statusText);
       return NextResponse.json(await createFallbackStyle(baseOptions), {
-        headers: {
-          'Cache-Control': 'public, max-age=300',
-          'Content-Type': 'application/json',
-        },
+        headers: STYLE_RESPONSE_HEADERS,
       });
     }
 
@@ -79,18 +77,12 @@ export const GET = withApiLogging('/api/openaip/style', async (request: NextRequ
 
     // Return converted style
     return NextResponse.json(convertedStyle, {
-      headers: {
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-        'Content-Type': 'application/json',
-      },
+      headers: STYLE_RESPONSE_HEADERS,
     });
   } catch (error) {
     console.error('Error processing OpenAIP style:', error);
     return NextResponse.json(await createFallbackStyle(baseOptions), {
-      headers: {
-        'Cache-Control': 'public, max-age=300',
-        'Content-Type': 'application/json',
-      },
+      headers: STYLE_RESPONSE_HEADERS,
     });
   }
 });

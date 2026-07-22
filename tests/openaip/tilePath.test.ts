@@ -291,6 +291,83 @@ describe('OpenAIP tile path handling', () => {
     expect(style.layers[3]?.id).toBe('airport_with_code');
   });
 
+  it('converts legacy vector basemap filters into MapLibre expression filters', () => {
+    const style = convertOpenAipStyle(
+      {
+        version: 8,
+        sources: {
+          'openaip-data': {
+            type: 'vector',
+            url: 'https://api.tiles.openaip.net/api/data/openaip.json',
+          },
+        },
+        layers: [
+          {
+            id: 'airport_with_code',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'airports',
+          },
+        ],
+      },
+      {
+        spriteUrl: 'https://example.test/sprite',
+        glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
+        tilesProxyUrl: 'https://example.test/api/openaip/tiles',
+        baseMapStyle: {
+          sources: {
+            maptiler_planet: {
+              type: 'vector',
+              url: 'https://example.test/maptiler/tiles.json',
+            },
+          },
+          layers: [
+            {
+              id: 'Road minor',
+              type: 'line',
+              source: 'maptiler_planet',
+              'source-layer': 'transportation',
+              filter: [
+                'all',
+                ['!=', 'brunnel', 'tunnel'],
+                ['!in', 'class', 'aerialway', 'bridge', 'ferry', 'motorway'],
+                ['in', 'nth_line', 5, 10],
+                ['!has', 'glacier'],
+                ['==', '$type', 'LineString'],
+              ],
+            },
+            {
+              id: 'Single class',
+              type: 'fill',
+              source: 'maptiler_planet',
+              'source-layer': 'landcover',
+              filter: ['in', 'class', ['sand']],
+            },
+          ],
+        },
+        rasterBaseMap: {
+          tilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
+          attribution: 'test',
+          tileSize: 512,
+        },
+      }
+    );
+
+    expect(style.layers.find((layer) => layer.id === 'halo-ground-Road minor')?.filter).toEqual([
+      'all',
+      ['!=', ['get', 'brunnel'], 'tunnel'],
+      ['!', ['in', ['get', 'class'], ['literal', ['aerialway', 'bridge', 'ferry', 'motorway']]]],
+      ['in', ['get', 'nth_line'], ['literal', [5, 10]]],
+      ['!', ['has', 'glacier']],
+      ['==', ['geometry-type'], 'LineString'],
+    ]);
+    expect(style.layers.find((layer) => layer.id === 'halo-ground-Single class')?.filter).toEqual([
+      '==',
+      ['get', 'class'],
+      'sand',
+    ]);
+  });
+
   it('falls back to a full-zoom raster base only when no vector basemap style is available', () => {
     const style = convertOpenAipStyle(
       {
