@@ -1951,17 +1951,17 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Production deployment:
-  - Commit: `725c9b5`
-  - Deployment URL: https://halo-flight-planning-niy67jo9c-pilotmerch-gmailcoms-projects.vercel.app
+  - Commit: `8eb17f8`
+  - Deployment URL: https://halo-flight-planning-aycxd1y09-pilotmerch-gmailcoms-projects.vercel.app
   - Production alias: https://halo-flight-planning.vercel.app
-  - Deployment ID: `dpl_XSkVH1nZEipgYDcHCnPNdGcrEdYA`
+  - Deployment ID: `dpl_AsL17pnwq5n48BLZWpHotDbhveHX`
 - Production smoke:
   - `/` returned HTTP 200 from the production alias.
   - `/api/openaip/style` returned HTTP 200 with `Cache-Control: no-store`.
   - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
   - `/api/openaip/style` returned 207 total style layers.
 - Vercel runtime log scan:
-  - `/api/openaip/style` structured request logs completed with HTTP 200 in 107 ms.
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 116 ms.
   - No runtime error entries appeared during the observed request.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
