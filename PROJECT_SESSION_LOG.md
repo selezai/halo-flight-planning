@@ -1199,9 +1199,11 @@ Prevention:
 - Closed mobile state should be reviewed as a map-availability surface first.
 - Mission summaries may appear inside Planner/Missions, but not as a persistent phone overlay unless the user explicitly opens a planning surface.
 
-Verification so far:
+Verification:
 
+- `pnpm test`: passed, 27 files / 112 tests.
 - `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Local production phone browser smoke at 408 × 593:
   - no `Active mission` copy present in the closed state;
@@ -1213,3 +1215,32 @@ Verification so far:
 - Screenshot artifacts:
   - `/tmp/halo-mobile-card-fix.png`
   - `/tmp/halo-mobile-card-fix-planner.png`
+- No Playwright/E2E command was run.
+
+Production deployment:
+
+- Committed and pushed the mobile overlay fix:
+  - Commit: `9666ac5` (`Remove mobile mission card overlay`)
+  - Branch: `agent/complete-halo-flight-planner-20260719`
+- Vercel production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-mc0bjnrnn-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_wM2ttxsTYCtUQgm159BQktfV6co1`
+- Production phone browser smoke at 408 × 593 on `https://halo-flight-planning.vercel.app/#8.86/-26.1387/28.1843`:
+  - no `Active mission` copy present in the closed state;
+  - no `Plan a new mission` closed-state heading present over the map;
+  - no large mission/status text overlay detected;
+  - bottom Route/Wx/W&B/Brief/Admin/Emerg navigation present;
+  - bottom navigation opened the Planner sheet;
+  - W&B tab activated and W&B/POH content appeared;
+  - Planner sheet reported `scrollHeight 2202`, `clientHeight 592`, and successful scroll to `scrollTop 220`.
+- Production API smoke:
+  - home page returned HTTP 200;
+  - `/api/openaip/style` returned style version 8, 96 layers, and 5 sources;
+  - `/api/notams/route` returned HTTP 200 with `source=south-africa-official`, `status=manual-required`, and locations `FAOR`, `FALA` when called with valid airport waypoint types;
+  - `/api/account/snapshot` returned HTTP 401 for a signed-out request.
+- Note: an initial NOTAM smoke call returned HTTP 400 because the ad-hoc request omitted required waypoint `type` values; route schema inspection confirmed this was an invalid smoke payload, not a production regression.
+- Production screenshot artifacts:
+  - `/tmp/halo-prod-mobile-card-fix.png`
+  - `/tmp/halo-prod-mobile-card-fix-wb.png`
+- Vercel runtime log stream attached to deployment `dpl_wM2ttxsTYCtUQgm159BQktfV6co1` and showed no runtime error entries during the observation window.
