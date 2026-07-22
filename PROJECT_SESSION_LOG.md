@@ -1478,3 +1478,61 @@ Production deployment:
   - `/tmp/halo-wx-tab-normalized-prod-335.png`
   - `/tmp/halo-wx-tab-normalized-prod-579.png`
 - Vercel runtime log stream attached to deployment `dpl_FFLUozYGr62vXvNpDNDfd9BkRVkb` and showed no runtime error entries during the observation window.
+
+## 2026-07-22 Route / Brief Scanability and Mobile Tab Geometry Follow-up
+
+Objective: address pilot-facing UX feedback that the Route and Brief panels felt like information overload, that destructive route actions were mixed into the main route flow, and that the Wx tab still appeared to sit lower than the other bottom tabs.
+
+Problem:
+
+- Route and Brief presented too many controls and review outputs at the same visual hierarchy.
+- The Route panel placed `Clear route` immediately after the navigation log, which made a destructive action feel like part of normal route review.
+- The Brief panel exposed raw briefing text directly inside the main tab, making the tab hard to scan on phone screens.
+- The mobile nav buttons already measured similarly, but their internal layout still relied on flex centering and icon/text line boxes that could visually read unevenly.
+
+Root cause:
+
+- The panels lacked explicit workflow grouping. Build/edit controls, operational review, training content, and export actions were stacked together.
+- Destructive route management had no separated “actions” zone.
+- Raw briefing content was visually dominant instead of secondary.
+- The tab buttons did not use fixed internal grid rows for icon and label slots.
+
+Solution:
+
+- Added reusable `PanelGroupHeader` sections for lightweight cockpit-style categorization.
+- Reorganized Route into:
+  - `Build / Route builder`;
+  - `Review / Pilot scan`;
+  - `Sequence / Waypoints and map`;
+  - a separate `Route actions` block for `Clear route`.
+- Combined manual coordinate entry into the Add Waypoint block so waypoint creation is grouped in one place.
+- Reorganized Brief into:
+  - `Decision / Pilot digest`;
+  - `Setup / Dispatch details`;
+  - `Reviews / Operational checks`;
+  - `Training / Checkride navlog`;
+  - `Export / Briefing package`.
+- Moved raw briefing text behind a collapsed `Show raw briefing text` disclosure while keeping Print, Text, Backup Pack, and Copy actions immediately reachable.
+- Converted bottom planner tab buttons in both map view and planner-sheet view to fixed CSS grid rows for icon and label slots.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 27 files / 112 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production phone smoke at 579 × 593:
+  - Route panel exposed section headings `Route builder`, `Pilot scan`, and `Waypoints and map`;
+  - Brief panel exposed section headings `Pilot digest`, `Dispatch details`, `Operational checks`, `Checkride navlog`, and `Briefing package`;
+  - raw briefing text was collapsed behind `Show raw briefing text`;
+  - all six planner buttons measured `top 526`, `bottom 574`, `height 48`.
+- Local production phone smoke at 335 × 593:
+  - Route summary cards stacked cleanly without horizontal clipping;
+  - all six planner buttons measured `top 526`, `bottom 574`, `height 48`.
+- No Playwright/E2E command was run.

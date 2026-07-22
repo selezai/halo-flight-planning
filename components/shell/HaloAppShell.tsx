@@ -750,12 +750,12 @@ function MobileNavigation({
             key={id}
             type="button"
             onClick={() => onOpenPanel(id)}
-            className="flex h-12 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-12 min-h-[3rem] max-h-12 box-border grid-rows-[1rem_0.75rem] place-items-center content-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-              <Icon className="h-4 w-4" aria-hidden="true" />
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center leading-none">
+              <Icon className="block h-4 w-4 shrink-0" aria-hidden="true" />
             </span>
-            <span className="block h-3 leading-3">{shortLabel}</span>
+            <span className="block h-3 overflow-hidden leading-3">{shortLabel}</span>
           </button>
         ))}
       </div>

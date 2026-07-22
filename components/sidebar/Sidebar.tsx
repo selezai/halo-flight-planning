@@ -249,17 +249,17 @@ function PlannerPanelNavigation({
             type="button"
             onClick={() => onSelectPanel(id)}
             className={cn(
-              'flex flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none transition',
-              bottomPlacement ? 'h-12' : 'h-14',
+              'grid box-border min-h-[3rem] grid-rows-[1rem_0.75rem] place-items-center content-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-semibold leading-none transition',
+              bottomPlacement ? 'h-12 max-h-12' : 'h-14 min-h-14 max-h-14',
               activePanel === id
                 ? cn('bg-slate-950 text-white', !bottomPlacement && 'shadow-md shadow-slate-900/20')
                 : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-              <Icon className="h-4 w-4" aria-hidden="true" />
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center leading-none">
+              <Icon className="block h-4 w-4 shrink-0" aria-hidden="true" />
             </span>
-            <span className="block h-3 leading-3">{shortLabel}</span>
+            <span className="block h-3 overflow-hidden leading-3">{shortLabel}</span>
           </button>
         ))}
       </div>
@@ -561,7 +561,13 @@ function RoutePanel() {
 
   return (
     <div className="space-y-5">
-      <div>
+      <PanelGroupHeader
+        eyebrow="Build"
+        title="Route builder"
+        detail="Name the mission, choose the map-click mode, then add waypoints."
+      />
+
+      <PanelBlock title="Route setup" icon={<Navigation className="h-4 w-4" />}>
         <Label htmlFor="route-name">Route name</Label>
         <input
           id="route-name"
@@ -569,42 +575,26 @@ function RoutePanel() {
           onChange={(event) => setRouteName(event.target.value)}
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-950 focus:outline-none"
         />
-      </div>
 
-      <SummaryGrid
-        items={[
-          ['Distance', formatDistance(route.summary.totalDistanceNm)],
-          ['ETE', formatDuration(route.summary.estimatedTimeMinutes)],
-          ['Fuel', formatFuel(route.summary.totalFuelRequiredGal)],
-          ['Remain', formatFuel(route.summary.fuelRemainingGal)],
-        ]}
-        status={route.summary.fuelStatus}
-      />
-
-      <AirspaceReviewPanel
-        review={routeAirspaceReview}
-        route={route}
-        cruiseAltitudeFt={cruiseAltitudeFt}
-      />
-
-      <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
-        <div>
-          <p className="text-sm font-medium text-slate-900">Map clicks</p>
-          <p className="text-xs text-slate-500">{planningMode ? 'Add user waypoints' : 'Inspect aviation features'}</p>
+        <div className="mt-3 flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+          <div>
+            <p className="text-sm font-medium text-slate-900">Map clicks</p>
+            <p className="text-xs text-slate-500">{planningMode ? 'Add user waypoints' : 'Inspect aviation features'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPlanningMode(!planningMode)}
+            className={`inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium ${
+              planningMode ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            {planningMode ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            {planningMode ? 'Planning' : 'Inspect'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setPlanningMode(!planningMode)}
-          className={`inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium ${
-            planningMode ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700'
-          }`}
-        >
-          {planningMode ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          {planningMode ? 'Planning' : 'Inspect'}
-        </button>
-      </div>
+      </PanelBlock>
 
-      <PanelBlock title="Airport and navaid search" icon={<Search className="h-4 w-4" />}>
+      <PanelBlock title="Add waypoint" icon={<Search className="h-4 w-4" />}>
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -650,34 +640,66 @@ function RoutePanel() {
             </button>
           ))}
         </div>
+
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+            <MapPin className="h-3.5 w-3.5" />
+            Manual coordinate
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={manualLat}
+              onChange={(event) => setManualLat(event.target.value)}
+              placeholder="Latitude"
+              className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+              inputMode="decimal"
+            />
+            <input
+              value={manualLng}
+              onChange={(event) => setManualLng(event.target.value)}
+              placeholder="Longitude"
+              className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+              inputMode="decimal"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={addManualPoint}
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Add coordinate
+          </button>
+        </div>
       </PanelBlock>
 
-      <PanelBlock title="Manual coordinate" icon={<MapPin className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            value={manualLat}
-            onChange={(event) => setManualLat(event.target.value)}
-            placeholder="Latitude"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
-            inputMode="decimal"
-          />
-          <input
-            value={manualLng}
-            onChange={(event) => setManualLng(event.target.value)}
-            placeholder="Longitude"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
-            inputMode="decimal"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={addManualPoint}
-          className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-        >
-          <Plus className="h-4 w-4" />
-          Add coordinate
-        </button>
-      </PanelBlock>
+      <PanelGroupHeader
+        eyebrow="Review"
+        title="Pilot scan"
+        detail="Route totals, fuel margin, and airspace status stay separate from editing controls."
+      />
+
+      <SummaryGrid
+        items={[
+          ['Distance', formatDistance(route.summary.totalDistanceNm)],
+          ['ETE', formatDuration(route.summary.estimatedTimeMinutes)],
+          ['Fuel', formatFuel(route.summary.totalFuelRequiredGal)],
+          ['Remain', formatFuel(route.summary.fuelRemainingGal)],
+        ]}
+        status={route.summary.fuelStatus}
+      />
+
+      <AirspaceReviewPanel
+        review={routeAirspaceReview}
+        route={route}
+        cruiseAltitudeFt={cruiseAltitudeFt}
+      />
+
+      <PanelGroupHeader
+        eyebrow="Sequence"
+        title="Waypoints and map"
+        detail="Review legs, reorder points, and set aviation layer visibility."
+      />
 
       <PanelBlock title="Navigation log" icon={<Navigation className="h-4 w-4" />}>
         {waypoints.length === 0 ? (
@@ -722,14 +744,6 @@ function RoutePanel() {
                 </div>
               );
             })}
-            <button
-              type="button"
-              onClick={clearRoute}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              Clear route
-            </button>
           </div>
         )}
       </PanelBlock>
@@ -752,6 +766,27 @@ function RoutePanel() {
           ))}
         </div>
       </PanelBlock>
+
+      {waypoints.length > 0 && (
+        <PanelBlock title="Route actions" icon={<Trash2 className="h-4 w-4" />}>
+          <div className="flex flex-col gap-3 rounded-xl border border-rose-100 bg-rose-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-rose-900">Clear this route</p>
+              <p className="text-xs leading-5 text-rose-700">
+                Removes all waypoints from the active mission. Use this only when starting again.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={clearRoute}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear route
+            </button>
+          </div>
+        </PanelBlock>
+      )}
     </div>
   );
 }
@@ -1477,6 +1512,28 @@ function BriefingPanel() {
 
   return (
     <div className="space-y-5">
+      <PanelGroupHeader
+        eyebrow="Decision"
+        title="Pilot digest"
+        detail="Start here: go/no-go status, highest priority actions, and hard stops."
+      />
+
+      <BriefingDigestPanel digest={digest} />
+
+      <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
+        <div className="space-y-2">
+          {risks.map((risk) => (
+            <RiskRow key={risk.id} risk={risk} />
+          ))}
+        </div>
+      </PanelBlock>
+
+      <PanelGroupHeader
+        eyebrow="Setup"
+        title="Dispatch details"
+        detail="Set departure time, planned cruise altitude, and pilot notes for the briefing pack."
+      />
+
       <PanelBlock title="Dispatch details" icon={<ClipboardCheck className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -1503,32 +1560,40 @@ function BriefingPanel() {
         </div>
       </PanelBlock>
 
+      <PanelGroupHeader
+        eyebrow="Reviews"
+        title="Operational checks"
+        detail="Freshness, W&B, airspace, and NOTAM records are grouped so warnings are easier to scan."
+      />
+
+      <FreshnessPanel freshness={dataFreshness} />
+
+      <WeightBalanceReviewPanel result={weightBalanceResult} />
+
       <AirspaceReviewPanel
         review={routeAirspaceReview}
         route={route}
         cruiseAltitudeFt={cruiseAltitudeFt}
       />
 
-      <BriefingDigestPanel digest={digest} />
-
-      <FreshnessPanel freshness={dataFreshness} />
-
       <NotamReviewPanel review={routeNotamReview} />
 
-      <WeightBalanceReviewPanel result={weightBalanceResult} />
+      <PanelGroupHeader
+        eyebrow="Training"
+        title="Checkride navlog"
+        detail="Keep manual navigation practice separate from the operational decision summary."
+      />
 
       <TrainingNavLogPanel
         navLog={trainingNavLog}
         onWindChange={updateTrainingWind}
       />
 
-      <PanelBlock title="Risk review" icon={<AlertTriangle className="h-4 w-4" />}>
-        <div className="space-y-2">
-          {risks.map((risk) => (
-            <RiskRow key={risk.id} risk={risk} />
-          ))}
-        </div>
-      </PanelBlock>
+      <PanelGroupHeader
+        eyebrow="Export"
+        title="Briefing package"
+        detail="Print, copy, or download the pack without forcing the raw text to dominate the page."
+      />
 
       <PanelBlock title="Briefing package" icon={<Printer className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-2">
@@ -1565,9 +1630,14 @@ function BriefingPanel() {
             Copy
           </button>
         </div>
-        <pre className="mt-3 max-h-[24rem] overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">
-          {briefingText}
-        </pre>
+        <details className="mt-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+            Show raw briefing text
+          </summary>
+          <pre className="max-h-[24rem] overflow-auto bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">
+            {briefingText}
+          </pre>
+        </details>
       </PanelBlock>
     </div>
   );
@@ -2973,6 +3043,24 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="grid grid-cols-[7rem_1fr] gap-3 text-sm">
       <span className="text-slate-500">{label}</span>
       <span className="break-words font-medium text-slate-900">{children}</span>
+    </div>
+  );
+}
+
+function PanelGroupHeader({
+  eyebrow,
+  title,
+  detail,
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/40 px-3 py-2.5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-800">{eyebrow}</p>
+      <h3 className="mt-1 text-sm font-semibold tracking-[-0.02em] text-slate-950">{title}</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>
     </div>
   );
 }
