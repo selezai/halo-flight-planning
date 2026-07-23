@@ -2331,3 +2331,63 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Inspect Feature Panel State Fix
+
+Objective: make inspect-mode feature details behave predictably on mobile/tablet and remove the obsolete feature-to-route action.
+
+Problem:
+
+- In inspect mode, tapping a lower “Clicked features” item after scrolling the feature details jumped the panel back to the top.
+- Closing the planner with the top-right X left the selected map feature in store state.
+- Opening a bottom planner tab after that could resurrect the old airspace/feature info panel instead of showing the selected planner tab.
+- The feature detail header still showed an `Add to route` button, which conflicts with the new map planning-mode workflow.
+
+Root cause:
+
+- `Sidebar` reset its scroll position whenever `selectedFeature` changed, including when selecting another item from the same clicked-feature stack.
+- The top sidebar close button only set `sidebarOpen = false`; it did not clear `selectedFeature` or `selectedFeatureCandidates`.
+- Planner panel opens did not clear stale inspect-mode state first.
+- `FeatureDisplay` still converted OpenAIP features into route waypoints through the removed sidebar planning workflow.
+
+Solution:
+
+- Added a stable clicked-feature stack key and reset sidebar scroll only when the stack or planner panel changes.
+- Updated sidebar close to clear inspect selection before closing.
+- Updated planner panel opens and sheet close handling to clear inspect selection before showing planner content.
+- Removed the `Add to route` button and its feature-to-waypoint helper from `FeatureDisplay`.
+- Removed an unused shell subscription while touching the panel state path.
+- Added regression coverage for clicked-feature stack keys and map-store selection clearing.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `lib/ui/featureDetails.ts`
+- `tests/ui/featureDetails.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/ui/featureDetails.test.ts tests/stores/mapStore.test.ts`: passed; Vitest ran 32 files / 138 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 32 files / 138 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `5003921`
+  - Deployment URL: https://halo-flight-planning-kca0mo7ir-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_5kNQWyRyr3CTCvwpER4M4DJzdcUZ`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 107 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
