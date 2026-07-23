@@ -5,6 +5,22 @@ export interface ScreenPoint {
 
 export const ROUTE_WAYPOINT_TAP_TOLERANCE_PX = 8;
 
+export function getActiveTouchCount(event: unknown): number {
+  if (!event || typeof event !== 'object' || !('originalEvent' in event)) return 0;
+
+  const originalEvent = (event as { originalEvent?: unknown }).originalEvent;
+  if (!originalEvent || typeof originalEvent !== 'object' || !('touches' in originalEvent)) return 0;
+
+  const touches = (originalEvent as { touches?: { length?: unknown } }).touches;
+  return typeof touches?.length === 'number' && Number.isFinite(touches.length)
+    ? Math.max(0, touches.length)
+    : 0;
+}
+
+export function isMultiTouchGesture(event: unknown): boolean {
+  return getActiveTouchCount(event) > 1;
+}
+
 export function normalizeScreenPoint(point: unknown): ScreenPoint | null {
   if (Array.isArray(point)) {
     const [x, y] = point;

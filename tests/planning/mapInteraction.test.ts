@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   didPointerDrag,
+  getActiveTouchCount,
+  isMultiTouchGesture,
   normalizeScreenPoint,
   ROUTE_WAYPOINT_TAP_TOLERANCE_PX,
 } from '@/lib/planning/mapInteraction';
@@ -30,5 +32,21 @@ describe('map interaction helpers', () => {
     expect(normalizeScreenPoint({ x: 30, y: 40 })).toEqual({ x: 30, y: 40 });
     expect(normalizeScreenPoint({ x: '30', y: 40 })).toBeNull();
     expect(normalizeScreenPoint(undefined)).toBeNull();
+  });
+
+  it('detects multi-touch map gestures from the original browser touch event', () => {
+    const singleTouchEvent = { originalEvent: { touches: { length: 1 } } };
+    const multiTouchEvent = { originalEvent: { touches: { length: 2 } } };
+
+    expect(getActiveTouchCount(singleTouchEvent)).toBe(1);
+    expect(getActiveTouchCount(multiTouchEvent)).toBe(2);
+    expect(isMultiTouchGesture(singleTouchEvent)).toBe(false);
+    expect(isMultiTouchGesture(multiTouchEvent)).toBe(true);
+  });
+
+  it('does not treat mouse or missing original events as multi-touch', () => {
+    expect(getActiveTouchCount({ originalEvent: { type: 'mousedown' } })).toBe(0);
+    expect(getActiveTouchCount({})).toBe(0);
+    expect(isMultiTouchGesture({ originalEvent: { type: 'mousedown' } })).toBe(false);
   });
 });
