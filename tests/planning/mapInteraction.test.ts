@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   didPointerDrag,
   getActiveTouchCount,
+  getPlanningMapClickAction,
   isMultiTouchGesture,
   normalizeScreenPoint,
   ROUTE_WAYPOINT_TAP_TOLERANCE_PX,
@@ -48,5 +49,11 @@ describe('map interaction helpers', () => {
     expect(getActiveTouchCount({ originalEvent: { type: 'mousedown' } })).toBe(0);
     expect(getActiveTouchCount({})).toBe(0);
     expect(isMultiTouchGesture({ originalEvent: { type: 'mousedown' } })).toBe(false);
+  });
+
+  it('opens the waypoint editor only when a planning click hits an existing route waypoint', () => {
+    expect(getPlanningMapClickAction('wp-1')).toEqual({ kind: 'select-waypoint', waypointId: 'wp-1' });
+    expect(getPlanningMapClickAction(null)).toEqual({ kind: 'plot-waypoint' });
+    expect(getPlanningMapClickAction(undefined)).toEqual({ kind: 'plot-waypoint' });
   });
 });

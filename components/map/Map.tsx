@@ -15,6 +15,7 @@ import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning
 import { calculateGlideRadiusNm } from '@/lib/planning/emergencyPlanning';
 import {
   didPointerDrag,
+  getPlanningMapClickAction,
   isMultiTouchGesture,
   normalizeScreenPoint,
   type ScreenPoint,
@@ -430,14 +431,15 @@ export default function Map({ className = '' }: MapProps) {
       if (state.planningMode) {
         enrichmentRequestId.current += 1;
         const routeWaypoint = getRouteWaypointAtPoint(mapInstance, event.point);
+        const planningClickAction = getPlanningMapClickAction(routeWaypoint?.id);
 
-        if (routeWaypoint) {
-          setSelectedWaypointId(routeWaypoint.id);
+        if (planningClickAction.kind === 'select-waypoint') {
+          setSelectedWaypointId(planningClickAction.waypointId);
           return;
         }
 
-        const waypointId = state.addUserWaypoint([event.lngLat.lng, event.lngLat.lat]);
-        setSelectedWaypointId(waypointId);
+        state.addUserWaypoint([event.lngLat.lng, event.lngLat.lat]);
+        setSelectedWaypointId(null);
         return;
       }
       

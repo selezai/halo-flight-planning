@@ -5,6 +5,16 @@ export interface ScreenPoint {
 
 export const ROUTE_WAYPOINT_TAP_TOLERANCE_PX = 8;
 
+export type PlanningMapClickAction =
+  | { kind: 'plot-waypoint' }
+  | { kind: 'select-waypoint'; waypointId: string };
+
+export function getPlanningMapClickAction(routeWaypointId: string | null | undefined): PlanningMapClickAction {
+  return routeWaypointId
+    ? { kind: 'select-waypoint', waypointId: routeWaypointId }
+    : { kind: 'plot-waypoint' };
+}
+
 export function getActiveTouchCount(event: unknown): number {
   if (!event || typeof event !== 'object' || !('originalEvent' in event)) return 0;
 
