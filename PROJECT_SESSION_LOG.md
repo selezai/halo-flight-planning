@@ -2268,3 +2268,66 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Map-Layer Control Relocation
+
+Objective: move aviation layer controls out of the Route tab and onto the map itself.
+
+Problem:
+
+- The Route tab contained the full `Map layers` section.
+- This mixed map display controls with route planning workflow and made the route worksheet feel overloaded.
+- The map already had a small tool rail, but it only exposed a single airspace toggle instead of the full aviation layer set.
+
+Decision:
+
+- Map display controls belong on the map, not in the route/planner tab.
+- The Route tab should remain focused on route name, planning mode explanation, waypoint sequence, route scan, and route-clear actions.
+- Desktop can show map tools while the planner is open because the map is still visible.
+- Phone/tablet show map tools when the planner sheet is closed so the controls do not fight the full-screen sheet.
+
+Solution:
+
+- Removed the `Aviation layers` / `Map layers` section from `RoutePanel`.
+- Removed `RoutePanel` subscriptions to `visibleLayers` and `toggleLayer`.
+- Replaced the old map rail's single airspace toggle with a floating `Layers` button on the map.
+- Added an expandable map-layer card with:
+  - all OpenAIP aviation layer toggles,
+  - stable aviation-first ordering,
+  - active layer count,
+  - clear pressed/on-off state for each layer.
+- Kept `Emergency tools` and `Focus route` as separate map controls below the layer control.
+- Added shared layer label/order helpers and unit coverage.
+
+Files modified:
+
+- `components/shell/HaloAppShell.tsx`
+- `components/sidebar/Sidebar.tsx`
+- `lib/ui/mapLayers.ts`
+- `tests/ui/mapLayers.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/ui/mapLayers.test.ts`: passed; Vitest ran 31 files / 136 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 31 files / 136 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `4049944`
+  - Deployment URL: https://halo-flight-planning-4ofw4qges-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_EtATGowWeHd5gJhMqyLSTNiTNvud`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 176 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
