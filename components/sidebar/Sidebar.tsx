@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { shallow } from 'zustand/shallow';
 import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import {
   AlertTriangle,
@@ -123,7 +124,14 @@ export default function Sidebar({
     setSidebarPanel,
     selectedFeature,
     clearSelection,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    sidebarOpen: state.sidebarOpen,
+    setSidebarOpen: state.setSidebarOpen,
+    sidebarPanel: state.sidebarPanel,
+    setSidebarPanel: state.setSidebarPanel,
+    selectedFeature: state.selectedFeature,
+    clearSelection: state.clearSelection,
+  }), shallow);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const showPlannerNavigation = !selectedFeature;
   const showPlannerHeader = showPlannerNavigation && sidebarPanel === 'route' && Boolean(plannerHeader);
@@ -267,7 +275,11 @@ function FeatureDisplay({
     addRouteWaypoint,
     selectedFeatureCandidates,
     setSelectedFeature,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    addRouteWaypoint: state.addRouteWaypoint,
+    selectedFeatureCandidates: state.selectedFeatureCandidates,
+    setSelectedFeature: state.setSelectedFeature,
+  }), shallow);
   const waypoint = makeWaypointFromFeature(feature);
   const selectedFeatureKey = featureSelectionKey(feature);
   const clickedFeatures = selectedFeatureCandidates.length > 1
@@ -525,7 +537,22 @@ function RoutePanel() {
     setPlanningMode,
     visibleLayers,
     toggleLayer,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    routeName: state.routeName,
+    setRouteName: state.setRouteName,
+    waypoints: state.waypoints,
+    removeRouteWaypoint: state.removeRouteWaypoint,
+    moveRouteWaypoint: state.moveRouteWaypoint,
+    updateRouteWaypoint: state.updateRouteWaypoint,
+    clearRoute: state.clearRoute,
+    activeAircraft: state.activeAircraft,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    routeAirspaceReview: state.routeAirspaceReview,
+    planningMode: state.planningMode,
+    setPlanningMode: state.setPlanningMode,
+    visibleLayers: state.visibleLayers,
+    toggleLayer: state.toggleLayer,
+  }), shallow);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
 
   return (
@@ -896,7 +923,8 @@ function AirspaceVerticalProfilePanel({ profile }: { profile: AirspaceVerticalPr
 }
 
 function WeatherPanel() {
-  const { waypoints, personalMinimums } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
+  const personalMinimums = useMapStore((state) => state.personalMinimums);
   const weather = useRouteWeather(true);
   const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
 
@@ -974,7 +1002,16 @@ function AircraftPanel() {
     updateWeightBalanceStationWeight,
     personalMinimums,
     updatePersonalMinimums,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    activeAircraft: state.activeAircraft,
+    setActiveAircraft: state.setActiveAircraft,
+    updateActiveAircraft: state.updateActiveAircraft,
+    weightBalanceLoading: state.weightBalanceLoading,
+    updateWeightBalanceLoading: state.updateWeightBalanceLoading,
+    updateWeightBalanceStationWeight: state.updateWeightBalanceStationWeight,
+    personalMinimums: state.personalMinimums,
+    updatePersonalMinimums: state.updatePersonalMinimums,
+  }), shallow);
   const weightBalanceConfig = activeAircraft.weightBalance ?? createDefaultWeightBalanceConfig();
   const weightBalanceResult = useMemo(
     () => calculateWeightBalance({ aircraft: activeAircraft, loading: weightBalanceLoading }),
@@ -1215,7 +1252,28 @@ function BriefingPanel() {
     flightPlanFilingRecord,
     closeReminder,
     emergencyLandingSites,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    routeName: state.routeName,
+    routeNotes: state.routeNotes,
+    setRouteNotes: state.setRouteNotes,
+    departureTime: state.departureTime,
+    setDepartureTime: state.setDepartureTime,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    setCruiseAltitudeFt: state.setCruiseAltitudeFt,
+    waypoints: state.waypoints,
+    activeAircraft: state.activeAircraft,
+    weightBalanceLoading: state.weightBalanceLoading,
+    personalMinimums: state.personalMinimums,
+    routeAirspaceReview: state.routeAirspaceReview,
+    routeNotamReview: state.routeNotamReview,
+    trainingWind: state.trainingWind,
+    updateTrainingWind: state.updateTrainingWind,
+    filingChecklist: state.filingChecklist,
+    notamBriefingRecord: state.notamBriefingRecord,
+    flightPlanFilingRecord: state.flightPlanFilingRecord,
+    closeReminder: state.closeReminder,
+    emergencyLandingSites: state.emergencyLandingSites,
+  }), shallow);
   const weather = useRouteWeather(false);
   const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
@@ -1527,7 +1585,22 @@ function AdminPanel() {
     closeReminder,
     updateCloseReminder,
     routeNotamReview,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    routeName: state.routeName,
+    departureTime: state.departureTime,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    waypoints: state.waypoints,
+    activeAircraft: state.activeAircraft,
+    filingChecklist: state.filingChecklist,
+    updateFilingChecklist: state.updateFilingChecklist,
+    notamBriefingRecord: state.notamBriefingRecord,
+    updateNotamBriefingRecord: state.updateNotamBriefingRecord,
+    flightPlanFilingRecord: state.flightPlanFilingRecord,
+    updateFlightPlanFilingRecord: state.updateFlightPlanFilingRecord,
+    closeReminder: state.closeReminder,
+    updateCloseReminder: state.updateCloseReminder,
+    routeNotamReview: state.routeNotamReview,
+  }), shallow);
   const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const filingReview = useMemo(
@@ -1602,7 +1675,15 @@ function EmergencyPanel() {
     addEmergencyLandingSite,
     updateEmergencyLandingSite,
     removeEmergencyLandingSite,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    waypoints: state.waypoints,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    activeAircraft: state.activeAircraft,
+    emergencyLandingSites: state.emergencyLandingSites,
+    addEmergencyLandingSite: state.addEmergencyLandingSite,
+    updateEmergencyLandingSite: state.updateEmergencyLandingSite,
+    removeEmergencyLandingSite: state.removeEmergencyLandingSite,
+  }), shallow);
   const now = useNowMinute();
   const emergencyReview = useMemo(
     () => buildEmergencyPlanningReview({
@@ -2448,7 +2529,7 @@ function useNowMinute(): Date {
 }
 
 function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
-  const { waypoints } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
   const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
   const [reports, setReports] = useState<Record<string, WeatherReport | null>>({});
   const [tafs, setTafs] = useState<Record<string, string | null>>({});

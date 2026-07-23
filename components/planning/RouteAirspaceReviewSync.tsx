@@ -6,13 +6,13 @@ import { buildRouteSignature } from '@/lib/planning/airspaceCorridor';
 import type { RouteAirspaceReview } from '@/types/planning';
 
 const CORE_REVIEW_CORRIDOR_NM = 5;
+const ROUTE_REVIEW_DEBOUNCE_MS = 900;
 
 export default function RouteAirspaceReviewSync() {
-  const {
-    waypoints,
-    cruiseAltitudeFt,
-    setCoreRouteAirspaceReview,
-  } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
+  const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
+  const routeEditingActive = useMapStore((state) => state.routeEditingActive);
+  const setCoreRouteAirspaceReview = useMapStore((state) => state.setCoreRouteAirspaceReview);
   const requestId = useRef(0);
   const routeSignature = useMemo(
     () => buildRouteSignature(waypoints, cruiseAltitudeFt, CORE_REVIEW_CORRIDOR_NM),
@@ -20,6 +20,8 @@ export default function RouteAirspaceReviewSync() {
   );
 
   useEffect(() => {
+    if (routeEditingActive) return;
+
     if (waypoints.length < 2) {
       setCoreRouteAirspaceReview(createClientReview({
         status: 'needs-route',
@@ -31,63 +33,67 @@ export default function RouteAirspaceReviewSync() {
 
     const controller = new AbortController();
     const currentRequestId = ++requestId.current;
-
-    setCoreRouteAirspaceReview(createClientReview({
-      status: 'checking',
-      message: 'Checking OpenAIP Core airspaces along the full route corridor...',
-      corridorNm: CORE_REVIEW_CORRIDOR_NM,
-      routeSignature,
-    }));
-
-    fetch('/api/openaip/airspace-review', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        waypoints: waypoints.map((waypoint) => ({
-          coordinates: waypoint.coordinates,
-        })),
-        cruiseAltitudeFt,
+    const timeoutId = window.setTimeout(() => {
+      setCoreRouteAirspaceReview(createClientReview({
+        status: 'checking',
+        message: 'Checking OpenAIP Core airspaces along the full route corridor...',
         corridorNm: CORE_REVIEW_CORRIDOR_NM,
-      }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json();
+        routeSignature,
+      }));
 
-        if (!response.ok && !isRouteAirspaceReview(payload)) {
-          throw new Error(payload?.error || 'OpenAIP Core airspace review failed.');
-        }
-
-        return isRouteAirspaceReview(payload)
-          ? payload
-          : createClientReview({
-              status: 'unavailable',
-              message: payload?.error || 'OpenAIP Core airspace review failed.',
-              corridorNm: CORE_REVIEW_CORRIDOR_NM,
-              routeSignature,
-            });
-      })
-      .then((review) => {
-        if (currentRequestId !== requestId.current) return;
-        setCoreRouteAirspaceReview(review);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted || currentRequestId !== requestId.current) return;
-
-        setCoreRouteAirspaceReview(createClientReview({
-          status: 'unavailable',
-          message: error instanceof Error
-            ? error.message
-            : 'OpenAIP Core airspace review failed.',
+      fetch('/api/openaip/airspace-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          waypoints: waypoints.map((waypoint) => ({
+            coordinates: waypoint.coordinates,
+          })),
+          cruiseAltitudeFt,
           corridorNm: CORE_REVIEW_CORRIDOR_NM,
-          routeSignature,
-        }));
-      });
+        }),
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const payload = await response.json();
 
-    return () => controller.abort();
-  }, [cruiseAltitudeFt, routeSignature, setCoreRouteAirspaceReview, waypoints]);
+          if (!response.ok && !isRouteAirspaceReview(payload)) {
+            throw new Error(payload?.error || 'OpenAIP Core airspace review failed.');
+          }
+
+          return isRouteAirspaceReview(payload)
+            ? payload
+            : createClientReview({
+                status: 'unavailable',
+                message: payload?.error || 'OpenAIP Core airspace review failed.',
+                corridorNm: CORE_REVIEW_CORRIDOR_NM,
+                routeSignature,
+              });
+        })
+        .then((review) => {
+          if (currentRequestId !== requestId.current) return;
+          setCoreRouteAirspaceReview(review);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted || currentRequestId !== requestId.current) return;
+
+          setCoreRouteAirspaceReview(createClientReview({
+            status: 'unavailable',
+            message: error instanceof Error
+              ? error.message
+              : 'OpenAIP Core airspace review failed.',
+            corridorNm: CORE_REVIEW_CORRIDOR_NM,
+            routeSignature,
+          }));
+        });
+    }, ROUTE_REVIEW_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [cruiseAltitudeFt, routeEditingActive, routeSignature, setCoreRouteAirspaceReview, waypoints]);
 
   return null;
 }

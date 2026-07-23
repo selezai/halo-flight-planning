@@ -304,6 +304,7 @@ function fixLayer(layer: StyleLayer): StyleLayer {
   // Fix layout properties
   if (fixed.layout) {
     fixed.layout = fixProperties(fixed.layout, 'layout');
+    fixOpenAipSpriteLayer(fixed);
   }
 
   // Fix paint properties
@@ -317,6 +318,208 @@ function fixLayer(layer: StyleLayer): StyleLayer {
   }
 
   return fixed;
+}
+
+function fixOpenAipSpriteLayer(layer: StyleLayer): void {
+  if (layer.type !== 'symbol' || !layer.layout) return;
+
+  switch (layer.id) {
+    case 'obstacle':
+      layer.layout['icon-image'] = [
+        'match',
+        ['to-string', ['get', 'type']],
+        'building', 'obstacle_building',
+        'chimney', 'obstacle_chimney',
+        'tower', 'obstacle_tower',
+        'wind_turbine', 'obstacle_wind_turbine',
+        'obstacle_obstacle',
+      ];
+      return;
+
+    case 'hang_gliding':
+      layer.layout['icon-image'] = [
+        'match',
+        ['to-string', ['get', 'type']],
+        'landing', 'hang_gliding_landing',
+        'take_off', 'hang_gliding_take_off',
+        'takeoff', 'hang_gliding_take_off',
+        'hang_gliding',
+      ];
+      return;
+
+    case 'airport_runway':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        runwaySurfaceIconExpression('small'),
+        12,
+        runwaySurfaceIconExpression('medium'),
+      ];
+      return;
+
+    case 'airport_with_code_runway':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        runwaySurfaceIconExpression('medium'),
+        17,
+        runwaySurfaceIconExpression('large'),
+      ];
+      return;
+
+    case 'airport_runway_intl':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        runwaySurfaceIconExpression('small'),
+        8,
+        runwaySurfaceIconExpression('medium'),
+        17,
+        runwaySurfaceIconExpression('large'),
+      ];
+      return;
+
+    case 'airport_gliding':
+    case 'airport_other':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        airportTypeIconExpression('small'),
+        12,
+        airportTypeIconExpression('medium'),
+      ];
+      return;
+
+    case 'airport_with_code':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        'apt-dot',
+        8,
+        airportTypeIconExpression('small'),
+        9,
+        airportTypeIconExpression('medium'),
+        17,
+        airportTypeIconExpression('large'),
+      ];
+      return;
+
+    case 'navaid_other':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        navaidTypeIconExpression('small'),
+        8,
+        navaidTypeIconExpression('medium'),
+      ];
+      return;
+
+    case 'navaid_ndb':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        navaidTypeIconExpression('small'),
+        10,
+        navaidTypeIconExpression('medium'),
+      ];
+      return;
+
+    case 'hotspot_cloud':
+      layer.layout['icon-image'] = [
+        'step',
+        ['zoom'],
+        hotspotReliabilityIconExpression('small'),
+        11,
+        hotspotReliabilityIconExpression('medium'),
+        13,
+        hotspotReliabilityIconExpression('large'),
+      ];
+      return;
+
+    case 'reporting_point':
+      layer.layout['icon-image'] = [
+        'match',
+        ['to-string', ['get', 'type']],
+        'compulsory', 'reporting_point_compulsory-medium',
+        'mandatory', 'reporting_point_compulsory-medium',
+        'request', 'reporting_point_request-medium',
+        'reporting_point_request-medium',
+      ];
+      return;
+
+    default:
+      return;
+  }
+}
+
+function runwaySurfaceIconExpression(size: 'small' | 'medium' | 'large'): unknown[] {
+  return [
+    'match',
+    ['to-string', ['get', 'runway_surface']],
+    'paved', `runway_paved-${size}`,
+    'asphalt', `runway_paved-${size}`,
+    'concrete', `runway_paved-${size}`,
+    'unpaved', `runway_unpaved-${size}`,
+    'grass', `runway_unpaved-${size}`,
+    'gravel', `runway_unpaved-${size}`,
+    `runway_unpaved-${size}`,
+  ];
+}
+
+function airportTypeIconExpression(size: 'small' | 'medium' | 'large'): unknown[] {
+  return [
+    'match',
+    ['to-string', ['get', 'type']],
+    'mil_civil', `apt_mil_civil-${size}`,
+    'military_civil', `apt_mil_civil-${size}`,
+    'mil', `ad_mil-${size}`,
+    'military', `ad_mil-${size}`,
+    'closed', `ad_closed-${size}`,
+    'agri', `ls_agri-${size}`,
+    'agricultural', `ls_agri-${size}`,
+    'alti', `ls_alti-${size}`,
+    'altisurface', `ls_alti-${size}`,
+    'gliding', `gliding-${size}`,
+    'heli_civil', `heli_civil-${size}`,
+    'heli_mil', `heli_mil-${size}`,
+    `apt-${size}`,
+  ];
+}
+
+function navaidTypeIconExpression(size: 'small' | 'medium'): unknown[] {
+  return [
+    'match',
+    ['to-string', ['get', 'type']],
+    'vor', `navaid_vor-${size}`,
+    'navaid_vor', `navaid_vor-${size}`,
+    'navaid_vor_medium', `navaid_vor-${size}`,
+    'vor_dme', `navaid_vor_dme-${size}`,
+    'vordme', `navaid_vor_dme-${size}`,
+    'navaid_vor_dme', `navaid_vor_dme-${size}`,
+    'dme', `navaid_dme-${size}`,
+    'navaid_dme', `navaid_dme-${size}`,
+    'navaid_dme_medium', `navaid_dme-${size}`,
+    'ndb', `navaid_ndb-${size}`,
+    'navaid_ndb', `navaid_ndb-${size}`,
+    'navaid_ndb_medium', `navaid_ndb-${size}`,
+    'tacan', `navaid_tacan-${size}`,
+    'navaid_tacan', `navaid_tacan-${size}`,
+    'vortac', `navaid_vortac-${size}`,
+    'navaid_vortac', `navaid_vortac-${size}`,
+    `navaid_rose-${size}`,
+  ];
+}
+
+function hotspotReliabilityIconExpression(size: 'small' | 'medium' | 'large'): unknown[] {
+  return [
+    'match',
+    ['to-string', ['get', 'reliability']],
+    'poor', `hotspot_poor-${size}`,
+    'fair', `hotspot_fair-${size}`,
+    'high', `hotspot_high-${size}`,
+    'very_high', `hotspot_very_high-${size}`,
+    `hotspot_fair-${size}`,
+  ];
 }
 
 /**

@@ -1965,3 +1965,64 @@ Verification:
   - No runtime error entries appeared during the observed request.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Performance Smoothing Pass
+
+Objective: reduce map and planner lag without removing core flight-planning functionality.
+
+Problem:
+
+- Halo felt laggy and less smooth, especially around map route editing and mobile/tablet usage.
+- The likely causes needed to be separated from general "unused code" cleanup so performance work targeted real hot paths.
+
+Root cause findings:
+
+- Waypoint dragging wrote updated coordinates into the global Zustand store on every `mousemove` / `touchmove`.
+- The persisted store serializes its partial planner state after store writes, so drag updates could repeatedly serialize route data into local storage.
+- Route airspace and NOTAM sync components were always mounted and route-signature driven, so rapid waypoint coordinate updates could repeatedly abort/restart review work.
+- The rendered airspace review sampled route screen points and called MapLibre `queryRenderedFeatures()` across many aviation layers, then also refreshed on map `idle`, `moveend`, and `zoomend`.
+- Several large client components subscribed to the entire planner store, so unrelated updates such as viewport persistence could re-render shell/sidebar/status components.
+- Mobile UI used expensive compositing over a live WebGL map: backdrop blur, large translucent shadows, and a full-screen atmosphere gradient.
+- OpenAIP sprite drift could still generate repeated missing-sprite console warnings in development; production should avoid console-spam cost.
+
+Solution:
+
+- Added `routeEditingActive` as transient planner state.
+- Changed map waypoint dragging to update the MapLibre route GeoJSON source locally during pointer movement.
+- Committed final waypoint coordinates to Zustand only on drag end.
+- Paused rendered airspace review, OpenAIP Core route review, and NOTAM review while route editing is active.
+- Debounced OpenAIP Core route review and NOTAM review by 900 ms after route changes.
+- Debounced rendered browser airspace review by 700 ms and removed the `idle` refresh trigger.
+- Replaced full-store subscriptions in always-mounted map/shell/status/sidebar paths with field selectors.
+- Switched the planner store to Zustand `createWithEqualityFn` so grouped shallow selectors do not trigger the deprecated equality-function warning.
+- Normalized dynamic OpenAIP aviation icon expressions to known hosted OpenAIP sprite names for navaids, runways, airports, obstacles, hotspots, reporting points, and hang-gliding layers.
+- Limited missing-sprite warnings to development builds.
+- Disabled the full-screen map atmosphere overlay and backdrop blur on phone-width screens to reduce mobile GPU compositing cost.
+
+Files modified:
+
+- `app/globals.css`
+- `components/map/Map.tsx`
+- `components/planning/RouteAirspaceReviewSync.tsx`
+- `components/planning/RouteNotamReviewSync.tsx`
+- `components/planning/RouteStatusBar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/sidebar/Sidebar.tsx`
+- `lib/openaip/styleConverter.ts`
+- `stores/mapStore.ts`
+- `tests/openaip/tilePath.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test tests/stores/mapStore.test.ts tests/openaip/tilePath.test.ts`: passed, 2 files / 11 tests.
+  - `pnpm typecheck`: initially failed on timer/ref/selector typing; fixed root causes and reran successfully.
+- Full approved checks:
+  - `pnpm test`: passed, 29 files / 124 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm typecheck`: passed.
+  - `pnpm build`: passed on Next.js `15.5.18`; the earlier Zustand equality-function warning was removed by switching to `createWithEqualityFn`.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.

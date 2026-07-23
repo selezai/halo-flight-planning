@@ -8,6 +8,7 @@ describe('map store route planning actions', () => {
       waypoints: [],
       sidebarOpen: false,
       sidebarPanel: 'briefing',
+      routeEditingActive: false,
       selectedFeature: null,
       selectedFeatureCandidates: [],
     });
@@ -45,5 +46,13 @@ describe('map store route planning actions', () => {
       inserted.id,
       second.id,
     ]);
+  });
+
+  it('tracks active route editing without changing persisted planner fields', () => {
+    useMapStore.getState().setRouteEditingActive(true);
+    expect(useMapStore.getState().routeEditingActive).toBe(true);
+
+    useMapStore.getState().setRouteEditingActive(false);
+    expect(useMapStore.getState().routeEditingActive).toBe(false);
   });
 });

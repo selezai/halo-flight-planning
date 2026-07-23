@@ -165,3 +165,14 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fff9ec];
   }
 }
+
+@media (max-width: 767px) {
+  .halo-map-atmosphere {
+    display: none;
+  }
+
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

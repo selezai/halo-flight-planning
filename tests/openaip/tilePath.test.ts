@@ -291,6 +291,89 @@ describe('OpenAIP tile path handling', () => {
     expect(style.layers[3]?.id).toBe('airport_with_code');
   });
 
+  it('normalizes dynamic OpenAIP icon layers to hosted sprite names', () => {
+    const style = convertOpenAipStyle(
+      {
+        version: 8,
+        sources: {
+          'openaip-data': {
+            type: 'vector',
+            url: 'https://api.tiles.openaip.net/api/data/openaip.json',
+          },
+        },
+        layers: [
+          {
+            id: 'navaid_other',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'navaids',
+            layout: {
+              'icon-image': {
+                stops: [
+                  [6, 'navaid_{type}-small'],
+                  [8, 'navaid_{type}-medium'],
+                ],
+              },
+            },
+          },
+          {
+            id: 'airport_runway',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'airports',
+            layout: {
+              'icon-image': {
+                stops: [
+                  [6, 'runway_{runway_surface}-small'],
+                  [12, 'runway_{runway_surface}-medium'],
+                ],
+              },
+            },
+          },
+          {
+            id: 'obstacle',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'obstacles',
+            layout: {
+              'icon-image': 'obstacle_{type}',
+            },
+          },
+          {
+            id: 'reporting_point',
+            type: 'symbol',
+            source: 'openaip-data',
+            'source-layer': 'reporting_points',
+            layout: {
+              'icon-image': 'reporting_point_{type}-medium',
+            },
+          },
+        ],
+      },
+      {
+        spriteUrl: 'https://example.test/sprite',
+        glyphsUrl: 'https://example.test/fonts/{fontstack}/{range}.pbf',
+        tilesProxyUrl: 'https://example.test/api/openaip/tiles',
+        rasterBaseMap: {
+          tilesUrl: 'https://example.test/basic/{z}/{x}/{y}.png',
+          attribution: 'test',
+          tileSize: 512,
+        },
+      }
+    );
+
+    const serializedIcons = JSON.stringify(
+      style.layers.map((layer) => layer.layout?.['icon-image'])
+    );
+
+    expect(serializedIcons).not.toContain('"concat"');
+    expect(serializedIcons).toContain('navaid_vor-medium');
+    expect(serializedIcons).toContain('navaid_vor_dme-medium');
+    expect(serializedIcons).toContain('runway_paved-medium');
+    expect(serializedIcons).toContain('obstacle_wind_turbine');
+    expect(serializedIcons).toContain('reporting_point_compulsory-medium');
+  });
+
   it('converts legacy vector basemap filters into MapLibre expression filters', () => {
     const style = convertOpenAipStyle(
       {

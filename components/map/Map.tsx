@@ -25,6 +25,7 @@ interface MapProps {
 type FeatureGeometry = maplibregl.MapGeoJSONFeature['geometry'];
 
 const ROUTE_AIRSPACE_SAMPLE_SPACING_PX = 32;
+const ROUTE_AIRSPACE_REVIEW_DEBOUNCE_MS = 700;
 
 const AIRSPACE_SOURCE_LAYERS = new Set([
   'airspaces',
@@ -51,29 +52,36 @@ export default function Map({ className = '' }: MapProps) {
   const draggingWaypointId = useRef<string | null>(null);
   const lastDragCoordinates = useRef<Coordinates | null>(null);
   const rubberBandHandlersAttached = useRef(false);
+  const routeAirspaceReviewTimer = useRef<number | null>(null);
   const suppressNextMapClick = useRef(false);
+  const initialViewport = useRef<{ center: [number, number]; zoom: number } | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWaypointId, setSelectedWaypointId] = useState<string | null>(null);
-  
-  const { 
-    center, 
-    zoom, 
-    setViewport, 
-    setSelectedFeature,
-    selectedFeature,
-    selectedFeatureCandidates,
-    visibleLayers,
-    waypoints,
-    activeAircraft,
-    cruiseAltitudeFt,
-    emergencyLandingSites,
-    planningMode,
-    updateRouteWaypoint,
-    removeRouteWaypoint,
-    setRenderedRouteAirspaceReview,
-  } = useMapStore();
+
+  if (!initialViewport.current) {
+    const state = useMapStore.getState();
+    initialViewport.current = {
+      center: state.center,
+      zoom: state.zoom,
+    };
+  }
+
+  const setViewport = useMapStore((state) => state.setViewport);
+  const setSelectedFeature = useMapStore((state) => state.setSelectedFeature);
+  const selectedFeature = useMapStore((state) => state.selectedFeature);
+  const selectedFeatureCandidates = useMapStore((state) => state.selectedFeatureCandidates);
+  const visibleLayers = useMapStore((state) => state.visibleLayers);
+  const waypoints = useMapStore((state) => state.waypoints);
+  const activeAircraft = useMapStore((state) => state.activeAircraft);
+  const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
+  const emergencyLandingSites = useMapStore((state) => state.emergencyLandingSites);
+  const planningMode = useMapStore((state) => state.planningMode);
+  const routeEditingActive = useMapStore((state) => state.routeEditingActive);
+  const updateRouteWaypoint = useMapStore((state) => state.updateRouteWaypoint);
+  const removeRouteWaypoint = useMapStore((state) => state.removeRouteWaypoint);
+  const setRenderedRouteAirspaceReview = useMapStore((state) => state.setRenderedRouteAirspaceReview);
   const selectedWaypoint = useMemo(
     () => waypoints.find((waypoint) => waypoint.id === selectedWaypointId) ?? null,
     [selectedWaypointId, waypoints]
@@ -85,35 +93,7 @@ export default function Map({ className = '' }: MapProps) {
   const updateRouteOverlay = useCallback(() => {
     if (!map.current || !mapLoaded) return;
 
-    ensureRouteLayers(map.current);
-    const lineSource = map.current.getSource('halo-route-line') as maplibregl.GeoJSONSource | undefined;
-    const pointSource = map.current.getSource('halo-route-points') as maplibregl.GeoJSONSource | undefined;
-
-    lineSource?.setData({
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: waypoints.map((waypoint) => waypoint.coordinates),
-      },
-    } as any);
-
-    pointSource?.setData({
-      type: 'FeatureCollection',
-      features: waypoints.map((waypoint, index) => ({
-        type: 'Feature',
-        properties: {
-          id: waypoint.id,
-          index: index + 1,
-          title: waypoint.ident ?? waypoint.name,
-          selected: waypoint.id === selectedWaypointId,
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: waypoint.coordinates,
-        },
-      })),
-    } as any);
+    updateRouteOverlayData(map.current, waypoints, selectedWaypointId);
   }, [mapLoaded, selectedWaypointId, waypoints]);
 
   const updateEmergencyOverlay = useCallback(() => {
@@ -159,6 +139,8 @@ export default function Map({ className = '' }: MapProps) {
   }, [activeAircraft.glideRatio, cruiseAltitudeFt, emergencyLandingSites, mapLoaded, waypoints]);
 
   const updateRouteAirspaceReview = useCallback(() => {
+    if (routeEditingActive) return;
+
     if (waypoints.length < 2) {
       setRenderedRouteAirspaceReview(createRouteAirspaceReview({
         status: 'needs-route',
@@ -248,11 +230,23 @@ export default function Map({ className = '' }: MapProps) {
   }, [
     cruiseAltitudeFt,
     mapLoaded,
+    routeEditingActive,
     setRenderedRouteAirspaceReview,
     styleLoaded,
     visibleLayers.airspaces,
     waypoints,
   ]);
+
+  const scheduleRouteAirspaceReview = useCallback(() => {
+    if (routeAirspaceReviewTimer.current) {
+      window.clearTimeout(routeAirspaceReviewTimer.current);
+    }
+
+    routeAirspaceReviewTimer.current = window.setTimeout(() => {
+      routeAirspaceReviewTimer.current = null;
+      updateRouteAirspaceReview();
+    }, ROUTE_AIRSPACE_REVIEW_DEBOUNCE_MS);
+  }, [updateRouteAirspaceReview]);
 
   useEffect(() => {
     if (!selectedWaypointId) return;
@@ -260,6 +254,15 @@ export default function Map({ className = '' }: MapProps) {
       setSelectedWaypointId(null);
     }
   }, [planningMode, selectedWaypointId, waypoints]);
+
+  useEffect(() => {
+    return () => {
+      if (routeAirspaceReviewTimer.current) {
+        window.clearTimeout(routeAirspaceReviewTimer.current);
+      }
+      useMapStore.getState().setRouteEditingActive(false);
+    };
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -277,13 +280,17 @@ export default function Map({ className = '' }: MapProps) {
         }
         
         const style = await styleResponse.json();
+        const { center: initialCenter, zoom: initialZoom } = initialViewport.current ?? {
+          center: [28.0, -26.0] as [number, number],
+          zoom: 7,
+        };
         
         // Initialize MapLibre
         map.current = new maplibregl.Map({
           container: mapContainer.current!,
           style,
-          center,
-          zoom,
+          center: initialCenter,
+          zoom: initialZoom,
           hash: true,
         });
 
@@ -347,7 +354,7 @@ export default function Map({ className = '' }: MapProps) {
         map.current.on('styleimagemissing', (event) => {
           if (!map.current || map.current.hasImage(event.id)) return;
 
-          if (!missingSpriteIds.current.has(event.id)) {
+          if (!missingSpriteIds.current.has(event.id) && process.env.NODE_ENV !== 'production') {
             missingSpriteIds.current.add(event.id);
             console.warn('Missing OpenAIP sprite image:', event.id);
           }
@@ -461,6 +468,7 @@ export default function Map({ className = '' }: MapProps) {
       event.preventDefault();
       draggingWaypointId.current = id;
       lastDragCoordinates.current = [event.lngLat.lng, event.lngLat.lat];
+      state.setRouteEditingActive(true);
       setSelectedWaypointId(id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
@@ -480,6 +488,7 @@ export default function Map({ className = '' }: MapProps) {
       state.insertRouteWaypoint(insertIndex, waypoint);
       draggingWaypointId.current = waypoint.id;
       lastDragCoordinates.current = coordinates;
+      state.setRouteEditingActive(true);
       setSelectedWaypointId(waypoint.id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
@@ -498,7 +507,14 @@ export default function Map({ className = '' }: MapProps) {
       const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
       event.preventDefault();
       lastDragCoordinates.current = coordinates;
-      useMapStore.getState().updateRouteWaypoint(draggingWaypointId.current, { coordinates });
+      const state = useMapStore.getState();
+      updateRouteOverlayData(
+        mapInstance,
+        state.waypoints.map((waypoint) =>
+          waypoint.id === draggingWaypointId.current ? { ...waypoint, coordinates } : waypoint
+        ),
+        draggingWaypointId.current
+      );
     };
 
     const finishDrag = (event?: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
@@ -523,6 +539,7 @@ export default function Map({ className = '' }: MapProps) {
         });
       }
 
+      state.setRouteEditingActive(false);
       draggingWaypointId.current = null;
       lastDragCoordinates.current = null;
       mapInstance.dragPan.enable();
@@ -676,25 +693,27 @@ export default function Map({ className = '' }: MapProps) {
   }, [updateEmergencyOverlay]);
 
   useEffect(() => {
-    updateRouteAirspaceReview();
-  }, [updateRouteAirspaceReview]);
+    if (routeEditingActive) return;
+    scheduleRouteAirspaceReview();
+  }, [routeEditingActive, scheduleRouteAirspaceReview]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded || !styleLoaded) return;
 
     const mapInstance = map.current;
-    const handleRefresh = () => updateRouteAirspaceReview();
+    const handleRefresh = () => {
+      if (routeEditingActive) return;
+      scheduleRouteAirspaceReview();
+    };
 
     mapInstance.on('moveend', handleRefresh);
     mapInstance.on('zoomend', handleRefresh);
-    mapInstance.on('idle', handleRefresh);
 
     return () => {
       mapInstance.off('moveend', handleRefresh);
       mapInstance.off('zoomend', handleRefresh);
-      mapInstance.off('idle', handleRefresh);
     };
-  }, [mapLoaded, styleLoaded, updateRouteAirspaceReview]);
+  }, [mapLoaded, routeEditingActive, scheduleRouteAirspaceReview, styleLoaded]);
 
   // Error state
   if (error) {
@@ -1004,6 +1023,42 @@ function buildRouteAirspaceReviewMessage({
   return `${partialPrefix}No rendered OpenAIP airspace intersections found along the visible route samples.`;
 }
 
+function updateRouteOverlayData(
+  mapInstance: maplibregl.Map,
+  waypoints: Waypoint[],
+  selectedWaypointId: string | null
+) {
+  ensureRouteLayers(mapInstance);
+  const lineSource = mapInstance.getSource('halo-route-line') as maplibregl.GeoJSONSource | undefined;
+  const pointSource = mapInstance.getSource('halo-route-points') as maplibregl.GeoJSONSource | undefined;
+
+  lineSource?.setData({
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'LineString',
+      coordinates: waypoints.map((waypoint) => waypoint.coordinates),
+    },
+  } as any);
+
+  pointSource?.setData({
+    type: 'FeatureCollection',
+    features: waypoints.map((waypoint, index) => ({
+      type: 'Feature',
+      properties: {
+        id: waypoint.id,
+        index: index + 1,
+        title: waypoint.ident ?? waypoint.name,
+        selected: waypoint.id === selectedWaypointId,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: waypoint.coordinates,
+      },
+    })),
+  } as any);
+}
+
 function ensureRouteLayers(mapInstance: maplibregl.Map) {
   if (!mapInstance.getSource('halo-route-line')) {
     mapInstance.addSource('halo-route-line', {
@@ -1215,7 +1270,7 @@ function buildCircleCoordinates(center: Coordinates, radiusNm: number): Coordina
 }
 
 function OfflinePlanningCanvas() {
-  const { waypoints } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#eef2f1]">

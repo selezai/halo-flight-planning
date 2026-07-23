@@ -7,13 +7,13 @@ import { createNotamReview } from '@/lib/planning/notams';
 import type { RouteNotamReview } from '@/types/planning';
 
 const NOTAM_ROUTE_SIGNATURE_CORRIDOR_NM = 0;
+const NOTAM_REVIEW_DEBOUNCE_MS = 900;
 
 export default function RouteNotamReviewSync() {
-  const {
-    waypoints,
-    cruiseAltitudeFt,
-    setRouteNotamReview,
-  } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
+  const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
+  const routeEditingActive = useMapStore((state) => state.routeEditingActive);
+  const setRouteNotamReview = useMapStore((state) => state.setRouteNotamReview);
   const requestId = useRef(0);
   const routeSignature = useMemo(
     () => buildRouteSignature(waypoints, cruiseAltitudeFt, NOTAM_ROUTE_SIGNATURE_CORRIDOR_NM),
@@ -21,6 +21,8 @@ export default function RouteNotamReviewSync() {
   );
 
   useEffect(() => {
+    if (routeEditingActive) return;
+
     const locations = routeLocations(waypoints);
 
     if (waypoints.length < 2) {
@@ -34,64 +36,68 @@ export default function RouteNotamReviewSync() {
 
     const controller = new AbortController();
     const currentRequestId = ++requestId.current;
+    const timeoutId = window.setTimeout(() => {
+      setRouteNotamReview(createNotamReview({
+        source: 'south-africa-official',
+        status: 'checking',
+        message: 'Checking configured NOTAM provider for route airports and navaids...',
+        locations,
+      }));
 
-    setRouteNotamReview(createNotamReview({
-      source: 'south-africa-official',
-      status: 'checking',
-      message: 'Checking configured NOTAM provider for route airports and navaids...',
-      locations,
-    }));
-
-    fetch('/api/notams/route', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        waypoints: waypoints.map((waypoint) => ({
-          ident: waypoint.ident,
-          type: waypoint.type,
-        })),
-      }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json();
-
-        if (!response.ok && !isRouteNotamReview(payload)) {
-          throw new Error(payload?.error || 'NOTAM review failed.');
-        }
-
-        return isRouteNotamReview(payload)
-          ? payload
-          : createNotamReview({
-              source: 'unavailable',
-              status: 'unavailable',
-              message: payload?.error || 'NOTAM review failed.',
-            });
+      fetch('/api/notams/route', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          waypoints: waypoints.map((waypoint) => ({
+            ident: waypoint.ident,
+            type: waypoint.type,
+          })),
+        }),
+        signal: controller.signal,
       })
-      .then((review) => {
-        if (currentRequestId !== requestId.current) return;
-        setRouteNotamReview({
-          ...review,
-          locations: review.locations.length > 0 ? review.locations : locations,
+        .then(async (response) => {
+          const payload = await response.json();
+
+          if (!response.ok && !isRouteNotamReview(payload)) {
+            throw new Error(payload?.error || 'NOTAM review failed.');
+          }
+
+          return isRouteNotamReview(payload)
+            ? payload
+            : createNotamReview({
+                source: 'unavailable',
+                status: 'unavailable',
+                message: payload?.error || 'NOTAM review failed.',
+              });
+        })
+        .then((review) => {
+          if (currentRequestId !== requestId.current) return;
+          setRouteNotamReview({
+            ...review,
+            locations: review.locations.length > 0 ? review.locations : locations,
+          });
+        })
+        .catch((error) => {
+          if (controller.signal.aborted || currentRequestId !== requestId.current) return;
+
+          setRouteNotamReview(createNotamReview({
+            source: 'unavailable',
+            status: 'unavailable',
+            message: error instanceof Error
+              ? error.message
+              : 'NOTAM review failed.',
+            locations,
+          }));
         });
-      })
-      .catch((error) => {
-        if (controller.signal.aborted || currentRequestId !== requestId.current) return;
+    }, NOTAM_REVIEW_DEBOUNCE_MS);
 
-        setRouteNotamReview(createNotamReview({
-          source: 'unavailable',
-          status: 'unavailable',
-          message: error instanceof Error
-            ? error.message
-            : 'NOTAM review failed.',
-          locations,
-        }));
-      });
-
-    return () => controller.abort();
-  }, [routeSignature, setRouteNotamReview, waypoints]);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [routeEditingActive, routeSignature, setRouteNotamReview, waypoints]);
 
   return null;
 }

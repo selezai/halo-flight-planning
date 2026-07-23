@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { persist } from 'zustand/middleware';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
@@ -71,6 +71,7 @@ export interface MapState {
   sidebarOpen: boolean;
   sidebarPanel: HaloPanelId;
   planningMode: boolean;
+  routeEditingActive: boolean;
 
   // Planning state
   routeName: string;
@@ -105,6 +106,7 @@ export interface MapState {
   setSidebarPanel: (panel: MapState['sidebarPanel']) => void;
   clearSelection: () => void;
   setPlanningMode: (enabled: boolean) => void;
+  setRouteEditingActive: (active: boolean) => void;
   setRouteName: (name: string) => void;
   setRouteNotes: (notes: string) => void;
   setDepartureTime: (time: string) => void;
@@ -404,7 +406,7 @@ function mergePersistedMapState(
   };
 }
 
-export const useMapStore = create<MapState>()(
+export const useMapStore = createWithEqualityFn<MapState>()(
   persist(
     (set, get) => ({
       // Default viewport - South Africa
@@ -422,6 +424,7 @@ export const useMapStore = create<MapState>()(
       sidebarOpen: false,
       sidebarPanel: 'route',
       planningMode: true,
+      routeEditingActive: false,
 
       // Planning defaults
       routeName: 'South Africa cross-country',
@@ -483,6 +486,7 @@ export const useMapStore = create<MapState>()(
       }),
 
       setPlanningMode: (enabled) => set({ planningMode: enabled }),
+      setRouteEditingActive: (active) => set({ routeEditingActive: active }),
       setRouteName: (name) => set({ routeName: name }),
       setRouteNotes: (notes) => set({ routeNotes: notes }),
       setDepartureTime: (time) => set({ departureTime: time }),

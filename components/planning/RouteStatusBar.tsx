@@ -13,7 +13,11 @@ import { assessDataFreshness, FRESHNESS_THRESHOLDS_MINUTES, formatFreshnessStatu
 import type { DataFreshness } from '@/types/planning';
 
 export default function RouteStatusBar() {
-  const { waypoints, activeAircraft, cruiseAltitudeFt, routeAirspaceReview, routeNotamReview } = useMapStore();
+  const waypoints = useMapStore((state) => state.waypoints);
+  const activeAircraft = useMapStore((state) => state.activeAircraft);
+  const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
+  const routeAirspaceReview = useMapStore((state) => state.routeAirspaceReview);
+  const routeNotamReview = useMapStore((state) => state.routeNotamReview);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const airspaceSummary = useMemo(
     () => summarizeAirspaceReview(routeAirspaceReview.alerts, routeAirspaceReview.status),

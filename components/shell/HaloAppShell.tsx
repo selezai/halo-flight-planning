@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { shallow } from 'zustand/shallow';
 import {
   Archive,
   BookOpen,
@@ -83,7 +84,36 @@ export default function HaloAppShell({
     duplicateActiveMission,
     loadMission,
     archiveMission,
-  } = useMapStore();
+  } = useMapStore((state) => ({
+    waypoints: state.waypoints,
+    activeAircraft: state.activeAircraft,
+    weightBalanceLoading: state.weightBalanceLoading,
+    routeAirspaceReview: state.routeAirspaceReview,
+    routeNotamReview: state.routeNotamReview,
+    routeName: state.routeName,
+    departureTime: state.departureTime,
+    cruiseAltitudeFt: state.cruiseAltitudeFt,
+    activeMissionId: state.activeMissionId,
+    missionLibrary: state.missionLibrary,
+    filingChecklist: state.filingChecklist,
+    closeReminder: state.closeReminder,
+    notamBriefingRecord: state.notamBriefingRecord,
+    flightPlanFilingRecord: state.flightPlanFilingRecord,
+    visibleLayers: state.visibleLayers,
+    planningMode: state.planningMode,
+    sidebarOpen: state.sidebarOpen,
+    sidebarPanel: state.sidebarPanel,
+    setSidebarOpen: state.setSidebarOpen,
+    setSidebarPanel: state.setSidebarPanel,
+    setPlanningMode: state.setPlanningMode,
+    toggleLayer: state.toggleLayer,
+    setViewport: state.setViewport,
+    saveActiveMission: state.saveActiveMission,
+    createBlankMission: state.createBlankMission,
+    duplicateActiveMission: state.duplicateActiveMission,
+    loadMission: state.loadMission,
+    archiveMission: state.archiveMission,
+  }), shallow);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [missionLibraryOpen, setMissionLibraryOpen] = useState(false);
   const now = useNowMinute();
@@ -249,7 +279,7 @@ export default function HaloAppShell({
       <div className="absolute inset-0">
         <ClientMap />
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_14%,rgba(255,255,255,0.72),transparent_28%),linear-gradient(120deg,rgba(255,249,236,0.48),rgba(14,116,144,0.06)_52%,rgba(15,23,42,0.16))]" />
+      <div className="halo-map-atmosphere pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_14%,rgba(255,255,255,0.72),transparent_28%),linear-gradient(120deg,rgba(255,249,236,0.48),rgba(14,116,144,0.06)_52%,rgba(15,23,42,0.16))]" />
 
       <div className="pointer-events-none absolute inset-x-3 top-3 z-30 sm:inset-x-5 sm:top-5">
         <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-[1.6rem] border border-white/70 bg-white/90 px-3 py-2 shadow-[0_20px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl sm:px-4">
