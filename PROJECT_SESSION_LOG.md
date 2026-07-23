@@ -2024,5 +2024,19 @@ Verification:
   - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
   - `pnpm typecheck`: passed.
   - `pnpm build`: passed on Next.js `15.5.18`; the earlier Zustand equality-function warning was removed by switching to `createWithEqualityFn`.
+- Production deployment:
+  - Commit: `989ab1f`
+  - Deployment URL: https://halo-flight-planning-g09gwpri9-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_2bQ42gZnyHWNqQJ9oRHziCz2rKZk`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200 with `Cache-Control: no-store`.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+  - `/api/openaip/style` returned no risky dynamic aviation icon `concat` layers for airport, navaid, runway, obstacle, hotspot, reporting point, or hang-gliding layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 130 ms.
+  - No runtime error entries appeared during the observed request.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
