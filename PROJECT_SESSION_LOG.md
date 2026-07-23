@@ -2156,3 +2156,58 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Waypoint Plotting Editor Suppression Fix
+
+Objective: keep the waypoint editor closed when the pilot plots a new waypoint on the map.
+
+Problem:
+
+- In planning mode, tapping empty map space to plot a waypoint immediately opened the waypoint editor for the new point.
+- This interrupted fast route plotting because every plotted point created an extra panel interaction.
+
+Root cause:
+
+- The planning-mode map click handler added the waypoint and then called `setSelectedWaypointId(waypointId)`.
+- `RouteWaypointEditor` renders whenever `planningMode && selectedWaypoint`, so plotting a new point selected and opened it immediately.
+
+Solution:
+
+- Added an explicit planning map-click action helper:
+  - existing route waypoint hit: select/open waypoint editor,
+  - empty map click: plot waypoint only.
+- Updated the map click handler so empty-map plotting calls `addUserWaypoint(...)` and clears selection with `setSelectedWaypointId(null)`.
+- Kept intentional existing-waypoint taps opening the waypoint editor.
+- Added regression coverage for the planning click action rule.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `lib/planning/mapInteraction.ts`
+- `tests/planning/mapInteraction.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/planning/mapInteraction.test.ts`: passed; Vitest ran 30 files / 132 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 30 files / 132 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `6448fb3`
+  - Deployment URL: https://halo-flight-planning-fh9rsx5ta-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_2MQmtyRvZmn6rejhjAtAqoda6XPa`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request start log appeared for the production alias.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
