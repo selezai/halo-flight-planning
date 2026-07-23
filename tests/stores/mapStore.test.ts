@@ -5,6 +5,9 @@ import { createUserWaypoint } from '@/lib/planning/navigation';
 describe('map store route planning actions', () => {
   beforeEach(() => {
     useMapStore.setState({
+      activeMissionId: 'mission-test-active',
+      missionLibrary: [],
+      routeName: 'Test active mission',
       waypoints: [],
       sidebarOpen: false,
       sidebarPanel: 'briefing',
@@ -54,5 +57,30 @@ describe('map store route planning actions', () => {
 
     useMapStore.getState().setRouteEditingActive(false);
     expect(useMapStore.getState().routeEditingActive).toBe(false);
+  });
+
+  it('saves the current map mission directly into the mission library', () => {
+    const first = createUserWaypoint([28.0, -26.0], 1);
+    const second = createUserWaypoint([28.5, -26.4], 2);
+
+    useMapStore.setState({
+      activeMissionId: 'mission-current-map',
+      missionLibrary: [],
+      routeName: 'Current map route',
+      waypoints: [first, second],
+    });
+
+    useMapStore.getState().saveActiveMission('needs-review');
+
+    const state = useMapStore.getState();
+    const savedMission = state.missionLibrary.find((mission) => mission.id === 'mission-current-map');
+
+    expect(savedMission).toBeDefined();
+    expect(state.activeMissionId).toBe('mission-current-map');
+    expect(state.missionLibrary).toHaveLength(1);
+    expect(savedMission?.name).toBe('Current map route');
+    expect(savedMission?.status).toBe('needs-review');
+    expect(savedMission?.waypointCount).toBe(2);
+    expect(savedMission?.state.waypoints).toEqual([first, second]);
   });
 });
