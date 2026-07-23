@@ -69,10 +69,10 @@ import { buildEmergencyPlanningReview } from '@/lib/planning/emergencyPlanning';
 import { buildTrainingNavLog } from '@/lib/planning/trainingNavlog';
 import HaloLogo from '@/components/shell/HaloLogo';
 import { HALO_PANEL_META } from '@/components/shell/haloNavigation';
+import { buildClickedFeatureStackKey } from '@/lib/ui/featureDetails';
 import { cn } from '@/lib/utils';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
-  Coordinates,
   AirspaceVerticalProfile,
   EmergencyLandingSite,
   EmergencyLandingSuitability,
@@ -96,7 +96,6 @@ import type {
   WeightBalanceResult,
   WeatherReport,
   Waypoint,
-  WaypointType,
 } from '@/types/planning';
 
 interface RouteWeatherState {
@@ -123,6 +122,7 @@ export default function Sidebar({
     sidebarPanel,
     setSidebarPanel,
     selectedFeature,
+    selectedFeatureCandidates,
     clearSelection,
   } = useMapStore((state) => ({
     sidebarOpen: state.sidebarOpen,
@@ -130,15 +130,26 @@ export default function Sidebar({
     sidebarPanel: state.sidebarPanel,
     setSidebarPanel: state.setSidebarPanel,
     selectedFeature: state.selectedFeature,
+    selectedFeatureCandidates: state.selectedFeatureCandidates,
     clearSelection: state.clearSelection,
   }), shallow);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const showPlannerNavigation = !selectedFeature;
   const showPlannerHeader = showPlannerNavigation && sidebarPanel === 'route' && Boolean(plannerHeader);
+  const selectedFeatureStackKey = useMemo(
+    () => buildClickedFeatureStackKey(selectedFeatureCandidates),
+    [selectedFeatureCandidates]
+  );
+  const closeSidebar = useCallback(() => {
+    if (selectedFeature) {
+      clearSelection();
+    }
+    setSidebarOpen(false);
+  }, [clearSelection, selectedFeature, setSidebarOpen]);
 
   useEffect(() => {
     scrollAreaRef.current?.scrollTo({ top: 0 });
-  }, [selectedFeature, sidebarPanel]);
+  }, [selectedFeatureStackKey, sidebarPanel]);
 
   if (!sidebarOpen) {
     return null;
@@ -157,7 +168,7 @@ export default function Sidebar({
         <HaloLogo size="sm" />
         <button
           type="button"
-          onClick={() => setSidebarOpen(false)}
+          onClick={closeSidebar}
           className="rounded-full p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-950"
           aria-label="Close planner"
         >
@@ -272,15 +283,12 @@ function FeatureDisplay({
   onClose: () => void;
 }) {
   const {
-    addRouteWaypoint,
     selectedFeatureCandidates,
     setSelectedFeature,
   } = useMapStore((state) => ({
-    addRouteWaypoint: state.addRouteWaypoint,
     selectedFeatureCandidates: state.selectedFeatureCandidates,
     setSelectedFeature: state.setSelectedFeature,
   }), shallow);
-  const waypoint = makeWaypointFromFeature(feature);
   const selectedFeatureKey = featureSelectionKey(feature);
   const clickedFeatures = selectedFeatureCandidates.length > 1
     ? selectedFeatureCandidates
@@ -317,16 +325,6 @@ function FeatureDisplay({
             <X className="h-5 w-5" />
           </button>
         </div>
-        {waypoint && (
-          <button
-            type="button"
-            onClick={() => addRouteWaypoint(waypoint)}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-amber-400 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300"
-          >
-            <Plus className="h-4 w-4" />
-            Add to route
-          </button>
-        )}
       </div>
 
       {clickedFeatures.length > 1 && (
@@ -2584,30 +2582,6 @@ function newestWeatherObservedAt(reports: WeatherReport[]): string | undefined {
 
   if (timestamps.length === 0) return undefined;
   return new Date(Math.max(...timestamps)).toISOString();
-}
-
-function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
-  const raw = feature.raw as Record<string, any> | undefined;
-  const coordinates =
-    feature.coordinates ??
-    (Array.isArray(raw?.geometry?.coordinates) ? raw?.geometry?.coordinates as Coordinates : undefined);
-
-  if (!coordinates) return null;
-
-  const ident = feature.icao ?? feature.identifier ?? raw?.icaoCode ?? raw?.icao_code ?? raw?.altIdentifier;
-  const name = feature.name ?? raw?.name ?? ident ?? 'Map feature';
-  const waypointType: WaypointType =
-    feature.type === 'airport' || feature.type === 'navaid' ? feature.type : 'user';
-
-  return {
-    id: String(feature.sourceId ?? ident ?? `${coordinates[0]}-${coordinates[1]}`),
-    type: waypointType,
-    name: String(name),
-    ident: ident ? String(ident) : undefined,
-    coordinates,
-    sourceId: feature.sourceId,
-    elevationFt: feature.elevationUnit === 'ft' ? feature.elevation : undefined,
-  };
 }
 
 function getOpenAipRecordPath(feature: ParsedFeature): string | null {

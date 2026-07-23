@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useMapStore } from '@/stores/mapStore';
 import { createUserWaypoint } from '@/lib/planning/navigation';
+import type { ParsedFeature } from '@/types/openaip';
 
 describe('map store route planning actions', () => {
   beforeEach(() => {
@@ -82,5 +83,28 @@ describe('map store route planning actions', () => {
     expect(savedMission?.status).toBe('needs-review');
     expect(savedMission?.waypointCount).toBe(2);
     expect(savedMission?.state.waypoints).toEqual([first, second]);
+  });
+
+  it('clears selected inspect features before planner panels reopen', () => {
+    const airspace: ParsedFeature = {
+      type: 'airspace',
+      sourceId: 'airspace-test',
+      name: 'Test TMA',
+    };
+
+    useMapStore.setState({
+      selectedFeature: airspace,
+      selectedFeatureCandidates: [airspace],
+      sidebarOpen: true,
+      sidebarPanel: 'briefing',
+    });
+
+    useMapStore.getState().clearSelection();
+
+    const state = useMapStore.getState();
+    expect(state.selectedFeature).toBeNull();
+    expect(state.selectedFeatureCandidates).toEqual([]);
+    expect(state.sidebarOpen).toBe(true);
+    expect(state.sidebarPanel).toBe('route');
   });
 });

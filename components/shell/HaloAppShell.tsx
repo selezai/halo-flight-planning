@@ -81,9 +81,10 @@ export default function HaloAppShell({
     visibleLayers,
     planningMode,
     sidebarOpen,
-    sidebarPanel,
+    selectedFeature,
     setSidebarOpen,
     setSidebarPanel,
+    clearSelection,
     setPlanningMode,
     toggleLayer,
     setViewport,
@@ -110,9 +111,10 @@ export default function HaloAppShell({
     visibleLayers: state.visibleLayers,
     planningMode: state.planningMode,
     sidebarOpen: state.sidebarOpen,
-    sidebarPanel: state.sidebarPanel,
+    selectedFeature: state.selectedFeature,
     setSidebarOpen: state.setSidebarOpen,
     setSidebarPanel: state.setSidebarPanel,
+    clearSelection: state.clearSelection,
     setPlanningMode: state.setPlanningMode,
     toggleLayer: state.toggleLayer,
     setViewport: state.setViewport,
@@ -253,8 +255,25 @@ export default function HaloAppShell({
   }, [activeMissionId]);
 
   const openPanel = (panel: HaloPanelId) => {
+    clearSelection();
     setSidebarPanel(panel);
     setSidebarOpen(true);
+  };
+
+  const closePlanner = () => {
+    if (selectedFeature) {
+      clearSelection();
+    }
+    setSidebarOpen(false);
+  };
+
+  const setPlannerOpen = (open: boolean) => {
+    if (open) {
+      setSidebarOpen(true);
+      return;
+    }
+
+    closePlanner();
   };
 
   const saveMissionFromCurrentStatus = () => {
@@ -343,7 +362,7 @@ export default function HaloAppShell({
             <Button
               type="button"
               size="sm"
-              onClick={() => setSidebarOpen(!plannerOpen)}
+              onClick={() => (plannerOpen ? closePlanner() : setSidebarOpen(true))}
               className="hidden bg-slate-950 text-white hover:bg-slate-800 sm:inline-flex"
             >
               <Menu className="h-3.5 w-3.5" />
@@ -398,7 +417,7 @@ export default function HaloAppShell({
               onOpenPanel={openPanel}
             />
           )}
-          <Sheet open={plannerOpen} onOpenChange={setSidebarOpen}>
+          <Sheet open={plannerOpen} onOpenChange={setPlannerOpen}>
             <SheetContent
               side="bottom"
               showCloseButton={false}
