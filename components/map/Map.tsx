@@ -13,6 +13,7 @@ import { parseFeature } from '@/lib/openaip/featureParser';
 import { getClickableLayers } from '@/lib/openaip/styleConverter';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
 import { calculateGlideRadiusNm } from '@/lib/planning/emergencyPlanning';
+import { didPointerDrag, normalizeScreenPoint, type ScreenPoint } from '@/lib/planning/mapInteraction';
 import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/lib/planning/navigation';
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import type { ParsedFeature } from '@/types/openaip';
@@ -26,6 +27,7 @@ type FeatureGeometry = maplibregl.MapGeoJSONFeature['geometry'];
 
 const ROUTE_AIRSPACE_SAMPLE_SPACING_PX = 32;
 const ROUTE_AIRSPACE_REVIEW_DEBOUNCE_MS = 700;
+const ROUTE_GESTURE_CLICK_SUPPRESSION_MS = 250;
 
 const AIRSPACE_SOURCE_LAYERS = new Set([
   'airspaces',
@@ -50,6 +52,9 @@ export default function Map({ className = '' }: MapProps) {
   const enrichmentRequestId = useRef(0);
   const missingSpriteIds = useRef<Set<string>>(new Set());
   const draggingWaypointId = useRef<string | null>(null);
+  const draggingInsertedWaypoint = useRef(false);
+  const dragStartPoint = useRef<ScreenPoint | null>(null);
+  const dragMoved = useRef(false);
   const lastDragCoordinates = useRef<Coordinates | null>(null);
   const rubberBandHandlersAttached = useRef(false);
   const routeAirspaceReviewTimer = useRef<number | null>(null);
@@ -467,9 +472,11 @@ export default function Map({ className = '' }: MapProps) {
 
       event.preventDefault();
       draggingWaypointId.current = id;
+      draggingInsertedWaypoint.current = false;
+      dragStartPoint.current = getEventScreenPoint(event);
+      dragMoved.current = false;
       lastDragCoordinates.current = [event.lngLat.lng, event.lngLat.lat];
       state.setRouteEditingActive(true);
-      setSelectedWaypointId(id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
       mapInstance.getCanvas().style.cursor = 'grabbing';
@@ -487,9 +494,11 @@ export default function Map({ className = '' }: MapProps) {
 
       state.insertRouteWaypoint(insertIndex, waypoint);
       draggingWaypointId.current = waypoint.id;
+      draggingInsertedWaypoint.current = true;
+      dragStartPoint.current = getEventScreenPoint(event);
+      dragMoved.current = true;
       lastDragCoordinates.current = coordinates;
       state.setRouteEditingActive(true);
-      setSelectedWaypointId(waypoint.id);
       suppressNextMapClick.current = true;
       mapInstance.dragPan.disable();
       mapInstance.getCanvas().style.cursor = 'grabbing';
@@ -506,6 +515,7 @@ export default function Map({ className = '' }: MapProps) {
       if (!draggingWaypointId.current) return;
       const coordinates: Coordinates = [event.lngLat.lng, event.lngLat.lat];
       event.preventDefault();
+      dragMoved.current = didPointerDrag(dragStartPoint.current, getEventScreenPoint(event), dragMoved.current);
       lastDragCoordinates.current = coordinates;
       const state = useMapStore.getState();
       updateRouteOverlayData(
@@ -526,10 +536,11 @@ export default function Map({ className = '' }: MapProps) {
         : lastDragCoordinates.current;
       const state = useMapStore.getState();
       const currentWaypoint = state.waypoints.find((waypoint) => waypoint.id === waypointId);
+      const wasDrag = didPointerDrag(dragStartPoint.current, getEventScreenPoint(event), dragMoved.current);
 
       event?.preventDefault();
 
-      if (currentWaypoint && coordinates) {
+      if (currentWaypoint && coordinates && (wasDrag || draggingInsertedWaypoint.current)) {
         state.updateRouteWaypoint(waypointId, {
           coordinates,
           type: 'user',
@@ -537,16 +548,21 @@ export default function Map({ className = '' }: MapProps) {
           name: currentWaypoint.type === 'user' ? currentWaypoint.name : `Moved ${currentWaypoint.ident ?? currentWaypoint.name}`,
           sourceId: undefined,
         });
+      } else if (event && currentWaypoint && !draggingInsertedWaypoint.current) {
+        setSelectedWaypointId(waypointId);
       }
 
       state.setRouteEditingActive(false);
       draggingWaypointId.current = null;
+      draggingInsertedWaypoint.current = false;
+      dragStartPoint.current = null;
+      dragMoved.current = false;
       lastDragCoordinates.current = null;
       mapInstance.dragPan.enable();
       mapInstance.getCanvas().style.cursor = '';
       window.setTimeout(() => {
         suppressNextMapClick.current = false;
-      }, 0);
+      }, ROUTE_GESTURE_CLICK_SUPPRESSION_MS);
     };
 
     mapInstance.on('mousemove', updateDragPosition);
@@ -766,6 +782,11 @@ export default function Map({ className = '' }: MapProps) {
       )}
     </div>
   );
+}
+
+function getEventScreenPoint(event?: unknown): ScreenPoint | null {
+  if (!event || typeof event !== 'object' || !('point' in event)) return null;
+  return normalizeScreenPoint((event as { point?: unknown }).point);
 }
 
 function RouteWaypointEditor({

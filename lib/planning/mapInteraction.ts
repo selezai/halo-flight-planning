@@ -1,0 +1,37 @@
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
+export const ROUTE_WAYPOINT_TAP_TOLERANCE_PX = 8;
+
+export function normalizeScreenPoint(point: unknown): ScreenPoint | null {
+  if (Array.isArray(point)) {
+    const [x, y] = point;
+    return isFiniteNumber(x) && isFiniteNumber(y) ? { x, y } : null;
+  }
+
+  if (!point || typeof point !== 'object') return null;
+
+  const candidate = point as { x?: unknown; y?: unknown };
+  return isFiniteNumber(candidate.x) && isFiniteNumber(candidate.y)
+    ? { x: candidate.x, y: candidate.y }
+    : null;
+}
+
+export function didPointerDrag(
+  start: ScreenPoint | null,
+  current: ScreenPoint | null,
+  alreadyMoved = false,
+  tolerancePx = ROUTE_WAYPOINT_TAP_TOLERANCE_PX
+): boolean {
+  if (alreadyMoved) return true;
+  if (!start || !current) return false;
+
+  const tolerance = Number.isFinite(tolerancePx) ? Math.max(0, tolerancePx) : ROUTE_WAYPOINT_TAP_TOLERANCE_PX;
+  return Math.hypot(current.x - start.x, current.y - start.y) > tolerance;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
