@@ -2211,3 +2211,60 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Active Mission Save Feedback Fix
+
+Objective: make the `Save active` button visibly save the current mission on the map and confirm the action to the pilot.
+
+Problem:
+
+- Pressing `Save active` appeared to do nothing.
+- The current mission could be saved only when using the mission-library `New mission` flow, because that flow automatically saved the previous active mission before creating the new blank mission.
+- The direct save button gave no pressed/saved confirmation, so even a successful upsert looked inactive.
+
+Root cause:
+
+- The store `saveActiveMission` action did upsert the active mission into `missionLibrary`, but the UI gave almost no visible state change when the active mission id/name stayed the same.
+- The Save button stayed visually identical after being clicked.
+- There was no direct regression test proving that `saveActiveMission` saves the current map route into the mission library.
+
+Solution:
+
+- Added transient mission-save feedback state in `HaloAppShell`.
+- After `saveActiveMission(...)`, the shell reads the saved mission from the store and shows:
+  - a green `Saved` button state,
+  - a confirmation line with the saved mission name and save time,
+  - the updated mission count through the existing `Missions (...)` button.
+- Applied the same confirmation behavior to the planner header and Mission Library dialog save button.
+- Added a store regression test proving direct `saveActiveMission` writes the current route, status, waypoint count, and waypoint state into `missionLibrary`.
+
+Files modified:
+
+- `components/shell/HaloAppShell.tsx`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/stores/mapStore.test.ts`: passed; Vitest ran 30 files / 133 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 30 files / 133 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `0dd76a7`
+  - Deployment URL: https://halo-flight-planning-d6bklatmp-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_CZUiE2m3vB4djPNH2Aao8PqUMNFp`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 113 ms and 79 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
