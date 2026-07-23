@@ -535,8 +535,6 @@ function RoutePanel() {
     routeAirspaceReview,
     planningMode,
     setPlanningMode,
-    visibleLayers,
-    toggleLayer,
   } = useMapStore((state) => ({
     routeName: state.routeName,
     setRouteName: state.setRouteName,
@@ -550,8 +548,6 @@ function RoutePanel() {
     routeAirspaceReview: state.routeAirspaceReview,
     planningMode: state.planningMode,
     setPlanningMode: state.setPlanningMode,
-    visibleLayers: state.visibleLayers,
-    toggleLayer: state.toggleLayer,
   }), shallow);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
 
@@ -703,31 +699,6 @@ function RoutePanel() {
         route={route}
         cruiseAltitudeFt={cruiseAltitudeFt}
       />
-
-      <PanelGroupHeader
-        eyebrow="Map"
-        title="Aviation layers"
-        detail="Toggle map information without changing the route-editing mode."
-      />
-
-      <PanelBlock title="Map layers" icon={<Layers className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-2">
-          {Object.entries(visibleLayers).map(([layer, enabled]) => (
-            <button
-              key={layer}
-              type="button"
-              onClick={() => toggleLayer(layer as keyof typeof visibleLayers)}
-              className={`rounded-md border px-3 py-2 text-left text-xs font-medium capitalize ${
-                enabled
-                  ? 'border-slate-950 bg-slate-950 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {formatLayerName(layer)}
-            </button>
-          ))}
-        </div>
-      </PanelBlock>
 
       {waypoints.length > 0 && (
         <PanelBlock title="Danger zone" icon={<Trash2 className="h-4 w-4" />}>
@@ -2689,21 +2660,6 @@ function formatFeatureCandidate(feature: ParsedFeature): { title: string; meta: 
     title,
     meta: details.join(' · '),
   };
-}
-
-function formatLayerName(layer: string): string {
-  const labels: Record<string, string> = {
-    airports: 'Airports',
-    navaids: 'Navaids',
-    airspaces: 'Airspaces',
-    reportingPoints: 'Reporting points',
-    obstacles: 'Obstacles',
-    hotspots: 'Hotspots',
-    hangGlidings: 'Hang gliding',
-    rcAirfields: 'RC airfields',
-  };
-
-  return labels[layer] ?? layer.replace(/([A-Z])/g, ' $1');
 }
 
 function updateStation(

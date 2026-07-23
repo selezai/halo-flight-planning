@@ -47,6 +47,7 @@ import { getMissionStatusFromHaloStatus, sortMissionRecords } from '@/lib/planni
 import { calculateRoute } from '@/lib/planning/navigation';
 import { calculateWeightBalance } from '@/lib/planning/weightBalance';
 import { buildHaloMissionSummary, type HaloPanelId, type HaloStatusTone } from '@/lib/ui/halo';
+import { countEnabledMapLayers, getOrderedMapLayerEntries } from '@/lib/ui/mapLayers';
 import { cn } from '@/lib/utils';
 import { useMapStore, type MapState } from '@/stores/mapStore';
 import type { HaloMissionRecord } from '@/types/planning';
@@ -300,7 +301,8 @@ export default function HaloAppShell({
   };
 
   const plannerOpen = sidebarOpen;
-  const showMapControls = !plannerOpen;
+  const showMapModeControl = !plannerOpen;
+  const showMapTools = !plannerOpen || isDesktop;
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#f9f3e4] text-slate-950">
@@ -351,14 +353,14 @@ export default function HaloAppShell({
         </div>
       </div>
 
-      {showMapControls && (
+      {showMapModeControl && (
         <MapModeControl
           planningMode={planningMode}
           onChange={setPlanningMode}
         />
       )}
 
-      {showMapControls && (
+      {showMapTools && (
         <MapToolsRail
           visibleLayers={visibleLayers}
           onToggleLayer={toggleLayer}
@@ -841,13 +843,10 @@ function MapToolsRail({
   onFocusRoute: () => void;
   onOpenEmergency: () => void;
 }) {
+  const [layersOpen, setLayersOpen] = useState(false);
+  const layerEntries = getOrderedMapLayerEntries(visibleLayers);
+  const enabledLayerCount = countEnabledMapLayers(visibleLayers);
   const controls = [
-    {
-      label: 'Airspace layer',
-      icon: Layers,
-      onClick: () => onToggleLayer('airspaces'),
-      active: visibleLayers.airspaces,
-    },
     {
       label: 'Emergency tools',
       icon: ShieldAlert,
@@ -863,25 +862,93 @@ function MapToolsRail({
   ];
 
   return (
-    <div className="absolute right-3 top-24 z-20 hidden flex-col gap-2 sm:right-5 sm:flex lg:left-5 lg:right-auto lg:top-auto lg:bottom-24">
-      {controls.map((control) => (
-        <Tooltip key={control.label}>
+    <div className="pointer-events-none absolute left-3 top-[9.5rem] z-20 flex flex-col items-start gap-2 sm:left-5 sm:top-24 lg:bottom-24 lg:top-auto">
+      <div className="pointer-events-auto">
+        <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={control.onClick}
+              onClick={() => setLayersOpen((open) => !open)}
               className={cn(
-                'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/90 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
-                control.active && 'border-cyan-200 bg-cyan-50 text-cyan-900'
+                'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-3 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
+                layersOpen && 'border-cyan-200 bg-cyan-50 text-cyan-950'
               )}
-              aria-label={control.label}
+              aria-expanded={layersOpen}
+              aria-label="Map aviation layers"
             >
-              <control.icon className="h-5 w-5" />
+              <Layers className="h-5 w-5" />
+              <span className="hidden text-xs font-semibold sm:inline">Layers</span>
+              <span className="rounded-full bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {enabledLayerCount}
+              </span>
             </button>
           </TooltipTrigger>
-          <TooltipContent side="left">{control.label}</TooltipContent>
+          <TooltipContent side="right">Map aviation layers</TooltipContent>
         </Tooltip>
-      ))}
+
+        {layersOpen && (
+          <div className="mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-[1.35rem] border border-white/75 bg-white/95 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">Map layers</p>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                  Toggle OpenAIP aviation overlays on the map.
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                {enabledLayerCount}/{layerEntries.length} on
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {layerEntries.map((layer) => (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => onToggleLayer(layer.id as keyof MapState['visibleLayers'])}
+                  className={cn(
+                    'flex min-h-10 items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition',
+                    layer.enabled
+                      ? 'border-slate-950 bg-slate-950 text-white shadow-sm shadow-slate-900/15'
+                      : 'border-slate-200 bg-white/80 text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                  )}
+                  aria-pressed={layer.enabled}
+                >
+                  <span className="truncate">{layer.label}</span>
+                  <span
+                    className={cn(
+                      'h-2.5 w-2.5 shrink-0 rounded-full',
+                      layer.enabled ? 'bg-cyan-300' : 'bg-slate-300'
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="pointer-events-auto flex flex-col gap-2">
+        {controls.map((control) => (
+          <Tooltip key={control.label}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={control.onClick}
+                className={cn(
+                  'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/90 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
+                  control.active && 'border-cyan-200 bg-cyan-50 text-cyan-900'
+                )}
+                aria-label={control.label}
+              >
+                <control.icon className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{control.label}</TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
     </div>
   );
 }
