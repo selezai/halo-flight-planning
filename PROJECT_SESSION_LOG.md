@@ -2040,3 +2040,60 @@ Verification:
   - No runtime error entries appeared during the observed request.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Touch Waypoint Drag Selection Fix
+
+Objective: fix touch-screen waypoint dragging so moving a route waypoint does not open the waypoint editor; the editor should open only after an intentional tap on the waypoint.
+
+Problem:
+
+- In planning mode, touching a route waypoint immediately opened the waypoint editor.
+- On touch devices this made dragging a waypoint feel broken because the editor appeared as soon as the pilot started the drag gesture.
+
+Root cause:
+
+- `components/map/Map.tsx` called `setSelectedWaypointId(id)` inside the route waypoint `touchstart` / `mousedown` handler.
+- That treated pointer-down as selection before Halo could know whether the gesture was a tap or a drag.
+
+Solution:
+
+- Added a tested map interaction helper for normalizing MapLibre screen points and classifying tap-vs-drag movement with an 8 px tolerance.
+- Changed route waypoint gestures so `touchstart` / `mousedown` starts transient route editing but does not open the waypoint editor.
+- Changed drag movement to mark the gesture as a drag only after crossing the movement tolerance.
+- Changed gesture finish behavior:
+  - tap existing waypoint: opens the waypoint editor.
+  - drag existing waypoint: commits the moved coordinates and keeps the editor closed.
+  - rubber-band route-line insertion: commits the inserted waypoint without opening the editor during the drag.
+- Kept a short click-suppression window after route gestures so delayed touch/click events cannot reopen the editor after a drag.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `lib/planning/mapInteraction.ts`
+- `tests/planning/mapInteraction.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/planning/mapInteraction.test.ts`: passed; Vitest ran 30 files / 129 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 30 files / 129 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `3f6f990`
+  - Deployment URL: https://halo-flight-planning-c1x1wkgba-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_BYidjoLRdZPr5hqFhnokWctSJhdQ`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 159 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
