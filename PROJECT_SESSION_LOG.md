@@ -2097,3 +2097,62 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-23 Pinch-Zoom Waypoint Selection Fix
+
+Objective: prevent two-finger pinch zoom near a route waypoint from opening the waypoint editor.
+
+Problem:
+
+- On touch screens, using two fingers to zoom in or out near a route waypoint could open the waypoint editor.
+- This made map zooming unreliable in planning mode when a route point was near the gesture.
+
+Root cause:
+
+- The route waypoint gesture state machine only separated tap from drag by movement distance.
+- It did not classify multi-touch gestures separately.
+- A pinch gesture could start with one finger over a waypoint, enter route gesture state, and then finish like a single-finger waypoint tap.
+
+Solution:
+
+- Added touch-count helpers to identify active multi-touch MapLibre/browser touch events.
+- Made waypoint drag and rubber-band insertion single-touch-only interactions.
+- Added a cancel path for in-progress route gestures when a second touch appears:
+  - restore the route overlay from the persisted route state,
+  - remove a temporary rubber-band inserted waypoint if the cancelled gesture created one,
+  - re-enable map drag/pinch handling,
+  - suppress delayed click events that could reopen the waypoint editor.
+- Changed `touchcancel` to cancel route editing instead of committing/selecting the route point.
+- Tightened route gesture click-suppression timing so older timers cannot clear a newer suppression window.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `lib/planning/mapInteraction.ts`
+- `tests/planning/mapInteraction.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/planning/mapInteraction.test.ts`: passed; Vitest ran 30 files / 131 tests.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 30 files / 131 tests.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Production deployment:
+  - Commit: `37a6608`
+  - Deployment URL: https://halo-flight-planning-4tlqmslh3-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_6nVAMtuyD1hwW8CFSW8uJFwnhfmj`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+  - `/api/openaip/style` reported `metadata.haloBaseMap.source = maptiler-vector`, `style = outdoor-v2`, and `mode = vector-style`.
+  - `/api/openaip/style` returned 207 total style layers.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 131 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
