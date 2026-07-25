@@ -136,6 +136,46 @@ export interface RouteAnalysis {
   summary: RouteSummary;
 }
 
+export type ActiveRouteStatus = 'idle' | 'active' | 'stopped';
+
+export interface ActiveRouteState {
+  status: ActiveRouteStatus;
+  startedAt?: string;
+  stoppedAt?: string;
+  currentLegIndex: number;
+  nextWaypointId?: string;
+  distanceToNextNm?: number;
+  crossTrackErrorNm?: number;
+  lastPositionAt?: string;
+}
+
+export type LocationTrackingStatus =
+  | 'idle'
+  | 'requesting'
+  | 'tracking'
+  | 'denied'
+  | 'unavailable'
+  | 'error';
+
+export interface TrackedLocation {
+  coordinates: Coordinates;
+  accuracyM?: number;
+  altitudeFt?: number;
+  altitudeAccuracyFt?: number;
+  headingDeg?: number;
+  speedKts?: number;
+  timestamp: string;
+}
+
+export interface LocationTrackingState {
+  enabled: boolean;
+  followMode: boolean;
+  status: LocationTrackingStatus;
+  position?: TrackedLocation;
+  error?: string;
+  lastUpdatedAt?: string;
+}
+
 export interface TrainingWind {
   directionDeg: number;
   speedKts: number;

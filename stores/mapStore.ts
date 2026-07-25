@@ -2,6 +2,7 @@ import { createWithEqualityFn } from 'zustand/traditional';
 import { persist } from 'zustand/middleware';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
+  ActiveRouteState,
   AircraftProfile,
   Coordinates,
   EmergencyLandingSite,
@@ -11,11 +12,14 @@ import type {
   HaloMissionPlannerState,
   HaloMissionRecord,
   HaloMissionStatus,
+  LocationTrackingState,
+  LocationTrackingStatus,
   NotamBriefingRecord,
   PersonalMinimums,
   RouteAirspaceReview,
   RouteNotamReview,
   TrainingWind,
+  TrackedLocation,
   WeightBalanceLoading,
   Waypoint,
 } from '@/types/planning';
@@ -41,6 +45,11 @@ import {
   upsertMissionRecord,
 } from '@/lib/planning/missions';
 import { insertWaypointAtRouteIndex } from '@/lib/planning/rubberBandRoute';
+import {
+  calculateActiveRouteProgress,
+  DEFAULT_ACTIVE_ROUTE_STATE,
+  DEFAULT_LOCATION_TRACKING_STATE,
+} from '@/lib/planning/routeTracking';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
 import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
 import type { HaloPanelId } from '@/lib/ui/halo';
@@ -72,6 +81,8 @@ export interface MapState {
   sidebarPanel: HaloPanelId;
   planningMode: boolean;
   routeEditingActive: boolean;
+  activeRoute: ActiveRouteState;
+  locationTracking: LocationTrackingState;
 
   // Planning state
   routeName: string;
@@ -107,6 +118,12 @@ export interface MapState {
   clearSelection: () => void;
   setPlanningMode: (enabled: boolean) => void;
   setRouteEditingActive: (active: boolean) => void;
+  startActiveRoute: () => void;
+  stopActiveRoute: () => void;
+  setLocationTrackingEnabled: (enabled: boolean) => void;
+  setLocationFollowMode: (enabled: boolean) => void;
+  setLocationTrackingStatus: (status: LocationTrackingStatus, error?: string) => void;
+  setTrackedLocation: (location: TrackedLocation) => void;
   setRouteName: (name: string) => void;
   setRouteNotes: (notes: string) => void;
   setDepartureTime: (time: string) => void;
@@ -301,6 +318,7 @@ function getMissionActivationState(missionState: HaloMissionPlannerState): Parti
     selectedFeature: null,
     selectedFeatureCandidates: [],
     sidebarPanel: 'route',
+    activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
   };
 }
 
@@ -359,6 +377,8 @@ function mergePersistedMapState(
       ...DEFAULT_VISIBLE_LAYERS,
       ...persistedState?.visibleLayers,
     },
+    activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
+    locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
     sidebarPanel: normalizeHaloPanelId(persistedState?.sidebarPanel),
     weightBalanceLoading: {
       ...DEFAULT_WEIGHT_BALANCE_LOADING,
@@ -425,6 +445,8 @@ export const useMapStore = createWithEqualityFn<MapState>()(
       sidebarPanel: 'route',
       planningMode: true,
       routeEditingActive: false,
+      activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
+      locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
 
       // Planning defaults
       routeName: 'South Africa cross-country',
@@ -487,6 +509,114 @@ export const useMapStore = createWithEqualityFn<MapState>()(
 
       setPlanningMode: (enabled) => set({ planningMode: enabled }),
       setRouteEditingActive: (active) => set({ routeEditingActive: active }),
+
+      startActiveRoute: () => set((state) => {
+        if (state.waypoints.length < 2) {
+          return {
+            activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
+          };
+        }
+
+        const progress = state.locationTracking.status === 'tracking' && state.locationTracking.position
+          ? calculateActiveRouteProgress(state.waypoints, state.locationTracking.position)
+          : {
+              currentLegIndex: 0,
+              nextWaypointId: state.waypoints[1]?.id,
+            };
+
+        return {
+          activeRoute: {
+            status: 'active',
+            startedAt: new Date().toISOString(),
+            currentLegIndex: progress.currentLegIndex,
+            nextWaypointId: progress.nextWaypointId,
+            distanceToNextNm: progress.distanceToNextNm,
+            crossTrackErrorNm: progress.crossTrackErrorNm,
+            lastPositionAt: state.locationTracking.position?.timestamp,
+          },
+          planningMode: false,
+          selectedFeature: null,
+          selectedFeatureCandidates: [],
+        };
+      }),
+
+      stopActiveRoute: () => set((state) => ({
+        activeRoute: {
+          ...DEFAULT_ACTIVE_ROUTE_STATE,
+          status: 'stopped',
+          stoppedAt: new Date().toISOString(),
+          currentLegIndex: state.activeRoute.currentLegIndex,
+          nextWaypointId: state.activeRoute.nextWaypointId,
+          distanceToNextNm: state.activeRoute.distanceToNextNm,
+          crossTrackErrorNm: state.activeRoute.crossTrackErrorNm,
+          lastPositionAt: state.activeRoute.lastPositionAt,
+        },
+      })),
+
+      setLocationTrackingEnabled: (enabled) => set((state) => ({
+        locationTracking: {
+          ...state.locationTracking,
+          enabled,
+          followMode: enabled ? state.locationTracking.followMode : false,
+          status: enabled ? 'requesting' : 'idle',
+          error: undefined,
+          position: enabled ? state.locationTracking.position : undefined,
+          lastUpdatedAt: enabled ? state.locationTracking.lastUpdatedAt : undefined,
+        },
+      })),
+
+      setLocationFollowMode: (enabled) => set((state) => ({
+        locationTracking: {
+          ...state.locationTracking,
+          followMode: enabled,
+        },
+      })),
+
+      setLocationTrackingStatus: (status, error) => set((state) => {
+        const terminal = status === 'idle' || status === 'denied' || status === 'unavailable' || status === 'error';
+
+        return {
+          locationTracking: {
+            ...state.locationTracking,
+            status,
+            enabled: terminal ? false : state.locationTracking.enabled,
+            followMode: terminal ? false : state.locationTracking.followMode,
+            error,
+            position: terminal ? undefined : state.locationTracking.position,
+            lastUpdatedAt: status === 'tracking'
+              ? state.locationTracking.lastUpdatedAt
+              : new Date().toISOString(),
+          },
+        };
+      }),
+
+      setTrackedLocation: (location) => set((state) => {
+        const progress = state.activeRoute.status === 'active'
+          ? calculateActiveRouteProgress(state.waypoints, location)
+          : undefined;
+
+        return {
+          locationTracking: {
+            ...state.locationTracking,
+            enabled: true,
+            status: 'tracking',
+            position: location,
+            error: undefined,
+            lastUpdatedAt: location.timestamp,
+          },
+          activeRoute: progress
+            ? {
+                ...state.activeRoute,
+                currentLegIndex: progress.currentLegIndex,
+                nextWaypointId: progress.nextWaypointId,
+                distanceToNextNm: progress.distanceToNextNm,
+                crossTrackErrorNm: progress.crossTrackErrorNm,
+                lastPositionAt: location.timestamp,
+              }
+            : state.activeRoute,
+        };
+      }),
+
       setRouteName: (name) => set({ routeName: name }),
       setRouteNotes: (notes) => set({ routeNotes: notes }),
       setDepartureTime: (time) => set({ departureTime: time }),
@@ -662,6 +792,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
         coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
         routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
+        activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
       }),
 
       setActiveAircraft: (aircraft) => set({

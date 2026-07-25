@@ -22,8 +22,19 @@ import {
 } from '@/lib/planning/mapInteraction';
 import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/lib/planning/navigation';
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
+import {
+  normalizeTrackedLocation,
+  resolveAircraftTrackHeading,
+} from '@/lib/planning/routeTracking';
 import type { ParsedFeature } from '@/types/openaip';
-import type { Coordinates, RouteAirspaceAlert, RouteAirspaceReview, Waypoint } from '@/types/planning';
+import type {
+  Coordinates,
+  LocationTrackingStatus,
+  RouteAirspaceAlert,
+  RouteAirspaceReview,
+  TrackedLocation,
+  Waypoint,
+} from '@/types/planning';
 
 interface MapProps {
   className?: string;
@@ -34,6 +45,7 @@ type FeatureGeometry = maplibregl.MapGeoJSONFeature['geometry'];
 const ROUTE_AIRSPACE_SAMPLE_SPACING_PX = 32;
 const ROUTE_AIRSPACE_REVIEW_DEBOUNCE_MS = 700;
 const ROUTE_GESTURE_CLICK_SUPPRESSION_MS = 250;
+const METERS_PER_NM = 1852;
 
 const AIRSPACE_SOURCE_LAYERS = new Set([
   'airspaces',
@@ -58,6 +70,7 @@ export default function Map({ className = '' }: MapProps) {
   const enrichmentRequestId = useRef(0);
   const missingSpriteIds = useRef<Set<string>>(new Set());
   const draggingWaypointId = useRef<string | null>(null);
+  const locationMarker = useRef<maplibregl.Marker | null>(null);
   const draggingInsertedWaypoint = useRef(false);
   const dragStartPoint = useRef<ScreenPoint | null>(null);
   const dragMoved = useRef(false);
@@ -92,8 +105,12 @@ export default function Map({ className = '' }: MapProps) {
   const emergencyLandingSites = useMapStore((state) => state.emergencyLandingSites);
   const planningMode = useMapStore((state) => state.planningMode);
   const routeEditingActive = useMapStore((state) => state.routeEditingActive);
+  const activeRoute = useMapStore((state) => state.activeRoute);
+  const locationTracking = useMapStore((state) => state.locationTracking);
   const updateRouteWaypoint = useMapStore((state) => state.updateRouteWaypoint);
   const removeRouteWaypoint = useMapStore((state) => state.removeRouteWaypoint);
+  const setLocationTrackingStatus = useMapStore((state) => state.setLocationTrackingStatus);
+  const setTrackedLocation = useMapStore((state) => state.setTrackedLocation);
   const setRenderedRouteAirspaceReview = useMapStore((state) => state.setRenderedRouteAirspaceReview);
   const selectedWaypoint = useMemo(
     () => waypoints.find((waypoint) => waypoint.id === selectedWaypointId) ?? null,
@@ -154,6 +171,43 @@ export default function Map({ className = '' }: MapProps) {
       })),
     } as any);
   }, [activeAircraft.glideRatio, cruiseAltitudeFt, emergencyLandingSites, mapLoaded, waypoints]);
+
+  const updateLocationOverlay = useCallback(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const mapInstance = map.current;
+    const trackedPosition = locationTracking.status === 'tracking'
+      ? locationTracking.position
+      : undefined;
+
+    ensureLocationLayers(mapInstance);
+    updateLocationAccuracyOverlay(mapInstance, trackedPosition);
+
+    if (!trackedPosition) {
+      locationMarker.current?.remove();
+      locationMarker.current = null;
+      return;
+    }
+
+    if (!locationMarker.current) {
+      locationMarker.current = new maplibregl.Marker({
+        element: createHaloAircraftMarkerElement(),
+        anchor: 'center',
+        rotationAlignment: 'map',
+      }).addTo(mapInstance);
+    }
+
+    const headingDeg = resolveAircraftTrackHeading(
+      trackedPosition,
+      waypoints,
+      activeRoute.currentLegIndex
+    );
+
+    locationMarker.current
+      .setLngLat(trackedPosition.coordinates)
+      .getElement()
+      .style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
+  }, [activeRoute.currentLegIndex, locationTracking.position, locationTracking.status, mapLoaded, waypoints]);
 
   const updateRouteAirspaceReview = useCallback(() => {
     if (routeEditingActive) return;
@@ -322,17 +376,6 @@ export default function Map({ className = '' }: MapProps) {
           'top-right'
         );
 
-        // Add geolocation control
-        map.current.addControl(
-          new maplibregl.GeolocateControl({
-            positionOptions: {
-              enableHighAccuracy: true,
-            },
-            trackUserLocation: true,
-          }),
-          'top-right'
-        );
-
         // Add scale control
         map.current.addControl(
           new maplibregl.ScaleControl({
@@ -347,6 +390,7 @@ export default function Map({ className = '' }: MapProps) {
           setMapLoaded(true);
           ensureRouteLayers(map.current!);
           ensureEmergencyLayers(map.current!);
+          ensureLocationLayers(map.current!);
         });
 
         // Style load event
@@ -354,6 +398,7 @@ export default function Map({ className = '' }: MapProps) {
           setStyleLoaded(true);
           ensureRouteLayers(map.current!);
           ensureEmergencyLayers(map.current!);
+          ensureLocationLayers(map.current!);
           const clickableLayers = getClickableLayers(style);
           setupClickHandlers(clickableLayers);
           setupRubberBandHandlers();
@@ -403,11 +448,65 @@ export default function Map({ className = '' }: MapProps) {
     // Cleanup
     return () => {
       if (map.current) {
+        locationMarker.current?.remove();
+        locationMarker.current = null;
         map.current.remove();
         map.current = null;
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!locationTracking.enabled) return;
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationTrackingStatus('unavailable', 'This browser does not provide GPS/location tracking.');
+      return;
+    }
+
+    setLocationTrackingStatus('requesting');
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const trackedLocation = normalizeTrackedLocation({
+          longitude: position.coords.longitude,
+          latitude: position.coords.latitude,
+          accuracyM: position.coords.accuracy,
+          altitudeM: position.coords.altitude,
+          altitudeAccuracyM: position.coords.altitudeAccuracy,
+          headingDeg: position.coords.heading,
+          speedMps: position.coords.speed,
+          timestamp: position.timestamp,
+        });
+
+        setTrackedLocation(trackedLocation);
+
+        const state = useMapStore.getState();
+        if (state.locationTracking.followMode && map.current) {
+          map.current.easeTo({
+            center: trackedLocation.coordinates,
+            duration: 650,
+            essential: true,
+          });
+        }
+      },
+      (positionError) => {
+        setLocationTrackingStatus(
+          mapBrowserLocationErrorStatus(positionError),
+          formatBrowserLocationError(positionError)
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5_000,
+        timeout: 15_000,
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [locationTracking.enabled, setLocationTrackingStatus, setTrackedLocation]);
 
   // Set up click handlers for aviation features
   const setupClickHandlers = (layers: string[]) => {
@@ -784,6 +883,10 @@ export default function Map({ className = '' }: MapProps) {
   }, [updateEmergencyOverlay]);
 
   useEffect(() => {
+    updateLocationOverlay();
+  }, [updateLocationOverlay]);
+
+  useEffect(() => {
     if (routeEditingActive) return;
     scheduleRouteAirspaceReview();
   }, [routeEditingActive, scheduleRouteAirspaceReview]);
@@ -945,6 +1048,148 @@ function createTransparentImageData(width: number, height: number) {
     height,
     data: new Uint8Array(width * height * 4),
   };
+}
+
+function createHaloAircraftMarkerElement(): HTMLDivElement {
+  const element = document.createElement('div');
+  element.className = 'halo-location-aircraft-marker';
+  element.style.cssText = [
+    'width:44px',
+    'height:44px',
+    'pointer-events:none',
+    'display:grid',
+    'place-items:center',
+    'filter:drop-shadow(0 12px 18px rgba(15,23,42,0.22))',
+    'transform:translateZ(0)',
+  ].join(';');
+  element.innerHTML = `
+    <div style="
+      width:44px;
+      height:44px;
+      display:grid;
+      place-items:center;
+      border-radius:999px;
+      background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.96), rgba(255,250,235,0.86));
+      border:1px solid rgba(212,175,55,0.68);
+      box-shadow:0 0 0 5px rgba(103,232,249,0.14), inset 0 0 18px rgba(14,165,233,0.12);
+    ">
+      <svg
+        viewBox="0 0 44 44"
+        width="34"
+        height="34"
+        aria-hidden="true"
+        style="transform:rotate(var(--halo-plane-heading, 0deg)); transform-origin:50% 50%; transition:transform 220ms ease-out;"
+      >
+        <path
+          d="M22 4.8 30.2 37.5 22 31.9 13.8 37.5 22 4.8Z"
+          fill="#020617"
+        />
+        <path
+          d="M22 8.8 25.7 30.1 22 27.7 18.3 30.1 22 8.8Z"
+          fill="#67e8f9"
+          opacity="0.82"
+        />
+        <path
+          d="M22 4.8 30.2 37.5 22 31.9 13.8 37.5 22 4.8Z"
+          fill="none"
+          stroke="#f8fafc"
+          stroke-width="1.15"
+          stroke-linejoin="round"
+        />
+        <circle cx="22" cy="22" r="18.5" fill="none" stroke="#d4af37" stroke-width="1.15" stroke-dasharray="18 8" opacity="0.78" />
+      </svg>
+    </div>
+  `;
+
+  return element;
+}
+
+function ensureLocationLayers(mapInstance: maplibregl.Map) {
+  if (!mapInstance.getSource('halo-location-accuracy')) {
+    mapInstance.addSource('halo-location-accuracy', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [],
+      } as any,
+    });
+  }
+
+  if (!mapInstance.getLayer('halo-location-accuracy-fill')) {
+    mapInstance.addLayer({
+      id: 'halo-location-accuracy-fill',
+      type: 'fill',
+      source: 'halo-location-accuracy',
+      paint: {
+        'fill-color': '#06b6d4',
+        'fill-opacity': 0.1,
+      },
+    });
+  }
+
+  if (!mapInstance.getLayer('halo-location-accuracy-line')) {
+    mapInstance.addLayer({
+      id: 'halo-location-accuracy-line',
+      type: 'line',
+      source: 'halo-location-accuracy',
+      paint: {
+        'line-color': '#0891b2',
+        'line-width': 1.5,
+        'line-opacity': 0.62,
+        'line-dasharray': [2, 2],
+      },
+    });
+  }
+}
+
+function updateLocationAccuracyOverlay(
+  mapInstance: maplibregl.Map,
+  position: TrackedLocation | undefined
+) {
+  const source = mapInstance.getSource('halo-location-accuracy') as maplibregl.GeoJSONSource | undefined;
+  if (!source) return;
+
+  const radiusNm = position?.accuracyM && position.accuracyM > 0
+    ? position.accuracyM / METERS_PER_NM
+    : 0;
+
+  source.setData({
+    type: 'FeatureCollection',
+    features: position && radiusNm > 0
+      ? [{
+          type: 'Feature',
+          properties: {
+            accuracyM: position.accuracyM,
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [buildCircleCoordinates(position.coordinates, radiusNm)],
+          },
+        }]
+      : [],
+  } as any);
+}
+
+function mapBrowserLocationErrorStatus(error: GeolocationPositionError): LocationTrackingStatus {
+  if (error.code === error.PERMISSION_DENIED) return 'denied';
+  if (error.code === error.POSITION_UNAVAILABLE) return 'unavailable';
+  return 'error';
+}
+
+function formatBrowserLocationError(error: GeolocationPositionError): string {
+  if (error.code === error.PERMISSION_DENIED) {
+    return 'Location permission was denied. Enable browser location access to show the aircraft on the map.';
+  }
+
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return 'Browser location is unavailable. Check device GPS, Wi-Fi, or system location services.';
+  }
+
+  if (error.code === error.TIMEOUT) {
+    return 'Location request timed out. Try again with a clearer GPS signal.';
+  }
+
+  return error.message || 'Location tracking failed.';
 }
 
 function toParserGeometry(geometry: FeatureGeometry | undefined) {

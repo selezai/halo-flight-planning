@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, Fuel, Navigation } from 'lucide-react';
+import HaloPlaneIcon from '@/components/icons/HaloPlaneIcon';
 import { useMapStore } from '@/stores/mapStore';
 import {
   calculateRoute,
@@ -10,6 +11,7 @@ import {
   formatFuel,
 } from '@/lib/planning/navigation';
 import { assessDataFreshness, FRESHNESS_THRESHOLDS_MINUTES, formatFreshnessStatus } from '@/lib/planning/freshness';
+import { formatLocationTrackingLabel } from '@/lib/planning/routeTracking';
 import type { DataFreshness } from '@/types/planning';
 
 export default function RouteStatusBar() {
@@ -18,6 +20,8 @@ export default function RouteStatusBar() {
   const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
   const routeAirspaceReview = useMapStore((state) => state.routeAirspaceReview);
   const routeNotamReview = useMapStore((state) => state.routeNotamReview);
+  const activeRoute = useMapStore((state) => state.activeRoute);
+  const locationTracking = useMapStore((state) => state.locationTracking);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const airspaceSummary = useMemo(
     () => summarizeAirspaceReview(routeAirspaceReview.alerts, routeAirspaceReview.status),
@@ -40,6 +44,17 @@ export default function RouteStatusBar() {
         ? 'text-amber-700'
         : 'text-emerald-700';
   const StatusIcon = route.summary.fuelStatus === 'ok' ? CheckCircle2 : AlertTriangle;
+  const nextWaypoint = activeRoute.nextWaypointId
+    ? waypoints.find((waypoint) => waypoint.id === activeRoute.nextWaypointId)
+    : undefined;
+  const routeTrackingVisible = activeRoute.status === 'active';
+  const locationTrackingVisible = locationTracking.status !== 'idle';
+  const locationTone =
+    locationTracking.status === 'tracking'
+      ? 'text-cyan-800'
+      : locationTracking.status === 'requesting'
+        ? 'text-slate-600'
+        : 'text-rose-700';
 
   return (
     <div className="pointer-events-none absolute inset-x-5 bottom-5 z-20 hidden justify-center md:flex">
@@ -61,6 +76,30 @@ export default function RouteStatusBar() {
           <StatusIcon className="h-3.5 w-3.5" />
           {route.summary.fuelStatus}
         </span>
+        {(routeTrackingVisible || locationTrackingVisible) && (
+          <>
+            <Divider />
+            {routeTrackingVisible && (
+              <span className="inline-flex items-center gap-1 font-semibold text-cyan-900">
+                <Navigation className="h-3.5 w-3.5" />
+                Route active
+                {nextWaypoint ? ` · next ${nextWaypoint.ident ?? nextWaypoint.name}` : ''}
+                {typeof activeRoute.distanceToNextNm === 'number'
+                  ? ` ${formatDistance(activeRoute.distanceToNextNm)}`
+                  : ''}
+              </span>
+            )}
+            {locationTrackingVisible && (
+              <span className={`inline-flex items-center gap-1 font-semibold ${locationTone}`}>
+                <HaloPlaneIcon className="h-3.5 w-3.5" />
+                {formatLocationTrackingLabel(locationTracking)}
+                {typeof locationTracking.position?.speedKts === 'number'
+                  ? ` · ${Math.round(locationTracking.position.speedKts)} kt`
+                  : ''}
+              </span>
+            )}
+          </>
+        )}
         {waypoints.length > 1 && (
           <>
             <Divider />

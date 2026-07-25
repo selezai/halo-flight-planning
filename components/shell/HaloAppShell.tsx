@@ -20,7 +20,9 @@ import {
   Route,
   Save,
   ShieldAlert,
+  Square,
 } from 'lucide-react';
+import HaloPlaneIcon from '@/components/icons/HaloPlaneIcon';
 import ClientMap from '@/components/map/ClientMap';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
 import RouteNotamReviewSync from '@/components/planning/RouteNotamReviewSync';
@@ -45,12 +47,17 @@ import { buildFlightAdminReview } from '@/lib/planning/flightAdmin';
 import { buildFilingWorkflowReview } from '@/lib/planning/filingReminder';
 import { getMissionStatusFromHaloStatus, sortMissionRecords } from '@/lib/planning/missions';
 import { calculateRoute } from '@/lib/planning/navigation';
+import { formatLocationTrackingLabel } from '@/lib/planning/routeTracking';
 import { calculateWeightBalance } from '@/lib/planning/weightBalance';
 import { buildHaloMissionSummary, type HaloPanelId, type HaloStatusTone } from '@/lib/ui/halo';
 import { countEnabledMapLayers, getOrderedMapLayerEntries } from '@/lib/ui/mapLayers';
 import { cn } from '@/lib/utils';
 import { useMapStore, type MapState } from '@/stores/mapStore';
-import type { HaloMissionRecord } from '@/types/planning';
+import type {
+  ActiveRouteState,
+  HaloMissionRecord,
+  LocationTrackingState,
+} from '@/types/planning';
 
 interface MissionSaveFeedback {
   missionId: string;
@@ -80,12 +87,18 @@ export default function HaloAppShell({
     flightPlanFilingRecord,
     visibleLayers,
     planningMode,
+    activeRoute,
+    locationTracking,
     sidebarOpen,
     selectedFeature,
     setSidebarOpen,
     setSidebarPanel,
     clearSelection,
     setPlanningMode,
+    startActiveRoute,
+    stopActiveRoute,
+    setLocationTrackingEnabled,
+    setLocationFollowMode,
     toggleLayer,
     setViewport,
     saveActiveMission,
@@ -110,12 +123,18 @@ export default function HaloAppShell({
     flightPlanFilingRecord: state.flightPlanFilingRecord,
     visibleLayers: state.visibleLayers,
     planningMode: state.planningMode,
+    activeRoute: state.activeRoute,
+    locationTracking: state.locationTracking,
     sidebarOpen: state.sidebarOpen,
     selectedFeature: state.selectedFeature,
     setSidebarOpen: state.setSidebarOpen,
     setSidebarPanel: state.setSidebarPanel,
     clearSelection: state.clearSelection,
     setPlanningMode: state.setPlanningMode,
+    startActiveRoute: state.startActiveRoute,
+    stopActiveRoute: state.stopActiveRoute,
+    setLocationTrackingEnabled: state.setLocationTrackingEnabled,
+    setLocationFollowMode: state.setLocationFollowMode,
     toggleLayer: state.toggleLayer,
     setViewport: state.setViewport,
     saveActiveMission: state.saveActiveMission,
@@ -319,8 +338,31 @@ export default function HaloAppShell({
     setViewport(center, zoom);
   };
 
+  const startRouteNavigation = () => {
+    if (waypoints.length < 2) return;
+
+    startActiveRoute();
+    setLocationTrackingEnabled(true);
+    setLocationFollowMode(true);
+  };
+
+  const toggleLocationTracking = () => {
+    if (locationTracking.enabled || locationTracking.status === 'tracking' || locationTracking.status === 'requesting') {
+      setLocationTrackingEnabled(false);
+      return;
+    }
+
+    setLocationTrackingEnabled(true);
+    setLocationFollowMode(true);
+  };
+
+  const stopRouteNavigation = () => {
+    stopActiveRoute();
+    setLocationTrackingEnabled(false);
+  };
+
   const plannerOpen = sidebarOpen;
-  const showMapModeControl = !plannerOpen;
+  const showMapModeControl = !plannerOpen && activeRoute.status !== 'active';
   const showMapTools = !plannerOpen || isDesktop;
 
   return (
@@ -382,7 +424,13 @@ export default function HaloAppShell({
       {showMapTools && (
         <MapToolsRail
           visibleLayers={visibleLayers}
+          routeWaypointCount={waypoints.length}
+          activeRoute={activeRoute}
+          locationTracking={locationTracking}
           onToggleLayer={toggleLayer}
+          onStartRoute={startRouteNavigation}
+          onStopRoute={stopRouteNavigation}
+          onToggleLocationTracking={toggleLocationTracking}
           onFocusRoute={focusRoute}
           onOpenEmergency={() => openPanel('emergency')}
         />
@@ -853,18 +901,40 @@ function MapModeControl({
 
 function MapToolsRail({
   visibleLayers,
+  routeWaypointCount,
+  activeRoute,
+  locationTracking,
   onToggleLayer,
+  onStartRoute,
+  onStopRoute,
+  onToggleLocationTracking,
   onFocusRoute,
   onOpenEmergency,
 }: {
   visibleLayers: MapState['visibleLayers'];
+  routeWaypointCount: number;
+  activeRoute: ActiveRouteState;
+  locationTracking: LocationTrackingState;
   onToggleLayer: (layer: keyof MapState['visibleLayers']) => void;
+  onStartRoute: () => void;
+  onStopRoute: () => void;
+  onToggleLocationTracking: () => void;
   onFocusRoute: () => void;
   onOpenEmergency: () => void;
 }) {
   const [layersOpen, setLayersOpen] = useState(false);
   const layerEntries = getOrderedMapLayerEntries(visibleLayers);
   const enabledLayerCount = countEnabledMapLayers(visibleLayers);
+  const routeActive = activeRoute.status === 'active';
+  const routeReady = routeWaypointCount >= 2;
+  const locationActive =
+    locationTracking.enabled ||
+    locationTracking.status === 'tracking' ||
+    locationTracking.status === 'requesting';
+  const locationProblem =
+    locationTracking.status === 'denied' ||
+    locationTracking.status === 'unavailable' ||
+    locationTracking.status === 'error';
   const controls = [
     {
       label: 'Emergency tools',
@@ -882,6 +952,54 @@ function MapToolsRail({
 
   return (
     <div className="pointer-events-none absolute left-3 top-[9.5rem] z-20 flex flex-col items-start gap-2 sm:left-5 sm:top-24 lg:bottom-24 lg:top-auto">
+      <div className="pointer-events-auto flex flex-col gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={routeActive ? onStopRoute : onStartRoute}
+              disabled={!routeActive && !routeReady}
+              className={cn(
+                'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-3 text-xs font-semibold text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0',
+                routeActive && 'border-rose-200 bg-rose-50 text-rose-800',
+                !routeActive && routeReady && 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'
+              )}
+              aria-label={routeActive ? 'Stop route navigation' : 'Start route navigation'}
+            >
+              {routeActive ? <Square className="h-4 w-4" /> : <Route className="h-4 w-4" />}
+              <span className="hidden sm:inline">{routeActive ? 'Stop route' : 'Start route'}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {routeReady ? (routeActive ? 'Stop active route' : 'Start active route with GPS') : 'Add at least two waypoints first'}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleLocationTracking}
+              className={cn(
+                'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-3 text-xs font-semibold text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
+                locationActive && 'border-cyan-200 bg-cyan-50 text-cyan-900',
+                locationProblem && 'border-rose-200 bg-rose-50 text-rose-800'
+              )}
+              aria-pressed={locationActive}
+              aria-label={locationActive ? 'Stop location tracking' : 'Start location tracking'}
+            >
+              <HaloPlaneIcon className="h-5 w-5" />
+              <span className="hidden sm:inline">
+                {locationActive ? formatLocationTrackingLabel(locationTracking) : 'Track location'}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {locationTracking.error ?? (locationActive ? formatLocationTrackingLabel(locationTracking) : 'Show aircraft location')}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
       <div className="pointer-events-auto">
         <Tooltip>
           <TooltipTrigger asChild>
