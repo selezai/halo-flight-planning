@@ -2391,3 +2391,86 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-07-25 Route Navigation + Location Tracking
+
+Objective: add a map-first active route start/stop system and browser location tracking with a Halo-style minimalist aircraft marker.
+
+Problem:
+
+- Halo had route planning and map inspect modes, but no explicit “active route” state for starting/stopping a planned route.
+- Browser location tracking was still represented by MapLibre’s default geolocation control rather than a Halo-branded aircraft marker.
+- Pilots needed a simple way to start flying the planned route from the map without accidentally placing new waypoints during active navigation.
+
+Decision:
+
+- Keep route navigation and GPS tracking as transient UI/flight state, not saved mission data.
+- Starting a route requires at least two waypoints, switches the map out of planning mode, clears selected inspect features, enables browser GPS, and enables follow mode.
+- Stopping a route stops the active route state and disables GPS tracking that was started through the route flow.
+- Location tracking remains separately available through a dedicated aircraft button.
+- Only show the aircraft marker and accuracy ring for a live `tracking` state; stale fixes are cleared on GPS stop/denial/error.
+
+Solution:
+
+- Added active route state:
+  - `idle`, `active`, `stopped`;
+  - start/stop timestamps;
+  - current leg index;
+  - next waypoint;
+  - distance-to-next and cross-track fields from latest GPS fix.
+- Added browser location state:
+  - `idle`, `requesting`, `tracking`, `denied`, `unavailable`, `error`;
+  - browser position normalized to Halo coordinates, feet, knots, heading, accuracy, and timestamp;
+  - follow mode for route-start and location tracking.
+- Added pure route-tracking helpers for GPS normalization, route progress, next waypoint, and fallback aircraft heading.
+- Replaced the default MapLibre geolocation control with:
+  - a custom DOM/SVG Halo aircraft marker;
+  - a cyan accuracy ring;
+  - route-leg fallback heading when browser heading is missing.
+- Added map controls:
+  - `Start route` / `Stop route`;
+  - `Track location` using a minimalist Halo plane icon;
+  - active/error visual states and tooltips.
+- Updated the desktop/tablet status bar to show active-route and GPS status.
+- Added regression coverage for route progress, GPS normalization, start/stop state, active-route progress updates, and stale GPS fix clearing.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `components/planning/RouteStatusBar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/icons/HaloPlaneIcon.tsx`
+- `stores/mapStore.ts`
+- `lib/planning/routeTracking.ts`
+- `tests/planning/routeTracking.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `types/planning.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused checks:
+  - `pnpm test -- tests/planning/routeTracking.test.ts tests/stores/mapStore.test.ts`: passed; Vitest ran 33 files / 144 tests before the stale-GPS regression, then 145 tests after the final regression was added.
+  - `pnpm typecheck`: passed.
+- Full approved checks:
+  - `pnpm test`: passed, 33 files / 145 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Code review:
+  - Review agent reported no critical findings.
+  - Important stale-GPS finding was fixed by clearing position on tracking stop/terminal errors and showing the marker only for live `tracking`.
+  - Route stop now also disables GPS because route start automatically enables it.
+- Production deployment:
+  - Commit: `ed9dea4`
+  - Deployment URL: https://halo-flight-planning-7yxav38z1-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_4xKQuR1s3LLX3BTgZqsC9jo4o8VD`
+- Production smoke:
+  - `/` returned HTTP 200 from the production alias.
+  - `/api/openaip/style` returned HTTP 200.
+- Vercel runtime log scan:
+  - `/api/openaip/style` structured request logs completed with HTTP 200 in 109 ms.
+  - No runtime error entries appeared during the observed request window.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.
