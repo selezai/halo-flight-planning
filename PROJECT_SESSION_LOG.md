@@ -2617,4 +2617,18 @@ Verification:
 
 Deployment:
 
-- Pending production deployment after approved checks pass.
+- Commit deployed: `b4309dc`
+- Deployment URL: https://halo-flight-planning-5smwozzks-pilotmerch-gmailcoms-projects.vercel.app
+- Production alias: https://halo-flight-planning.vercel.app
+- Deployment ID: `dpl_4CBRtk4LH8vJTM2dTLrkwaoxa1SV`
+
+Production smoke:
+
+- `/` returned HTTP 200 from the production alias.
+- `/sw.js` returned HTTP 200 from the production alias.
+- `/api/openaip/style` returned HTTP 200 with `Cache-Control: no-store`.
+
+Vercel runtime log scan:
+
+- `/api/openaip/style` structured request logs completed with HTTP 200 in 126 ms.
+- No runtime error entries appeared during the observed request window.
