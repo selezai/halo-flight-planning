@@ -2671,3 +2671,65 @@ Verification:
 Code changes:
 
 - None. This was an external Vercel configuration cleanup plus session-log documentation.
+
+## 2026-08-02 Persisted Browser State Load Crash
+
+Objective: fix the app error shown when loading Halo in a browser with older or corrupted local planner state.
+
+Problem:
+
+- Clean production browser sessions loaded correctly.
+- The reported load failure reproduced when the persisted Zustand key `halo-map-store` contained stale/corrupt data such as `activeAircraft: null`.
+- Reproduction console error:
+  - `Cannot read properties of null (reading 'reserveMinutes')`
+  - Followed by Halo's `app_error_boundary` log.
+
+Root cause:
+
+- `mergePersistedMapState(...)` treated local browser persistence as trusted and spread persisted values directly over safe defaults.
+- If an older/corrupt browser snapshot contained `activeAircraft: null`, malformed route scalars, invalid waypoint arrays, or malformed mission state, those values reached route/fuel/W&B UI during hydration and could throw before the user could recover.
+
+Solution:
+
+- Added defensive normalization at the persisted-state boundary in `stores/mapStore.ts`.
+- Normalized:
+  - aircraft profiles
+  - waypoint arrays
+  - saved mission records and nested mission state
+  - map center/zoom
+  - visible layers
+  - route text fields
+  - W&B station weights
+  - personal minimums
+- Preserved current/default values when a persisted key is missing or malformed.
+- Kept active route and live GPS fixes non-persisted on load.
+
+Files modified:
+
+- `stores/mapStore.ts`
+- `tests/stores/mapStore.test.ts`
+
+Verification:
+
+- Reproduced the production error before the fix using corrupt localStorage.
+- `pnpm test -- tests/stores/mapStore.test.ts`: passed, 35 files / 160 tests.
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed, 35 files / 160 tests.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production-build browser verification:
+  - Injected corrupt `halo-map-store` data with `activeAircraft: null`.
+  - Reloaded `http://localhost:3020/`.
+  - Halo loaded the map shell instead of the error boundary.
+  - Only local Vercel analytics script warnings appeared on localhost.
+- No Playwright/E2E command was run.
+
+Code review:
+
+- A first review agent returned a null payload.
+- A second focused review agent did not return within the practical review window and was interrupted.
+- Proceeded using direct reproduction, targeted regression tests, typecheck, lint, build, and local production-browser verification.
+
+Deployment:
+
+- Pending production deployment after commit.

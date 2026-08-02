@@ -328,7 +328,9 @@ function normalizeMissionLibrary(value: unknown): HaloMissionRecord[] {
   if (!Array.isArray(value)) return [];
 
   return sortMissionRecords(
-    value.filter((mission): mission is HaloMissionRecord => isMissionRecord(mission))
+    value
+      .map(normalizeMissionRecord)
+      .filter((mission): mission is HaloMissionRecord => Boolean(mission))
   );
 }
 
@@ -344,6 +346,201 @@ function isMissionRecord(value: unknown): value is HaloMissionRecord {
     Boolean(record.state) &&
     typeof record.state === 'object'
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeCoordinates(value: unknown, fallback: Coordinates): Coordinates {
+  if (
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    typeof value[0] === 'number' &&
+    typeof value[1] === 'number' &&
+    Number.isFinite(value[0]) &&
+    Number.isFinite(value[1]) &&
+    value[0] >= -180 &&
+    value[0] <= 180 &&
+    value[1] >= -90 &&
+    value[1] <= 90
+  ) {
+    return [value[0], value[1]];
+  }
+
+  return fallback;
+}
+
+function normalizeWaypointType(value: unknown): Waypoint['type'] {
+  return value === 'airport' ||
+    value === 'navaid' ||
+    value === 'reporting-point' ||
+    value === 'user'
+    ? value
+    : 'user';
+}
+
+function normalizeWaypoint(value: unknown, index: number): Waypoint | null {
+  if (!isRecord(value)) return null;
+
+  const coordinates = normalizeCoordinates(value.coordinates, [NaN, NaN]);
+  if (!Number.isFinite(coordinates[0]) || !Number.isFinite(coordinates[1])) return null;
+
+  const ident = typeof value.ident === 'string' ? value.ident : undefined;
+  const name = normalizeString(value.name, ident || `Waypoint ${index + 1}`);
+
+  return {
+    id: normalizeString(value.id, `waypoint-${index + 1}`),
+    type: normalizeWaypointType(value.type),
+    name,
+    ident,
+    coordinates,
+    elevationFt: typeof value.elevationFt === 'number' && Number.isFinite(value.elevationFt)
+      ? value.elevationFt
+      : undefined,
+    sourceId: typeof value.sourceId === 'string' ? value.sourceId : undefined,
+    notes: typeof value.notes === 'string' ? value.notes : undefined,
+  };
+}
+
+function normalizeWaypoints(value: unknown, fallback: Waypoint[] = []): Waypoint[] {
+  if (!Array.isArray(value)) return fallback;
+
+  return value
+    .map((waypoint, index) => normalizeWaypoint(waypoint, index))
+    .filter((waypoint): waypoint is Waypoint => Boolean(waypoint));
+}
+
+function normalizeNumberRecord(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, number] =>
+      typeof entry[1] === 'number' && Number.isFinite(entry[1])
+    )
+  );
+}
+
+function normalizeVisibleLayers(
+  value: unknown,
+  fallback: MapState['visibleLayers'] = DEFAULT_VISIBLE_LAYERS
+): MapState['visibleLayers'] {
+  const record = isRecord(value) ? value : {};
+
+  return {
+    airports: typeof record.airports === 'boolean' ? record.airports : fallback.airports,
+    navaids: typeof record.navaids === 'boolean' ? record.navaids : fallback.navaids,
+    airspaces: typeof record.airspaces === 'boolean' ? record.airspaces : fallback.airspaces,
+    reportingPoints: typeof record.reportingPoints === 'boolean'
+      ? record.reportingPoints
+      : fallback.reportingPoints,
+    obstacles: typeof record.obstacles === 'boolean' ? record.obstacles : fallback.obstacles,
+    hotspots: typeof record.hotspots === 'boolean' ? record.hotspots : fallback.hotspots,
+    hangGlidings: typeof record.hangGlidings === 'boolean' ? record.hangGlidings : fallback.hangGlidings,
+    rcAirfields: typeof record.rcAirfields === 'boolean' ? record.rcAirfields : fallback.rcAirfields,
+  };
+}
+
+function normalizeAircraftProfile(value: unknown, fallback: AircraftProfile = DEFAULT_AIRCRAFT): AircraftProfile {
+  if (!isRecord(value)) return fallback;
+
+  return clampAircraftProfile({
+    ...fallback,
+    id: normalizeString(value.id, fallback.id),
+    registration: normalizeString(value.registration, fallback.registration),
+    type: normalizeString(value.type, fallback.type),
+    name: normalizeString(value.name, fallback.name),
+    cruiseSpeedKts: normalizeNumber(value.cruiseSpeedKts, fallback.cruiseSpeedKts),
+    fuelBurnGph: normalizeNumber(value.fuelBurnGph, fallback.fuelBurnGph),
+    usableFuelGal: normalizeNumber(value.usableFuelGal, fallback.usableFuelGal),
+    reserveMinutes: normalizeNumber(value.reserveMinutes, fallback.reserveMinutes),
+    contingencyPercent: normalizeNumber(value.contingencyPercent, fallback.contingencyPercent),
+    magneticVariationDeg: normalizeNumber(value.magneticVariationDeg, fallback.magneticVariationDeg),
+    compassDeviationDeg: normalizeNumber(value.compassDeviationDeg, fallback.compassDeviationDeg ?? 0),
+    glideRatio: normalizeNumber(value.glideRatio, fallback.glideRatio ?? 9),
+    weightBalance: isRecord(value.weightBalance)
+      ? value.weightBalance as unknown as AircraftProfile['weightBalance']
+      : fallback.weightBalance,
+  });
+}
+
+function normalizeMissionStatus(value: unknown): HaloMissionStatus {
+  return value === 'ready' || value === 'needs-review' || value === 'flown' || value === 'archived'
+    ? value
+    : 'draft';
+}
+
+function normalizeMissionRecord(value: unknown): HaloMissionRecord | null {
+  if (!isMissionRecord(value)) return null;
+
+  const state: Record<string, unknown> = isRecord(value.state) ? value.state : {};
+  const weightBalanceLoading: Record<string, unknown> = isRecord(state.weightBalanceLoading)
+    ? state.weightBalanceLoading
+    : {};
+  const updatedAtMs = Date.parse(value.updatedAt);
+
+  return createMissionRecord({
+    id: value.id,
+    status: normalizeMissionStatus(value.status),
+    now: Number.isFinite(updatedAtMs) ? new Date(updatedAtMs) : new Date(),
+    name: value.name,
+    existing: value,
+    state: {
+      ...createBlankMissionPlannerState(),
+      center: normalizeCoordinates(state.center, [28.0, -26.0]),
+      zoom: normalizeNumber(state.zoom, 7),
+      routeName: normalizeString(state.routeName, value.name),
+      routeNotes: normalizeString(state.routeNotes, ''),
+      departureTime: normalizeString(state.departureTime, ''),
+      cruiseAltitudeFt: normalizeNumber(state.cruiseAltitudeFt, 6500),
+      waypoints: normalizeWaypoints(state.waypoints),
+      activeAircraft: normalizeAircraftProfile(state.activeAircraft),
+      weightBalanceLoading: {
+        ...DEFAULT_WEIGHT_BALANCE_LOADING,
+        ...weightBalanceLoading,
+        stationWeights: {
+          ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
+          ...normalizeNumberRecord(weightBalanceLoading.stationWeights),
+        },
+      },
+      trainingWind: {
+        ...DEFAULT_TRAINING_WIND,
+        ...(isRecord(state.trainingWind) ? state.trainingWind : {}),
+      },
+      filingChecklist: {
+        ...DEFAULT_FILING_CHECKLIST,
+        ...(isRecord(state.filingChecklist) ? state.filingChecklist : {}),
+      },
+      notamBriefingRecord: {
+        ...DEFAULT_NOTAM_BRIEFING_RECORD,
+        ...(isRecord(state.notamBriefingRecord) ? state.notamBriefingRecord : {}),
+      },
+      flightPlanFilingRecord: {
+        ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+        ...(isRecord(state.flightPlanFilingRecord) ? state.flightPlanFilingRecord : {}),
+      },
+      closeReminder: {
+        ...DEFAULT_CLOSE_REMINDER,
+        ...(isRecord(state.closeReminder) ? state.closeReminder : {}),
+      },
+      emergencyLandingSites: Array.isArray(state.emergencyLandingSites)
+        ? state.emergencyLandingSites as unknown as EmergencyLandingSite[]
+        : [],
+      personalMinimums: clampPersonalMinimums(
+        isRecord(state.personalMinimums)
+          ? state.personalMinimums as unknown as PersonalMinimums
+          : DEFAULT_PERSONAL_MINIMUMS
+      ),
+    },
+  });
 }
 
 function chooseActiveAirspaceReview(
@@ -369,16 +566,24 @@ function mergePersistedMapState(
   const persistedActiveMissionId = typeof persistedState?.activeMissionId === 'string'
     ? persistedState.activeMissionId
     : undefined;
+  const weightBalanceLoading: Record<string, unknown> = isRecord(persistedState?.weightBalanceLoading)
+    ? persistedState.weightBalanceLoading
+    : {};
 
   return {
     ...current,
     ...persistedState,
+    center: normalizeCoordinates(persistedState?.center, current.center),
+    zoom: normalizeNumber(persistedState?.zoom, current.zoom),
+    routeName: normalizeString(persistedState?.routeName, current.routeName),
+    routeNotes: normalizeString(persistedState?.routeNotes, current.routeNotes),
+    departureTime: normalizeString(persistedState?.departureTime, current.departureTime),
+    cruiseAltitudeFt: normalizeNumber(persistedState?.cruiseAltitudeFt, current.cruiseAltitudeFt),
     activeMissionId: persistedActiveMissionId || current.activeMissionId,
     missionLibrary,
-    visibleLayers: {
-      ...DEFAULT_VISIBLE_LAYERS,
-      ...persistedState?.visibleLayers,
-    },
+    waypoints: normalizeWaypoints(persistedState?.waypoints, current.waypoints),
+    activeAircraft: normalizeAircraftProfile(persistedState?.activeAircraft, current.activeAircraft),
+    visibleLayers: normalizeVisibleLayers(persistedState?.visibleLayers, current.visibleLayers),
     activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
     locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
     aircraftTrackingEnabled: typeof persistedState?.aircraftTrackingEnabled === 'boolean'
@@ -387,22 +592,27 @@ function mergePersistedMapState(
     sidebarPanel: normalizeHaloPanelId(persistedState?.sidebarPanel),
     weightBalanceLoading: {
       ...DEFAULT_WEIGHT_BALANCE_LOADING,
-      ...persistedState?.weightBalanceLoading,
+      ...current.weightBalanceLoading,
+      ...weightBalanceLoading,
       stationWeights: {
         ...DEFAULT_WEIGHT_BALANCE_LOADING.stationWeights,
-        ...persistedState?.weightBalanceLoading?.stationWeights,
+        ...current.weightBalanceLoading.stationWeights,
+        ...normalizeNumberRecord(weightBalanceLoading.stationWeights),
       },
     },
     trainingWind: {
       ...DEFAULT_TRAINING_WIND,
-      ...persistedState?.trainingWind,
+      ...current.trainingWind,
+      ...(isRecord(persistedState?.trainingWind) ? persistedState.trainingWind : {}),
     },
     filingChecklist: {
       ...DEFAULT_FILING_CHECKLIST,
-      ...persistedState?.filingChecklist,
+      ...current.filingChecklist,
+      ...(isRecord(persistedState?.filingChecklist) ? persistedState.filingChecklist : {}),
     },
     notamBriefingRecord: {
       ...DEFAULT_NOTAM_BRIEFING_RECORD,
+      ...current.notamBriefingRecord,
       ...(persistedState?.filingChecklist?.notamPibObtained && !persistedState?.notamBriefingRecord
         ? {
             status: 'completed' as const,
@@ -410,10 +620,11 @@ function mergePersistedMapState(
             notes: 'Imported from previous “Official NOTAM PIB obtained” checklist state.',
           }
         : {}),
-      ...persistedState?.notamBriefingRecord,
+      ...(isRecord(persistedState?.notamBriefingRecord) ? persistedState.notamBriefingRecord : {}),
     },
     flightPlanFilingRecord: {
       ...DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+      ...current.flightPlanFilingRecord,
       ...(persistedState?.filingChecklist?.filedViaOfficialSource && !persistedState?.flightPlanFilingRecord
         ? {
             status: 'filed-manually' as const,
@@ -421,13 +632,21 @@ function mergePersistedMapState(
             notes: 'Imported from previous “Filed via official source” checklist state.',
           }
         : {}),
-      ...persistedState?.flightPlanFilingRecord,
+      ...(isRecord(persistedState?.flightPlanFilingRecord) ? persistedState.flightPlanFilingRecord : {}),
     },
     closeReminder: {
       ...DEFAULT_CLOSE_REMINDER,
-      ...persistedState?.closeReminder,
+      ...current.closeReminder,
+      ...(isRecord(persistedState?.closeReminder) ? persistedState.closeReminder : {}),
     },
-    emergencyLandingSites: persistedState?.emergencyLandingSites ?? [],
+    emergencyLandingSites: Array.isArray(persistedState?.emergencyLandingSites)
+      ? persistedState.emergencyLandingSites
+      : [],
+    personalMinimums: clampPersonalMinimums(
+      isRecord(persistedState?.personalMinimums)
+        ? persistedState.personalMinimums as PersonalMinimums
+        : current.personalMinimums
+    ),
   };
 }
 

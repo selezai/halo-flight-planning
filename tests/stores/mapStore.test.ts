@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useMapStore } from '@/stores/mapStore';
+import { DEFAULT_AIRCRAFT } from '@/lib/planning/aircraft';
 import { createUserWaypoint } from '@/lib/planning/navigation';
 import {
   DEFAULT_ACTIVE_ROUTE_STATE,
@@ -328,6 +329,79 @@ describe('map store route planning actions', () => {
       position: {
         coordinates: [28.2, -26.1],
       },
+    });
+  });
+
+  it('sanitizes corrupt persisted planner state instead of crashing on load', () => {
+    const currentWaypoint = createUserWaypoint([28.2, -26.1], 1);
+
+    useMapStore.setState({
+      waypoints: [currentWaypoint],
+      activeAircraft: DEFAULT_AIRCRAFT,
+    });
+
+    expect(() => useMapStore.getState().restorePlannerSnapshotState({
+      activeAircraft: null,
+      center: null,
+      zoom: 'bad',
+      routeName: null,
+      visibleLayers: {
+        airports: null,
+        airspaces: false,
+      },
+      waypoints: null,
+      personalMinimums: null,
+    })).not.toThrow();
+
+    const state = useMapStore.getState();
+    expect(state.activeAircraft.reserveMinutes).toBe(DEFAULT_AIRCRAFT.reserveMinutes);
+    expect(state.activeAircraft.registration).toBe(DEFAULT_AIRCRAFT.registration);
+    expect(state.center).toEqual([28.0, -26.0]);
+    expect(state.zoom).toBe(7);
+    expect(state.routeName).toBe('Test active mission');
+    expect(state.visibleLayers.airports).toBe(true);
+    expect(state.visibleLayers.airspaces).toBe(false);
+    expect(state.waypoints).toEqual([currentWaypoint]);
+  });
+
+  it('sanitizes corrupt persisted mission records before restoring the mission library', () => {
+    expect(() => useMapStore.getState().restorePlannerSnapshotState({
+      missionLibrary: [
+        {
+          id: 'legacy-mission',
+          name: 'Legacy mission',
+          status: 'ready',
+          createdAt: '2026-07-01T12:00:00.000Z',
+          updatedAt: '2026-07-01T12:30:00.000Z',
+          state: {
+            activeAircraft: null,
+            waypoints: [
+              {
+                id: 'legacy-wp',
+                type: 'airport',
+                ident: 'FAOR',
+                coordinates: [28.246, -26.139],
+              },
+              {
+                name: 'Bad coordinates',
+                coordinates: ['bad', -26.5],
+              },
+            ],
+          },
+        },
+      ],
+    })).not.toThrow();
+
+    const mission = useMapStore.getState().missionLibrary[0];
+    expect(mission.name).toBe('Legacy mission');
+    expect(mission.state.activeAircraft.reserveMinutes).toBe(DEFAULT_AIRCRAFT.reserveMinutes);
+    expect(mission.state.activeAircraft.registration).toBe(DEFAULT_AIRCRAFT.registration);
+    expect(mission.state.waypoints).toHaveLength(1);
+    expect(mission.state.waypoints[0]).toMatchObject({
+      id: 'legacy-wp',
+      ident: 'FAOR',
+      name: 'FAOR',
+      coordinates: [28.246, -26.139],
     });
   });
 });
