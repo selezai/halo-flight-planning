@@ -2732,4 +2732,16 @@ Code review:
 
 Deployment:
 
-- Pending production deployment after commit.
+- Commit deployed: `eb8742c`
+- Deployment URL: https://halo-flight-planning-17w5tapyi-pilotmerch-gmailcoms-projects.vercel.app
+- Production alias: https://halo-flight-planning.vercel.app
+- Deployment ID: `dpl_45gG2T5PBN7ToZBonZxRCSfy4A4f`
+
+Production verification after deploy:
+
+- `https://halo-flight-planning.vercel.app/` returned HTTP 200.
+- Production browser verification:
+  - Injected corrupt `halo-map-store` data with `activeAircraft: null`.
+  - Reloaded `https://halo-flight-planning.vercel.app/`.
+  - Halo loaded the map shell instead of the error boundary.
+  - Browser console showed Vercel analytics/speed-insights and Clerk development-key warnings, but no Halo app error boundary log.
