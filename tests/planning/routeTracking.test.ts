@@ -39,6 +39,32 @@ describe('route tracking helpers', () => {
     expect(location.timestamp).toBe('2026-07-25T08:30:00.000Z');
   });
 
+  it('sanitizes mobile GPS accuracy values before they reach the map overlay', () => {
+    expect(normalizeTrackedLocation({
+      longitude: 28.246,
+      latitude: -26.134,
+      accuracyM: 0,
+    }).accuracyM).toBeUndefined();
+
+    expect(normalizeTrackedLocation({
+      longitude: 28.246,
+      latitude: -26.134,
+      accuracyM: -10,
+    }).accuracyM).toBeUndefined();
+
+    expect(normalizeTrackedLocation({
+      longitude: 28.246,
+      latitude: -26.134,
+      accuracyM: Number.NaN,
+    }).accuracyM).toBeUndefined();
+
+    expect(normalizeTrackedLocation({
+      longitude: 28.246,
+      latitude: -26.134,
+      accuracyM: 999_999_999,
+    }).accuracyM).toBe(185_200);
+  });
+
   it('identifies current active leg and next waypoint from tracked position', () => {
     const route = [
       waypoint('faor', [28.246, -26.134]),

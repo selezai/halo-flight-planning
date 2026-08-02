@@ -179,41 +179,74 @@ export default function Map({ className = '' }: MapProps) {
   }, [activeAircraft.glideRatio, cruiseAltitudeFt, emergencyLandingSites, mapLoaded, waypoints]);
 
   const updateLocationOverlay = useCallback(() => {
-    if (!map.current || !mapLoaded) return;
+    if (!map.current || !mapLoaded || !styleLoaded) return;
 
     const mapInstance = map.current;
     const trackedPosition = locationTracking.status === 'tracking'
       ? locationTracking.position
       : undefined;
 
-    ensureLocationLayers(mapInstance);
-    updateLocationAccuracyOverlay(mapInstance, trackedPosition);
+    try {
+      ensureLocationLayers(mapInstance);
+      updateLocationAccuracyOverlay(mapInstance, trackedPosition);
 
-    if (!trackedPosition) {
-      locationMarker.current?.remove();
-      locationMarker.current = null;
-      return;
+      if (!trackedPosition) {
+        locationMarker.current?.remove();
+        locationMarker.current = null;
+        return;
+      }
+
+      if (!locationMarker.current) {
+        locationMarker.current = new maplibregl.Marker({
+          element: createHaloAircraftMarkerElement(),
+          anchor: 'center',
+          rotationAlignment: 'map',
+        }).addTo(mapInstance);
+      }
+
+      const headingDeg = resolveAircraftTrackHeading(
+        trackedPosition,
+        waypoints,
+        activeRoute.currentLegIndex
+      );
+
+      locationMarker.current
+        .setLngLat(trackedPosition.coordinates)
+        .getElement()
+        .style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
+    } catch (overlayError) {
+      const message = overlayError instanceof Error
+        ? overlayError.message
+        : String(overlayError || 'Unknown aircraft overlay failure');
+
+      console.error(JSON.stringify({
+        level: 'error',
+        message: 'location_overlay_failed',
+        error: message,
+        timestamp: new Date().toISOString(),
+      }));
+
+      try {
+        locationMarker.current?.remove();
+        locationMarker.current = null;
+      } catch {
+        locationMarker.current = null;
+      }
+
+      setLocationTrackingStatus(
+        'requesting',
+        'Aircraft GPS fix was received; Halo is recovering the aircraft map overlay.'
+      );
     }
-
-    if (!locationMarker.current) {
-      locationMarker.current = new maplibregl.Marker({
-        element: createHaloAircraftMarkerElement(),
-        anchor: 'center',
-        rotationAlignment: 'map',
-      }).addTo(mapInstance);
-    }
-
-    const headingDeg = resolveAircraftTrackHeading(
-      trackedPosition,
-      waypoints,
-      activeRoute.currentLegIndex
-    );
-
-    locationMarker.current
-      .setLngLat(trackedPosition.coordinates)
-      .getElement()
-      .style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
-  }, [activeRoute.currentLegIndex, locationTracking.position, locationTracking.status, mapLoaded, waypoints]);
+  }, [
+    activeRoute.currentLegIndex,
+    locationTracking.position,
+    locationTracking.status,
+    mapLoaded,
+    setLocationTrackingStatus,
+    styleLoaded,
+    waypoints,
+  ]);
 
   const updateNearestAirportLock = useCallback(() => {
     if (!visibleLayers.airports || !map.current || !mapLoaded || !styleLoaded || !selectedWaypoint) {

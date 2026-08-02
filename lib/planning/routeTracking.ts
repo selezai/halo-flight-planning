@@ -16,6 +16,7 @@ const METERS_PER_NM = 1852;
 const FEET_PER_METER = 3.280839895;
 const KNOTS_PER_MPS = 1.943844492;
 const DEFAULT_ARRIVAL_RADIUS_NM = 0.25;
+const MAX_RENDERABLE_ACCURACY_M = METERS_PER_NM * 100;
 
 export const DEFAULT_ACTIVE_ROUTE_STATE: ActiveRouteState = {
   status: 'idle',
@@ -65,7 +66,7 @@ export function normalizeTrackedLocation(input: RawLocationInput): TrackedLocati
 
   return {
     coordinates,
-    accuracyM: finiteOptional(input.accuracyM),
+    accuracyM: normalizeAccuracyMeters(input.accuracyM),
     altitudeFt: convertMetersToFeet(input.altitudeM),
     altitudeAccuracyFt: convertMetersToFeet(input.altitudeAccuracyM),
     headingDeg: normalizeOptionalHeading(input.headingDeg),
@@ -261,6 +262,13 @@ function convertMetersPerSecondToKnots(value: number | null | undefined): number
 
 function finiteOptional(value: number | null | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeAccuracyMeters(value: number | null | undefined): number | undefined {
+  const accuracy = finiteOptional(value);
+  if (typeof accuracy !== 'number' || accuracy <= 0) return undefined;
+
+  return Math.min(accuracy, MAX_RENDERABLE_ACCURACY_M);
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -2745,3 +2745,51 @@ Production verification after deploy:
   - Reloaded `https://halo-flight-planning.vercel.app/`.
   - Halo loaded the map shell instead of the error boundary.
   - Browser console showed Vercel analytics/speed-insights and Clerk development-key warnings, but no Halo app error boundary log.
+
+## 2026-08-02 iPhone/Chrome Aircraft Tracking Crash
+
+Objective: fix the app error boundary shown after accepting browser location permission for aircraft tracking or route activation on iPhone/Chrome.
+
+Problem:
+
+- The earlier persisted-state fix addressed a separate load-time crash, but did not address the live browser-location permission crash.
+- User reproduction was specific: tap aircraft tracking on iPhone/Chrome, allow location, then Halo falls into the app error boundary.
+- Desktop browser geolocation mocking did not reproduce the crash, which points to a mobile GPS/map-render path rather than a generic permission-denied path.
+
+Root-cause finding:
+
+- The browser geolocation request path was guarded, but the downstream aircraft overlay path was not fully isolated.
+- After location permission succeeds, Halo receives a GPS fix, stores it, and then MapLibre draws the aircraft marker and accuracy ring.
+- That overlay update could still throw after React state changed, especially if a mobile GPS fix arrives while the MapLibre style is not fully loaded or if the browser returns an extreme/invalid accuracy value for the accuracy polygon.
+- Because the exception escaped the map overlay update path, Next.js showed the app error boundary instead of keeping Halo usable.
+
+Solution:
+
+- Made aircraft location overlay rendering wait for both `mapLoaded` and `styleLoaded`.
+- Wrapped the location source/layer creation, accuracy-ring update, aircraft marker creation, marker position update, and heading style update in a recovery boundary.
+- If the overlay fails, Halo now logs a structured `location_overlay_failed` browser-console event, removes any partial marker, and returns the location state to a non-terminal acquiring state instead of crashing the planner.
+- Sanitized browser GPS accuracy before it reaches map geometry:
+  - zero, negative, and non-finite accuracy values are ignored;
+  - extreme mobile accuracy values are capped at 100 nautical miles for rendering.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `lib/planning/routeTracking.ts`
+- `tests/planning/routeTracking.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/routeTracking.test.ts tests/stores/mapStore.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- Focused review agent found no Critical or Important issue in the current patch and independently verified route-tracking tests, typecheck, full tests, and build.
+- Final full verification after this documentation entry:
+  - `pnpm test`: passed, 35 files / 161 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+
+Deployment note:
+
+- User requested not to watch the production deployment after push/deploy; the deployment was started without a post-deploy observation window.
