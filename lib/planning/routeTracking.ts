@@ -18,6 +18,18 @@ const KNOTS_PER_MPS = 1.943844492;
 const DEFAULT_ARRIVAL_RADIUS_NM = 0.25;
 const MAX_RENDERABLE_ACCURACY_M = METERS_PER_NM * 100;
 
+export const FAST_LOCATION_FIX_OPTIONS = {
+  enableHighAccuracy: false,
+  maximumAge: 120_000,
+  timeout: 3_500,
+} satisfies PositionOptions;
+
+export const HIGH_ACCURACY_LOCATION_WATCH_OPTIONS = {
+  enableHighAccuracy: true,
+  maximumAge: 30_000,
+  timeout: 20_000,
+} satisfies PositionOptions;
+
 export const DEFAULT_ACTIVE_ROUTE_STATE: ActiveRouteState = {
   status: 'idle',
   currentLegIndex: 0,
@@ -151,6 +163,20 @@ export function formatLocationTrackingLabel(state: LocationTrackingState): strin
   if (state.status === 'unavailable') return 'GPS unavailable';
   if (state.status === 'error') return 'GPS error';
   return 'GPS off';
+}
+
+export function shouldKeepExistingTrackedLocation(
+  nextLocation: TrackedLocation,
+  currentLocation: TrackedLocation | undefined
+): boolean {
+  if (!currentLocation) return false;
+
+  const nextTime = Date.parse(nextLocation.timestamp);
+  const currentTime = Date.parse(currentLocation.timestamp);
+
+  return Number.isFinite(nextTime) &&
+    Number.isFinite(currentTime) &&
+    nextTime < currentTime;
 }
 
 export function classifyBrowserLocationFailure(error: BrowserLocationErrorLike): BrowserLocationFailure {

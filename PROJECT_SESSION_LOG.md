@@ -2868,3 +2868,48 @@ Verification:
 Deployment note:
 
 - User previously requested not to watch production deployments; production deployment is started without a post-deploy observation window.
+
+## 2026-08-02 Faster Aircraft Location Acquisition
+
+Objective: reduce the time Halo spends showing `GPS acquiring` after route activation or aircraft tracking is enabled.
+
+Problem:
+
+- Halo used a single high-accuracy `watchPosition(...)` request with `maximumAge: 5_000`.
+- That forced the browser toward a fresh high-accuracy fix before Halo could show the aircraft marker.
+- On desktop/mobile browsers, especially after first permission grant or when GPS hardware is still warming up, this can leave the UI stuck on `GPS acquiring` even when the browser could provide a usable cached/coarse location earlier.
+
+Root cause:
+
+- The acquisition path optimized for high accuracy first, not first usable fix first.
+- Later recoverable timeout/unavailable callbacks could also move the state back to `requesting`, hiding an already usable aircraft marker.
+
+Solution:
+
+- Added staged browser geolocation options:
+  - fast first fix: `getCurrentPosition(...)` with `enableHighAccuracy: false`, `maximumAge: 120_000`, `timeout: 3_500`;
+  - refinement: parallel `watchPosition(...)` with `enableHighAccuracy: true`, `maximumAge: 30_000`, `timeout: 20_000`.
+- Both route activation and persistent aircraft tracking now share the staged acquisition path.
+- Older cached fixes are ignored if a newer aircraft position is already active.
+- Recoverable high-accuracy timeout/unavailable callbacks no longer hide an already usable aircraft position.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `lib/planning/routeTracking.ts`
+- `tests/planning/routeTracking.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/routeTracking.test.ts`: passed, 37 files / 174 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- Final full verification after this documentation entry:
+  - `pnpm test`: passed, 37 files / 174 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - `pnpm build`: passed on Next.js `15.5.18`.
+- Code review:
+  - A focused review agent was requested for the staged acquisition change.
+  - It did not return within the practical wait window, so the slice proceeded using direct root-cause review plus the verification evidence above.

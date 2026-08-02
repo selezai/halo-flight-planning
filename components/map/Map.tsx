@@ -28,9 +28,12 @@ import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/li
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import {
   classifyBrowserLocationFailure,
+  FAST_LOCATION_FIX_OPTIONS,
   formatLocationWatchStartFailure,
+  HIGH_ACCURACY_LOCATION_WATCH_OPTIONS,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
+  shouldKeepExistingTrackedLocation,
 } from '@/lib/planning/routeTracking';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
@@ -520,55 +523,91 @@ export default function Map({ className = '' }: MapProps) {
 
     setLocationTrackingStatus('requesting');
 
-    let watchId: number;
+    let watchId: number | undefined;
+    let cancelled = false;
+
+    const acceptPosition = (
+      position: GeolocationPosition,
+      source: 'fast-fix' | 'high-accuracy-watch'
+    ) => {
+      if (cancelled) return;
+
+      try {
+        const trackedLocation = normalizeTrackedLocation({
+          longitude: position.coords.longitude,
+          latitude: position.coords.latitude,
+          accuracyM: position.coords.accuracy,
+          altitudeM: position.coords.altitude,
+          altitudeAccuracyM: position.coords.altitudeAccuracy,
+          headingDeg: position.coords.heading,
+          speedMps: position.coords.speed,
+          timestamp: position.timestamp,
+        });
+
+        const state = useMapStore.getState();
+        if (shouldKeepExistingTrackedLocation(trackedLocation, state.locationTracking.position)) {
+          return;
+        }
+
+        setTrackedLocation(trackedLocation);
+
+        if (state.locationTracking.followMode && map.current) {
+          map.current.easeTo({
+            center: trackedLocation.coordinates,
+            duration: source === 'fast-fix' ? 350 : 650,
+            essential: true,
+          });
+        }
+      } catch (locationError) {
+        console.error(JSON.stringify({
+          level: 'error',
+          message: 'location_tracking_fix_rejected',
+          source,
+          error: locationError instanceof Error ? locationError.message : 'Invalid browser location payload',
+          timestamp: new Date().toISOString(),
+        }));
+        setLocationTrackingStatus(
+          'requesting',
+          'Halo received an invalid GPS fix and is waiting for the next browser location update.'
+        );
+      }
+    };
+
+    const handleLocationFailure = (
+      positionError: GeolocationPositionError,
+      source: 'fast-fix' | 'high-accuracy-watch'
+    ) => {
+      if (cancelled) return;
+
+      const failure = classifyBrowserLocationFailure(positionError);
+      const state = useMapStore.getState();
+      const hasUsableFix = state.locationTracking.status === 'tracking' && Boolean(state.locationTracking.position);
+
+      if (failure.status === 'requesting' && hasUsableFix) {
+        console.warn(JSON.stringify({
+          level: 'warn',
+          message: 'location_tracking_refinement_pending',
+          source,
+          error: failure.message,
+          timestamp: new Date().toISOString(),
+        }));
+        return;
+      }
+
+      setLocationTrackingStatus(failure.status, failure.message);
+    };
 
     try {
+      navigator.geolocation.getCurrentPosition(
+        (position) => acceptPosition(position, 'fast-fix'),
+        (positionError) => handleLocationFailure(positionError, 'fast-fix'),
+        FAST_LOCATION_FIX_OPTIONS
+      );
+
       watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          try {
-            const trackedLocation = normalizeTrackedLocation({
-              longitude: position.coords.longitude,
-              latitude: position.coords.latitude,
-              accuracyM: position.coords.accuracy,
-              altitudeM: position.coords.altitude,
-              altitudeAccuracyM: position.coords.altitudeAccuracy,
-              headingDeg: position.coords.heading,
-              speedMps: position.coords.speed,
-              timestamp: position.timestamp,
-            });
-
-            setTrackedLocation(trackedLocation);
-
-            const state = useMapStore.getState();
-            if (state.locationTracking.followMode && map.current) {
-              map.current.easeTo({
-                center: trackedLocation.coordinates,
-                duration: 650,
-                essential: true,
-              });
-            }
-          } catch (locationError) {
-            console.error(JSON.stringify({
-              level: 'error',
-              message: 'location_tracking_fix_rejected',
-              error: locationError instanceof Error ? locationError.message : 'Invalid browser location payload',
-              timestamp: new Date().toISOString(),
-            }));
-            setLocationTrackingStatus(
-              'requesting',
-              'Halo received an invalid GPS fix and is waiting for the next browser location update.'
-            );
-          }
-        },
-        (positionError) => {
-          const failure = classifyBrowserLocationFailure(positionError);
-          setLocationTrackingStatus(failure.status, failure.message);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5_000,
-          timeout: 15_000,
-        }
+        (position) => acceptPosition(position, 'high-accuracy-watch'),
+        (positionError) => handleLocationFailure(positionError, 'high-accuracy-watch'),
+        HIGH_ACCURACY_LOCATION_WATCH_OPTIONS
       );
     } catch (watchStartError) {
       const failure = formatLocationWatchStartFailure(watchStartError);
@@ -583,7 +622,10 @@ export default function Map({ className = '' }: MapProps) {
     }
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      cancelled = true;
+      if (typeof watchId === 'number') {
+        navigator.geolocation.clearWatch(watchId);
+      }
     };
   }, [locationTracking.enabled, setLocationTrackingStatus, setTrackedLocation]);
 

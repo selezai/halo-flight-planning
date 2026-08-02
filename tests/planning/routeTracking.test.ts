@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateActiveRouteProgress,
   classifyBrowserLocationFailure,
+  FAST_LOCATION_FIX_OPTIONS,
   formatLocationTrackingLabel,
   formatLocationWatchStartFailure,
+  HIGH_ACCURACY_LOCATION_WATCH_OPTIONS,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
+  shouldKeepExistingTrackedLocation,
 } from '@/lib/planning/routeTracking';
 import type { Waypoint } from '@/types/planning';
 
@@ -63,6 +66,41 @@ describe('route tracking helpers', () => {
       latitude: -26.134,
       accuracyM: 999_999_999,
     }).accuracyM).toBe(185_200);
+  });
+
+  it('uses staged browser location acquisition options for fast first fix then high accuracy refinement', () => {
+    expect(FAST_LOCATION_FIX_OPTIONS).toEqual({
+      enableHighAccuracy: false,
+      maximumAge: 120_000,
+      timeout: 3_500,
+    });
+    expect(HIGH_ACCURACY_LOCATION_WATCH_OPTIONS).toEqual({
+      enableHighAccuracy: true,
+      maximumAge: 30_000,
+      timeout: 20_000,
+    });
+  });
+
+  it('rejects older cached GPS fixes after a newer aircraft position is already active', () => {
+    const current = normalizeTrackedLocation({
+      longitude: 28.246,
+      latitude: -26.134,
+      timestamp: '2026-08-02T10:01:00.000Z',
+    });
+    const olderCachedFix = normalizeTrackedLocation({
+      longitude: 28.1,
+      latitude: -26.2,
+      timestamp: '2026-08-02T10:00:00.000Z',
+    });
+    const newerFix = normalizeTrackedLocation({
+      longitude: 28.2,
+      latitude: -26.1,
+      timestamp: '2026-08-02T10:02:00.000Z',
+    });
+
+    expect(shouldKeepExistingTrackedLocation(olderCachedFix, current)).toBe(true);
+    expect(shouldKeepExistingTrackedLocation(newerFix, current)).toBe(false);
+    expect(shouldKeepExistingTrackedLocation(newerFix, undefined)).toBe(false);
   });
 
   it('identifies current active leg and next waypoint from tracked position', () => {
