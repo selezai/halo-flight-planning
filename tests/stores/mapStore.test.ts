@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useMapStore } from '@/stores/mapStore';
+import {
+  HALO_MAP_STORE_VERSION,
+  migratePersistedMapState,
+  useMapStore,
+} from '@/stores/mapStore';
 import { DEFAULT_AIRCRAFT } from '@/lib/planning/aircraft';
 import { createUserWaypoint } from '@/lib/planning/navigation';
 import {
@@ -403,5 +407,39 @@ describe('map store route planning actions', () => {
       name: 'FAOR',
       coordinates: [28.246, -26.139],
     });
+  });
+
+  it('migrates legacy persisted state away from crash-prone live browser fields', () => {
+    const migrated = migratePersistedMapState({
+      aircraftTrackingEnabled: true,
+      activeRoute: {
+        status: 'active',
+        currentLegIndex: 99,
+      },
+      locationTracking: {
+        enabled: true,
+        followMode: true,
+        status: 'tracking',
+        position: {
+          coordinates: [28.2, -26.1],
+          timestamp: '2026-08-02T10:00:00.000Z',
+        },
+      },
+      selectedFeature: {
+        type: 'airspace',
+        sourceId: 'legacy',
+        name: 'Legacy selected feature',
+      },
+      routeEditingActive: true,
+      routeName: 'Legacy route',
+    }, 0);
+
+    expect(HALO_MAP_STORE_VERSION).toBeGreaterThan(0);
+    expect(migrated.routeName).toBe('Legacy route');
+    expect(migrated.aircraftTrackingEnabled).toBe(false);
+    expect(migrated.activeRoute).toBeUndefined();
+    expect(migrated.locationTracking).toBeUndefined();
+    expect(migrated.selectedFeature).toBeUndefined();
+    expect(migrated.routeEditingActive).toBeUndefined();
   });
 });

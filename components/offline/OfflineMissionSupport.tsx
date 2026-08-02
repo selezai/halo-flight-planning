@@ -12,6 +12,8 @@ import { calculateRoute } from '@/lib/planning/navigation';
 import { cn } from '@/lib/utils';
 import { useMapStore } from '@/stores/mapStore';
 
+const HALO_SW_CONTROLLER_RELOAD_KEY = 'halo-sw-controller-reload-v1';
+
 export default function OfflineMissionSupport() {
   const lastSnapshotWrite = useRef<{ signature: string; writtenAtMs: number } | null>(null);
   const {
@@ -94,7 +96,50 @@ export default function OfflineMissionSupport() {
 
     if (!isSecureContext) return;
 
-    navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+    let disposed = false;
+
+    const handleControllerChange = () => {
+      if (disposed) return;
+
+      try {
+        if (window.sessionStorage.getItem(HALO_SW_CONTROLLER_RELOAD_KEY) === '1') return;
+        window.sessionStorage.setItem(HALO_SW_CONTROLLER_RELOAD_KEY, '1');
+      } catch {
+        // If sessionStorage is unavailable, still prefer one safe reload on controller change.
+      }
+
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
+      const activateWaitingWorker = () => {
+        registration.waiting?.postMessage({ type: 'HALO_SKIP_WAITING' });
+      };
+
+      activateWaitingWorker();
+
+      registration.addEventListener('updatefound', () => {
+        const installingWorker = registration.installing;
+        if (!installingWorker) return;
+
+        installingWorker.addEventListener('statechange', () => {
+          if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            installingWorker.postMessage({ type: 'HALO_SKIP_WAITING' });
+          }
+        });
+      });
+
+      registration.update().catch((error: unknown) => {
+        console.warn(JSON.stringify({
+          level: 'warn',
+          message: 'offline_service_worker_update_failed',
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+      });
+    }).catch((error: unknown) => {
       console.warn(JSON.stringify({
         level: 'warn',
         message: 'offline_service_worker_registration_failed',
@@ -102,6 +147,11 @@ export default function OfflineMissionSupport() {
         timestamp: new Date().toISOString(),
       }));
     });
+
+    return () => {
+      disposed = true;
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+    };
   }, []);
 
   useEffect(() => {

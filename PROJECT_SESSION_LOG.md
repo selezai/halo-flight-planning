@@ -2793,3 +2793,78 @@ Verification:
 Deployment note:
 
 - User requested not to watch the production deployment after push/deploy; the deployment was started without a post-deploy observation window.
+
+## 2026-08-02 Self-Healing Client Boot and Recovery
+
+Objective: prevent real users from needing to manually clear browser cache or app data after stale client state, service-worker cache, or mobile browser API failures.
+
+Problem:
+
+- Halo had started protecting known crash paths, but recovery still depended too much on manual browser cache clearing when stale app-shell or persisted planner state was involved.
+- The error boundary told users the error was logged, but client-side app-boundary errors were only logged in the browser console, so production diagnosis for iPhone/Chrome crashes was weak.
+- The service worker used a fixed offline cache and did not actively force update checks/reloads when a new shell was installed.
+- Zustand persisted planner state had normalization, but no explicit persistence version/migration path for future breaking client-state changes.
+
+Solution:
+
+- Added versioned Zustand persistence:
+  - `HALO_MAP_STORE_VERSION = 3`;
+  - legacy/unversioned persisted state is migrated away from crash-prone live browser fields such as active route, live location fixes, selected features, and route-editing state;
+  - legacy persistent aircraft tracking is turned off during the migration so old browsers do not immediately retrigger a location prompt/crash loop after update.
+- Added a reusable recovery panel for app/global error boundaries:
+  - `Try again`;
+  - `Repair and reload` to clear Halo offline caches and unregister Halo's service worker without clearing planner data;
+  - `Download saved planner data` to export Halo-owned local records;
+  - `Reset Halo app data` to clear Halo local planner/offline records after attempting a recovery backup.
+- Added safe client-error ingestion:
+  - `POST /api/client-errors`;
+  - validates payloads;
+  - strips query strings from paths;
+  - redacts common token/API-key/authorization patterns;
+  - logs build id, source, error name/message, user agent, and timestamp without stack traces or secrets.
+- Hardened service-worker updates:
+  - bumped offline shell cache to `halo-offline-shell-v3`;
+  - added `updateViaCache: 'none'`;
+  - checks for updates on app load;
+  - activates waiting workers and reloads once on controller change;
+  - serves `/sw.js` with no-store/no-cache headers.
+- Added a public non-secret build id via `NEXT_PUBLIC_HALO_BUILD_ID`, sourced from Vercel git commit sha when available.
+
+Files modified:
+
+- `app/api/client-errors/route.ts`
+- `app/error.tsx`
+- `app/global-error.tsx`
+- `components/offline/OfflineMissionSupport.tsx`
+- `components/system/HaloRecoveryPanel.tsx`
+- `lib/observability/clientErrors.ts`
+- `lib/recovery/haloClientRecovery.ts`
+- `next.config.js`
+- `public/sw.js`
+- `stores/mapStore.ts`
+- `tests/observability/clientErrors.test.ts`
+- `tests/recovery/haloClientRecovery.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused recovery/logger/migration verification:
+  - `pnpm test -- tests/recovery/haloClientRecovery.test.ts tests/observability/clientErrors.test.ts tests/stores/mapStore.test.ts`: passed, 37 files / 172 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- Full verification:
+  - `pnpm test`: passed, 37 files / 172 tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+  - First `pnpm build` attempt compiled successfully but returned `ENOENT` for `.next/build-manifest.json` while an orphaned `next build` process was still running and then created the manifest.
+  - Root cause was treated as a local generated-output race, not a source compile failure. The orphaned build process was terminated, generated `.next` output was removed, and `pnpm build` was rerun cleanly.
+  - Clean `pnpm build`: passed on Next.js `15.5.18`, including `/api/client-errors`.
+  - `git diff --check`: passed.
+- Code review:
+  - A focused review agent was requested for the self-healing client boot changes.
+  - It did not return within two practical wait windows, so the slice proceeded using direct diff review plus the verification evidence above.
+
+Deployment note:
+
+- User previously requested not to watch production deployments; production deployment is started without a post-deploy observation window.

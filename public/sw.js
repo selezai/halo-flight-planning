@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'halo-offline-shell-v2';
+const CACHE_VERSION = 'halo-offline-shell-v3';
 const APP_SHELL_URLS = ['/', '/icon.svg'];
 const CACHEABLE_PATH_PREFIXES = [
   '/_next/static/',
@@ -52,6 +52,23 @@ self.addEventListener('fetch', (event) => {
 
   if (CACHEABLE_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     event.respondWith(staleWhileRevalidate(request));
+  }
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'HALO_SKIP_WAITING') {
+    self.skipWaiting();
+  }
+
+  if (event.data?.type === 'HALO_CLEAR_CACHES') {
+    event.waitUntil(
+      caches.keys()
+        .then((cacheNames) => Promise.all(
+          cacheNames
+            .filter((cacheName) => cacheName.startsWith('halo-offline-shell-'))
+            .map((cacheName) => caches.delete(cacheName))
+        ))
+    );
   }
 });
 

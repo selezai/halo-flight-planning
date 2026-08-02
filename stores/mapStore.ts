@@ -201,6 +201,7 @@ const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
 };
 
 const DEFAULT_ACTIVE_MISSION_ID = 'mission-local-active';
+export const HALO_MAP_STORE_VERSION = 3;
 
 function createMissionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -648,6 +649,26 @@ function mergePersistedMapState(
         : current.personalMinimums
     ),
   };
+}
+
+export function migratePersistedMapState(persistedState: unknown, persistedVersion: number): Partial<MapState> {
+  if (!isRecord(persistedState)) return {};
+
+  const migrated = {
+    ...persistedState,
+  } as Partial<MapState>;
+
+  if (persistedVersion < 3) {
+    delete migrated.activeRoute;
+    delete migrated.locationTracking;
+    delete migrated.selectedFeature;
+    delete migrated.selectedFeatureCandidates;
+    delete migrated.routeEditingActive;
+
+    migrated.aircraftTrackingEnabled = false;
+  }
+
+  return migrated;
 }
 
 export const useMapStore = createWithEqualityFn<MapState>()(
@@ -1173,6 +1194,8 @@ export const useMapStore = createWithEqualityFn<MapState>()(
     }),
     {
       name: 'halo-map-store',
+      version: HALO_MAP_STORE_VERSION,
+      migrate: migratePersistedMapState,
       partialize: (state) => ({
         center: state.center,
         zoom: state.zoom,
