@@ -2632,3 +2632,42 @@ Vercel runtime log scan:
 
 - `/api/openaip/style` structured request logs completed with HTTP 200 in 126 ms.
 - No runtime error entries appeared during the observed request window.
+
+## 2026-08-02 Vercel Duplicate Project Cleanup
+
+Objective: remove the duplicate Halo Vercel project so future deployments and dashboard checks are unambiguous.
+
+Problem:
+
+- Vercel contained two Halo projects:
+  - `halo-flight-planning` (`prj_wcjsA04jtds3ixcBLvwkOKhXdxkm`)
+  - `halo-flight-planning-inspect` (`prj_41prX4BCHx68C9NRjeArg79HqILe`)
+- The duplicate `-inspect` project had stale public aliases and was still receiving preview deployments, creating confusion in the Vercel dashboard.
+
+Findings:
+
+- Local `.vercel/project.json` pointed to the correct live project: `halo-flight-planning`.
+- `https://halo-flight-planning.vercel.app` pointed to the correct live project.
+- The correct project had the real production environment variables for Neon, Clerk, OpenAIP, MapTiler, and NOTAM configuration.
+- The duplicate `halo-flight-planning-inspect` project had no environment variables and its public alias pointed to an old July 19, 2026 deployment.
+
+Actions:
+
+- Removed duplicate aliases:
+  - `halo-flight-planning-inspect.vercel.app`
+  - `halo-flight-planning-inspect-pilotmerch-gmailcoms-projects.vercel.app`
+- Deleted duplicate Vercel project:
+  - `halo-flight-planning-inspect`
+
+Verification:
+
+- `vercel project ls --json` now lists only one Halo project: `halo-flight-planning`.
+- `vercel alias ls` now lists only the correct Halo aliases:
+  - `halo-flight-planning.vercel.app`
+  - `halo-flight-planning-pilotmerch-gmailcoms-projects.vercel.app`
+- `https://halo-flight-planning.vercel.app/` returned HTTP 200 after cleanup.
+- `https://halo-flight-planning-inspect.vercel.app/` returned HTTP 404 `DEPLOYMENT_NOT_FOUND` after cleanup.
+
+Code changes:
+
+- None. This was an external Vercel configuration cleanup plus session-log documentation.
