@@ -46,6 +46,19 @@ export interface ActiveRouteProgress {
   crossTrackErrorNm?: number;
 }
 
+export interface BrowserLocationErrorLike {
+  code: number;
+  message?: string;
+  PERMISSION_DENIED?: number;
+  POSITION_UNAVAILABLE?: number;
+  TIMEOUT?: number;
+}
+
+export interface BrowserLocationFailure {
+  status: LocationTrackingState['status'];
+  message: string;
+}
+
 export function normalizeTrackedLocation(input: RawLocationInput): TrackedLocation {
   const coordinates: Coordinates = [input.longitude, input.latitude];
   validateCoordinates(coordinates);
@@ -132,11 +145,43 @@ export function resolveAircraftTrackHeading(
 
 export function formatLocationTrackingLabel(state: LocationTrackingState): string {
   if (state.status === 'tracking') return 'GPS tracking';
-  if (state.status === 'requesting') return 'Locating';
+  if (state.status === 'requesting') return state.error ? 'GPS acquiring' : 'Locating';
   if (state.status === 'denied') return 'GPS blocked';
   if (state.status === 'unavailable') return 'GPS unavailable';
   if (state.status === 'error') return 'GPS error';
   return 'GPS off';
+}
+
+export function classifyBrowserLocationFailure(error: BrowserLocationErrorLike): BrowserLocationFailure {
+  const permissionDeniedCode = error.PERMISSION_DENIED ?? 1;
+  const positionUnavailableCode = error.POSITION_UNAVAILABLE ?? 2;
+  const timeoutCode = error.TIMEOUT ?? 3;
+
+  if (error.code === permissionDeniedCode) {
+    return {
+      status: 'denied',
+      message: 'Location permission was denied. Enable browser location access to show the aircraft on the map.',
+    };
+  }
+
+  if (error.code === positionUnavailableCode) {
+    return {
+      status: 'requesting',
+      message: 'Location permission is enabled; Halo is still waiting for a usable GPS fix.',
+    };
+  }
+
+  if (error.code === timeoutCode) {
+    return {
+      status: 'requesting',
+      message: 'Location permission is enabled; GPS acquisition is still in progress.',
+    };
+  }
+
+  return {
+    status: 'error',
+    message: error.message || 'Location tracking failed.',
+  };
 }
 
 function projectPointToRouteLeg(

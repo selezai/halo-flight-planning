@@ -11,6 +11,10 @@ import {
 } from '@/lib/openaip/featureSelection';
 import { parseFeature } from '@/lib/openaip/featureParser';
 import { getClickableLayers } from '@/lib/openaip/styleConverter';
+import {
+  applyAirportLockToWaypoint,
+  chooseNearestAirportLock,
+} from '@/lib/planning/airportLock';
 import { buildRouteAirspaceAlert, sortRouteAirspaceAlerts } from '@/lib/planning/airspaceReview';
 import { calculateGlideRadiusNm } from '@/lib/planning/emergencyPlanning';
 import {
@@ -23,13 +27,13 @@ import {
 import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/lib/planning/navigation';
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import {
+  classifyBrowserLocationFailure,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
 } from '@/lib/planning/routeTracking';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   Coordinates,
-  LocationTrackingStatus,
   RouteAirspaceAlert,
   RouteAirspaceReview,
   TrackedLocation,
@@ -85,6 +89,7 @@ export default function Map({ className = '' }: MapProps) {
   const [styleLoaded, setStyleLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWaypointId, setSelectedWaypointId] = useState<string | null>(null);
+  const [nearestAirportLock, setNearestAirportLock] = useState<Waypoint | null>(null);
 
   if (!initialViewport.current) {
     const state = useMapStore.getState();
@@ -209,6 +214,17 @@ export default function Map({ className = '' }: MapProps) {
       .style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
   }, [activeRoute.currentLegIndex, locationTracking.position, locationTracking.status, mapLoaded, waypoints]);
 
+  const updateNearestAirportLock = useCallback(() => {
+    if (!visibleLayers.airports || !map.current || !mapLoaded || !styleLoaded || !selectedWaypoint) {
+      setNearestAirportLock(null);
+      return;
+    }
+
+    setNearestAirportLock(
+      findNearestRenderedAirportWaypoint(map.current, selectedWaypoint.coordinates)
+    );
+  }, [mapLoaded, selectedWaypoint, styleLoaded, visibleLayers.airports]);
+
   const updateRouteAirspaceReview = useCallback(() => {
     if (routeEditingActive) return;
 
@@ -325,6 +341,10 @@ export default function Map({ className = '' }: MapProps) {
       setSelectedWaypointId(null);
     }
   }, [planningMode, selectedWaypointId, waypoints]);
+
+  useEffect(() => {
+    updateNearestAirportLock();
+  }, [updateNearestAirportLock]);
 
   useEffect(() => {
     return () => {
@@ -468,33 +488,44 @@ export default function Map({ className = '' }: MapProps) {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const trackedLocation = normalizeTrackedLocation({
-          longitude: position.coords.longitude,
-          latitude: position.coords.latitude,
-          accuracyM: position.coords.accuracy,
-          altitudeM: position.coords.altitude,
-          altitudeAccuracyM: position.coords.altitudeAccuracy,
-          headingDeg: position.coords.heading,
-          speedMps: position.coords.speed,
-          timestamp: position.timestamp,
-        });
-
-        setTrackedLocation(trackedLocation);
-
-        const state = useMapStore.getState();
-        if (state.locationTracking.followMode && map.current) {
-          map.current.easeTo({
-            center: trackedLocation.coordinates,
-            duration: 650,
-            essential: true,
+        try {
+          const trackedLocation = normalizeTrackedLocation({
+            longitude: position.coords.longitude,
+            latitude: position.coords.latitude,
+            accuracyM: position.coords.accuracy,
+            altitudeM: position.coords.altitude,
+            altitudeAccuracyM: position.coords.altitudeAccuracy,
+            headingDeg: position.coords.heading,
+            speedMps: position.coords.speed,
+            timestamp: position.timestamp,
           });
+
+          setTrackedLocation(trackedLocation);
+
+          const state = useMapStore.getState();
+          if (state.locationTracking.followMode && map.current) {
+            map.current.easeTo({
+              center: trackedLocation.coordinates,
+              duration: 650,
+              essential: true,
+            });
+          }
+        } catch (locationError) {
+          console.error(JSON.stringify({
+            level: 'error',
+            message: 'location_tracking_fix_rejected',
+            error: locationError instanceof Error ? locationError.message : 'Invalid browser location payload',
+            timestamp: new Date().toISOString(),
+          }));
+          setLocationTrackingStatus(
+            'requesting',
+            'Halo received an invalid GPS fix and is waiting for the next browser location update.'
+          );
         }
       },
       (positionError) => {
-        setLocationTrackingStatus(
-          mapBrowserLocationErrorStatus(positionError),
-          formatBrowserLocationError(positionError)
-        );
+        const failure = classifyBrowserLocationFailure(positionError);
+        setLocationTrackingStatus(failure.status, failure.message);
       },
       {
         enableHighAccuracy: true,
@@ -872,7 +903,8 @@ export default function Map({ className = '' }: MapProps) {
         }
       });
     });
-  }, [visibleLayers, styleLoaded]);
+    updateNearestAirportLock();
+  }, [updateNearestAirportLock, visibleLayers, styleLoaded]);
 
   useEffect(() => {
     updateRouteOverlay();
@@ -908,6 +940,19 @@ export default function Map({ className = '' }: MapProps) {
       mapInstance.off('zoomend', handleRefresh);
     };
   }, [mapLoaded, routeEditingActive, scheduleRouteAirspaceReview, styleLoaded]);
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !styleLoaded || !selectedWaypoint) return;
+
+    const mapInstance = map.current;
+    mapInstance.on('moveend', updateNearestAirportLock);
+    mapInstance.on('zoomend', updateNearestAirportLock);
+
+    return () => {
+      mapInstance.off('moveend', updateNearestAirportLock);
+      mapInstance.off('zoomend', updateNearestAirportLock);
+    };
+  }, [mapLoaded, selectedWaypoint, styleLoaded, updateNearestAirportLock]);
 
   // Error state
   if (error) {
@@ -946,6 +991,11 @@ export default function Map({ className = '' }: MapProps) {
             setSelectedWaypointId(null);
           }}
           onUpdate={(updates) => updateRouteWaypoint(selectedWaypoint.id, updates)}
+          airportLock={nearestAirportLock}
+          onLockToAirport={(airport) => {
+            updateRouteWaypoint(selectedWaypoint.id, applyAirportLockToWaypoint(selectedWaypoint, airport));
+            setNearestAirportLock(airport);
+          }}
         />
       )}
       
@@ -971,17 +1021,29 @@ function RouteWaypointEditor({
   waypoint,
   waypointIndex,
   waypointCount,
+  airportLock,
   onClose,
   onDelete,
   onUpdate,
+  onLockToAirport,
 }: {
   waypoint: Waypoint;
   waypointIndex: number;
   waypointCount: number;
+  airportLock: Waypoint | null;
   onClose: () => void;
   onDelete: () => void;
   onUpdate: (updates: Partial<Waypoint>) => void;
+  onLockToAirport: (airport: Waypoint) => void;
 }) {
+  const lockedToSuggestedAirport =
+    waypoint.type === 'airport' &&
+    Boolean(airportLock) &&
+    Boolean(
+      (waypoint.sourceId && waypoint.sourceId === airportLock?.sourceId) ||
+      (waypoint.ident && waypoint.ident === airportLock?.ident)
+    );
+
   return (
     <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-20 rounded-[1.35rem] border border-white/80 bg-white/95 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:bottom-24 sm:left-5 sm:right-auto sm:w-80">
       <div className="flex items-start justify-between gap-3">
@@ -1010,8 +1072,34 @@ function RouteWaypointEditor({
       <input
         value={waypoint.name}
         onChange={(event) => onUpdate({ name: event.target.value })}
-        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold text-slate-950 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100 sm:text-sm"
       />
+
+      <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50/80 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+              Nearest airfield lock
+            </p>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+              {airportLock
+                ? `${airportLock.ident ?? 'Airport'} · ${airportLock.name}`
+                : 'No rendered airport nearby'}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Locking snaps this waypoint onto the nearest visible OpenAIP airport/airfield and keeps your pilot note.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!airportLock || lockedToSuggestedAirport}
+            onClick={() => airportLock && onLockToAirport(airportLock)}
+            className="inline-flex shrink-0 items-center justify-center rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 shadow-sm hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {lockedToSuggestedAirport ? 'Locked' : 'Lock'}
+          </button>
+        </div>
+      </div>
 
       <label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
         Pilot note
@@ -1021,7 +1109,7 @@ function RouteWaypointEditor({
         onChange={(event) => onUpdate({ notes: event.target.value })}
         placeholder="Frequency, altitude, visual cue, checkpoint reminder..."
         rows={3}
-        className="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+        className="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100 sm:text-sm"
       />
 
       <div className="mt-3 flex items-center justify-between gap-2">
@@ -1170,28 +1258,6 @@ function updateLocationAccuracyOverlay(
   } as any);
 }
 
-function mapBrowserLocationErrorStatus(error: GeolocationPositionError): LocationTrackingStatus {
-  if (error.code === error.PERMISSION_DENIED) return 'denied';
-  if (error.code === error.POSITION_UNAVAILABLE) return 'unavailable';
-  return 'error';
-}
-
-function formatBrowserLocationError(error: GeolocationPositionError): string {
-  if (error.code === error.PERMISSION_DENIED) {
-    return 'Location permission was denied. Enable browser location access to show the aircraft on the map.';
-  }
-
-  if (error.code === error.POSITION_UNAVAILABLE) {
-    return 'Browser location is unavailable. Check device GPS, Wi-Fi, or system location services.';
-  }
-
-  if (error.code === error.TIMEOUT) {
-    return 'Location request timed out. Try again with a clearer GPS signal.';
-  }
-
-  return error.message || 'Location tracking failed.';
-}
-
 function toParserGeometry(geometry: FeatureGeometry | undefined) {
   if (!geometry || !('coordinates' in geometry) || !Array.isArray(geometry.coordinates)) {
     return undefined;
@@ -1222,19 +1288,52 @@ function getRouteWaypointAtPoint(
   return useMapStore.getState().waypoints.find((waypoint) => waypoint.id === waypointId) ?? null;
 }
 
-function makeWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
+function findNearestRenderedAirportWaypoint(
+  mapInstance: maplibregl.Map,
+  coordinates: Coordinates
+): Waypoint | null {
+  const airportLayers = getVisibleAirportLayerIds(mapInstance);
+  if (airportLayers.length === 0) return null;
+
+  const screenPoint = mapInstance.project({ lng: coordinates[0], lat: coordinates[1] });
+  const radiusPx = 64;
+  const bbox: [[number, number], [number, number]] = [
+    [screenPoint.x - radiusPx, screenPoint.y - radiusPx],
+    [screenPoint.x + radiusPx, screenPoint.y + radiusPx],
+  ];
+  const airports = buildFeatureSelectionStack(
+    mapInstance.queryRenderedFeatures(bbox, { layers: airportLayers }),
+    24
+  )
+    .map(makeAirportWaypointFromFeature)
+    .filter((waypoint): waypoint is Waypoint => Boolean(waypoint));
+
+  return chooseNearestAirportLock(coordinates, airports)?.waypoint ?? null;
+}
+
+function getVisibleAirportLayerIds(mapInstance: maplibregl.Map): string[] {
+  return (mapInstance.getStyle().layers ?? [])
+    .filter((layer) => {
+      const sourceLayer = String((layer as Record<string, unknown>)['source-layer'] ?? '').replace(/-/g, '_');
+      return sourceLayer === 'airports';
+    })
+    .map((layer) => layer.id)
+    .filter((id) => {
+      if (!mapInstance.getLayer(id)) return false;
+      return mapInstance.getLayoutProperty(id, 'visibility') !== 'none';
+    });
+}
+
+function makeAirportWaypointFromFeature(feature: ParsedFeature): Waypoint | null {
   if (!feature.coordinates) return null;
-  if (feature.type !== 'airport' && feature.type !== 'navaid' && feature.type !== 'reportingPoint') {
-    return null;
-  }
+  if (feature.type !== 'airport') return null;
 
   const ident = feature.icao ?? feature.identifier;
   const name = feature.name ?? ident ?? 'Snapped waypoint';
-  const waypointType = feature.type === 'reportingPoint' ? 'reporting-point' : feature.type;
 
   return {
     id: String(feature.sourceId ?? ident ?? `${feature.coordinates[0]}-${feature.coordinates[1]}`),
-    type: waypointType,
+    type: 'airport',
     name: String(name),
     ident: ident ? String(ident) : undefined,
     coordinates: feature.coordinates,

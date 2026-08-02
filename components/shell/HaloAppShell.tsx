@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import HaloPlaneIcon from '@/components/icons/HaloPlaneIcon';
 import ClientMap from '@/components/map/ClientMap';
+import OfflineMissionSupport from '@/components/offline/OfflineMissionSupport';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
 import RouteNotamReviewSync from '@/components/planning/RouteNotamReviewSync';
 import RouteStatusBar from '@/components/planning/RouteStatusBar';
@@ -437,6 +438,7 @@ export default function HaloAppShell({
       )}
 
       <RouteStatusBar />
+      <OfflineMissionSupport />
 
       {isDesktop && plannerOpen && (
         <div className="absolute bottom-5 right-5 top-24 z-30 w-[min(440px,calc(100vw-2.5rem))]">

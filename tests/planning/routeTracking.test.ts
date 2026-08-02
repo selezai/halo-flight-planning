@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateActiveRouteProgress,
+  classifyBrowserLocationFailure,
+  formatLocationTrackingLabel,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
 } from '@/lib/planning/routeTracking';
@@ -98,5 +100,24 @@ describe('route tracking helpers', () => {
       route,
       0
     )).toBeGreaterThan(0);
+  });
+
+  it('keeps recoverable browser GPS acquisition failures non-terminal', () => {
+    expect(classifyBrowserLocationFailure({ code: 2 }).status).toBe('requesting');
+    expect(classifyBrowserLocationFailure({ code: 3 }).status).toBe('requesting');
+    expect(classifyBrowserLocationFailure({ code: 1 }).status).toBe('denied');
+    expect(classifyBrowserLocationFailure({ code: 99, message: 'Unexpected GPS failure' })).toEqual({
+      status: 'error',
+      message: 'Unexpected GPS failure',
+    });
+  });
+
+  it('shows acquiring copy while waiting after browser GPS timeout/unavailable callbacks', () => {
+    expect(formatLocationTrackingLabel({
+      enabled: true,
+      followMode: true,
+      status: 'requesting',
+      error: 'Location permission is enabled; GPS acquisition is still in progress.',
+    })).toBe('GPS acquiring');
   });
 });

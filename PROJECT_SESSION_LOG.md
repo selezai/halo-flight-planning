@@ -2474,3 +2474,68 @@ Verification:
   - No runtime error entries appeared during the observed request window.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+## 2026-08-02 Location Reliability, Mobile Input Zoom, Airport Lock, Offline Snapshot
+
+Objective: fix the location-permission error state, prevent mobile keyboard focus from zooming the app, add a nearest-airfield lock to waypoint editing, and add practical offline support for active missions.
+
+Problems:
+
+- Accepting browser location permission could still leave Halo showing an error when the browser returned GPS timeout/unavailable callbacks while it was still acquiring a usable fix.
+- The GPS success callback assumed every browser position payload could be normalized safely; malformed or incomplete payloads could bubble into a map error path.
+- Mobile browsers could zoom the page when focusing small text inputs, making the planner hard to zoom/pan back out after typing.
+- The waypoint editor let pilots move/name/note a waypoint, but did not provide a fast way to snap a checkpoint to the nearest visible airfield/airport.
+- Offline behavior was only incidental browser/Zustand persistence. There was no deliberate “active mission reference” snapshot once a flight had started.
+
+Decisions:
+
+- Treat geolocation `POSITION_UNAVAILABLE` and `TIMEOUT` as non-terminal acquisition states after permission is granted. Only permission denial, unsupported browser location, or unknown failures stop tracking.
+- Fix mobile keyboard zoom with 16px mobile input sizing instead of disabling user pinch zoom globally.
+- Keep the waypoint airport lock conservative: it only uses visible rendered OpenAIP airport layers near the selected waypoint, and clears when the Airports layer is hidden.
+- Implement offline use as an active-mission reference snapshot plus app-shell/static cache. Do not cache live weather, NOTAM, OpenAIP style, OpenAIP tiles, or airspace-review API responses because stale aviation data must not appear current.
+- Keep offline copy explicit: live aviation, weather, and NOTAM data is unavailable offline unless refreshed online.
+
+Solution:
+
+- Added provider-neutral browser geolocation error classification in `routeTracking`.
+- Wrapped GPS position normalization/update in a defensive `try/catch` and kept recoverable GPS acquisition failures in `requesting` state.
+- Updated location tracking labels so recoverable timeout/unavailable states show `GPS acquiring`.
+- Added mobile input/select/textarea font-size protection in the global mobile CSS and removed global viewport scale locking.
+- Added nearest-airfield lock helpers and a waypoint-editor control that snaps the selected waypoint to the closest visible rendered OpenAIP airport/airfield while preserving the waypoint id and pilot notes.
+- Added airport-lock refresh on selected waypoint changes, map move/zoom, and airport-layer visibility changes.
+- Added an active-mission offline snapshot builder containing route summary, aircraft basics, waypoints, active-route state, and last known GPS position.
+- Added a small non-blocking offline snapshot chip to the map shell.
+- Added a service worker that caches only the app shell, static Next assets, icon, and static OpenAIP sprites; it explicitly avoids account/auth, NOTAM, live weather, OpenAIP style, OpenAIP tiles, search, and airspace-review responses.
+- Throttled offline snapshot writes so frequent GPS updates do not create localStorage jank.
+
+Files modified:
+
+- `app/globals.css`
+- `app/layout.tsx`
+- `components/map/Map.tsx`
+- `components/offline/OfflineMissionSupport.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `lib/planning/airportLock.ts`
+- `lib/planning/offlineMission.ts`
+- `lib/planning/routeTracking.ts`
+- `public/sw.js`
+- `tests/planning/airportLock.test.ts`
+- `tests/planning/offlineMission.test.ts`
+- `tests/planning/routeTracking.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification before deployment:
+
+- `pnpm test`: passed, 35 files / 153 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Code review:
+  - Initial critical finding: service worker could cache live aviation/weather API responses and make stale data look current.
+  - Fix: removed live aviation/weather data paths from offline caching and bumped the service-worker cache version.
+  - Initial important findings: offline copy implied active-state restore, airport lock did not refresh on layer visibility changes, and viewport scale lock harmed accessibility.
+  - Fixes: clarified snapshot copy, refreshed/cleared airport lock with airport-layer visibility, and removed global pinch-zoom lock.
+  - Reviewer re-check result: ready.
+- No Playwright/E2E command was run.
+- Browser/manual E2E inspection remains user-owned.

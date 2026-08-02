@@ -227,4 +227,27 @@ describe('map store route planning actions', () => {
       error: 'Location blocked',
     });
   });
+
+  it('keeps GPS tracking enabled while the browser is still acquiring a fix', () => {
+    useMapStore.setState({
+      locationTracking: {
+        ...DEFAULT_LOCATION_TRACKING_STATE,
+        enabled: true,
+        followMode: true,
+        status: 'requesting',
+      },
+    });
+
+    useMapStore.getState().setLocationTrackingStatus(
+      'requesting',
+      'Location permission is enabled; GPS acquisition is still in progress.'
+    );
+
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: true,
+      followMode: true,
+      status: 'requesting',
+      error: 'Location permission is enabled; GPS acquisition is still in progress.',
+    });
+  });
 });
