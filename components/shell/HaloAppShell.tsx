@@ -88,6 +88,7 @@ export default function HaloAppShell({
     flightPlanFilingRecord,
     visibleLayers,
     planningMode,
+    aircraftTrackingEnabled,
     activeRoute,
     locationTracking,
     sidebarOpen,
@@ -98,6 +99,7 @@ export default function HaloAppShell({
     setPlanningMode,
     startActiveRoute,
     stopActiveRoute,
+    setAircraftTrackingEnabled,
     setLocationTrackingEnabled,
     setLocationFollowMode,
     toggleLayer,
@@ -124,6 +126,7 @@ export default function HaloAppShell({
     flightPlanFilingRecord: state.flightPlanFilingRecord,
     visibleLayers: state.visibleLayers,
     planningMode: state.planningMode,
+    aircraftTrackingEnabled: state.aircraftTrackingEnabled,
     activeRoute: state.activeRoute,
     locationTracking: state.locationTracking,
     sidebarOpen: state.sidebarOpen,
@@ -134,6 +137,7 @@ export default function HaloAppShell({
     setPlanningMode: state.setPlanningMode,
     startActiveRoute: state.startActiveRoute,
     stopActiveRoute: state.stopActiveRoute,
+    setAircraftTrackingEnabled: state.setAircraftTrackingEnabled,
     setLocationTrackingEnabled: state.setLocationTrackingEnabled,
     setLocationFollowMode: state.setLocationFollowMode,
     toggleLayer: state.toggleLayer,
@@ -348,19 +352,34 @@ export default function HaloAppShell({
   };
 
   const toggleLocationTracking = () => {
-    if (locationTracking.enabled || locationTracking.status === 'tracking' || locationTracking.status === 'requesting') {
-      setLocationTrackingEnabled(false);
+    if (aircraftTrackingEnabled) {
+      setAircraftTrackingEnabled(false, { keepLocationTrackingActive: activeRoute.status === 'active' });
       return;
     }
 
-    setLocationTrackingEnabled(true);
-    setLocationFollowMode(true);
+    setAircraftTrackingEnabled(true);
   };
 
   const stopRouteNavigation = () => {
     stopActiveRoute();
-    setLocationTrackingEnabled(false);
+    if (!aircraftTrackingEnabled) {
+      setLocationTrackingEnabled(false);
+    }
   };
+
+  useEffect(() => {
+    if (!aircraftTrackingEnabled) return;
+    if (locationTracking.enabled || locationTracking.status !== 'idle') return;
+
+    setLocationTrackingEnabled(true);
+    setLocationFollowMode(true);
+  }, [
+    aircraftTrackingEnabled,
+    locationTracking.enabled,
+    locationTracking.status,
+    setLocationFollowMode,
+    setLocationTrackingEnabled,
+  ]);
 
   const plannerOpen = sidebarOpen;
   const showMapModeControl = !plannerOpen && activeRoute.status !== 'active';
@@ -426,6 +445,7 @@ export default function HaloAppShell({
         <MapToolsRail
           visibleLayers={visibleLayers}
           routeWaypointCount={waypoints.length}
+          aircraftTrackingEnabled={aircraftTrackingEnabled}
           activeRoute={activeRoute}
           locationTracking={locationTracking}
           onToggleLayer={toggleLayer}
@@ -904,6 +924,7 @@ function MapModeControl({
 function MapToolsRail({
   visibleLayers,
   routeWaypointCount,
+  aircraftTrackingEnabled,
   activeRoute,
   locationTracking,
   onToggleLayer,
@@ -915,6 +936,7 @@ function MapToolsRail({
 }: {
   visibleLayers: MapState['visibleLayers'];
   routeWaypointCount: number;
+  aircraftTrackingEnabled: boolean;
   activeRoute: ActiveRouteState;
   locationTracking: LocationTrackingState;
   onToggleLayer: (layer: keyof MapState['visibleLayers']) => void;
@@ -930,6 +952,7 @@ function MapToolsRail({
   const routeActive = activeRoute.status === 'active';
   const routeReady = routeWaypointCount >= 2;
   const locationActive =
+    aircraftTrackingEnabled ||
     locationTracking.enabled ||
     locationTracking.status === 'tracking' ||
     locationTracking.status === 'requesting';
@@ -937,6 +960,10 @@ function MapToolsRail({
     locationTracking.status === 'denied' ||
     locationTracking.status === 'unavailable' ||
     locationTracking.status === 'error';
+  const routeDrivenLocationActive =
+    routeActive &&
+    !aircraftTrackingEnabled &&
+    (locationTracking.enabled || locationTracking.status === 'tracking' || locationTracking.status === 'requesting');
   const controls = [
     {
       label: 'Emergency tools',
@@ -966,14 +993,14 @@ function MapToolsRail({
                 routeActive && 'border-rose-200 bg-rose-50 text-rose-800',
                 !routeActive && routeReady && 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'
               )}
-              aria-label={routeActive ? 'Stop route navigation' : 'Start route navigation'}
+              aria-label={routeActive ? 'End route tracking' : 'Activate route guidance'}
             >
               {routeActive ? <Square className="h-4 w-4" /> : <Route className="h-4 w-4" />}
-              <span className="hidden sm:inline">{routeActive ? 'Stop route' : 'Start route'}</span>
+              <span className="hidden sm:inline">{routeActive ? 'End route' : 'Activate route'}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            {routeReady ? (routeActive ? 'Stop active route' : 'Start active route with GPS') : 'Add at least two waypoints first'}
+            {routeReady ? (routeActive ? 'End active route tracking' : 'Activate route guidance + GPS') : 'Add at least two waypoints first'}
           </TooltipContent>
         </Tooltip>
 
@@ -987,17 +1014,25 @@ function MapToolsRail({
                 locationActive && 'border-cyan-200 bg-cyan-50 text-cyan-900',
                 locationProblem && 'border-rose-200 bg-rose-50 text-rose-800'
               )}
-              aria-pressed={locationActive}
-              aria-label={locationActive ? 'Stop location tracking' : 'Start location tracking'}
+              aria-pressed={aircraftTrackingEnabled}
+              aria-label={aircraftTrackingEnabled ? 'Disable persistent aircraft position tracking' : 'Track aircraft position'}
             >
               <HaloPlaneIcon className="h-5 w-5" />
               <span className="hidden sm:inline">
-                {locationActive ? formatLocationTrackingLabel(locationTracking) : 'Track location'}
+                {locationActive ? formatLocationTrackingLabel(locationTracking) : 'Track aircraft'}
               </span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            {locationTracking.error ?? (locationActive ? formatLocationTrackingLabel(locationTracking) : 'Show aircraft location')}
+            {locationTracking.error ?? (
+              routeDrivenLocationActive
+                ? 'GPS is active for route guidance. Tap to keep aircraft tracking on after ending the route.'
+                : aircraftTrackingEnabled
+                  ? 'Aircraft position tracking is remembered in this browser until you switch it off.'
+                  : locationActive
+                    ? 'Aircraft position tracking is active for this session.'
+                    : 'Show your aircraft position on the map.'
+            )}
           </TooltipContent>
         </Tooltip>
       </div>

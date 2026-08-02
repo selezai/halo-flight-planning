@@ -3,6 +3,7 @@ import {
   calculateActiveRouteProgress,
   classifyBrowserLocationFailure,
   formatLocationTrackingLabel,
+  formatLocationWatchStartFailure,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
 } from '@/lib/planning/routeTracking';
@@ -106,6 +107,7 @@ describe('route tracking helpers', () => {
     expect(classifyBrowserLocationFailure({ code: 2 }).status).toBe('requesting');
     expect(classifyBrowserLocationFailure({ code: 3 }).status).toBe('requesting');
     expect(classifyBrowserLocationFailure({ code: 1 }).status).toBe('denied');
+    expect(classifyBrowserLocationFailure({ code: 1 }).message).toContain('system location access');
     expect(classifyBrowserLocationFailure({ code: 99, message: 'Unexpected GPS failure' })).toEqual({
       status: 'error',
       message: 'Unexpected GPS failure',
@@ -119,5 +121,12 @@ describe('route tracking helpers', () => {
       status: 'requesting',
       error: 'Location permission is enabled; GPS acquisition is still in progress.',
     })).toBe('GPS acquiring');
+  });
+
+  it('formats synchronous browser watch startup failures without throwing', () => {
+    expect(formatLocationWatchStartFailure(new Error('Permissions policy blocked geolocation'))).toEqual({
+      status: 'unavailable',
+      message: 'Location tracking could not start: Permissions policy blocked geolocation. Check browser site permissions and system Location Services.',
+    });
   });
 });

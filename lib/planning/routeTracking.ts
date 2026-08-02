@@ -144,7 +144,7 @@ export function resolveAircraftTrackHeading(
 }
 
 export function formatLocationTrackingLabel(state: LocationTrackingState): string {
-  if (state.status === 'tracking') return 'GPS tracking';
+  if (state.status === 'tracking') return 'Aircraft tracking';
   if (state.status === 'requesting') return state.error ? 'GPS acquiring' : 'Locating';
   if (state.status === 'denied') return 'GPS blocked';
   if (state.status === 'unavailable') return 'GPS unavailable';
@@ -160,7 +160,7 @@ export function classifyBrowserLocationFailure(error: BrowserLocationErrorLike):
   if (error.code === permissionDeniedCode) {
     return {
       status: 'denied',
-      message: 'Location permission was denied. Enable browser location access to show the aircraft on the map.',
+      message: 'Location permission was denied. Enable browser and system location access to show the aircraft on the map.',
     };
   }
 
@@ -181,6 +181,17 @@ export function classifyBrowserLocationFailure(error: BrowserLocationErrorLike):
   return {
     status: 'error',
     message: error.message || 'Location tracking failed.',
+  };
+}
+
+export function formatLocationWatchStartFailure(error: unknown): BrowserLocationFailure {
+  const message = error instanceof Error ? error.message : String(error || '');
+
+  return {
+    status: 'unavailable',
+    message: message
+      ? `Location tracking could not start: ${message}. Check browser site permissions and system Location Services.`
+      : 'Location tracking could not start. Check browser site permissions and system Location Services.',
   };
 }
 

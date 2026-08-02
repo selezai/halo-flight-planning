@@ -18,6 +18,7 @@ describe('map store route planning actions', () => {
       sidebarOpen: false,
       sidebarPanel: 'briefing',
       routeEditingActive: false,
+      aircraftTrackingEnabled: false,
       activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
       locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
       selectedFeature: null,
@@ -248,6 +249,85 @@ describe('map store route planning actions', () => {
       followMode: true,
       status: 'requesting',
       error: 'Location permission is enabled; GPS acquisition is still in progress.',
+    });
+  });
+
+  it('persists the pilot aircraft tracking preference separately from route activation', () => {
+    useMapStore.getState().setAircraftTrackingEnabled(true);
+
+    expect(useMapStore.getState().aircraftTrackingEnabled).toBe(true);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: true,
+      followMode: true,
+      status: 'requesting',
+    });
+
+    useMapStore.getState().setLocationTrackingEnabled(false);
+
+    expect(useMapStore.getState().aircraftTrackingEnabled).toBe(true);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: false,
+      followMode: false,
+      status: 'idle',
+    });
+  });
+
+  it('makes already-active route GPS persistent without reacquiring or hiding the aircraft', () => {
+    useMapStore.getState().setLocationTrackingEnabled(true);
+    useMapStore.getState().setTrackedLocation({
+      coordinates: [28.2, -26.1],
+      accuracyM: 20,
+      timestamp: '2026-07-01T12:00:00.000Z',
+    });
+
+    useMapStore.getState().setAircraftTrackingEnabled(true);
+
+    expect(useMapStore.getState().aircraftTrackingEnabled).toBe(true);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: true,
+      followMode: true,
+      status: 'tracking',
+      position: {
+        coordinates: [28.2, -26.1],
+      },
+    });
+  });
+
+  it('disables persistent aircraft tracking after terminal permission failures', () => {
+    useMapStore.getState().setAircraftTrackingEnabled(true);
+
+    useMapStore.getState().setLocationTrackingStatus(
+      'unavailable',
+      'Location tracking could not start.'
+    );
+
+    expect(useMapStore.getState().aircraftTrackingEnabled).toBe(false);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: false,
+      followMode: false,
+      status: 'unavailable',
+      error: 'Location tracking could not start.',
+    });
+  });
+
+  it('can clear the aircraft tracking preference without stopping route-driven GPS', () => {
+    useMapStore.getState().setAircraftTrackingEnabled(true);
+    useMapStore.getState().setTrackedLocation({
+      coordinates: [28.2, -26.1],
+      accuracyM: 20,
+      timestamp: '2026-07-01T12:00:00.000Z',
+    });
+
+    useMapStore.getState().setAircraftTrackingEnabled(false, { keepLocationTrackingActive: true });
+
+    expect(useMapStore.getState().aircraftTrackingEnabled).toBe(false);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: true,
+      followMode: true,
+      status: 'tracking',
+      position: {
+        coordinates: [28.2, -26.1],
+      },
     });
   });
 });

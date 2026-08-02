@@ -2557,3 +2557,64 @@ Vercel runtime log scan:
 
 - `/api/openaip/style` structured request logs completed with HTTP 200 in 44 ms.
 - No runtime error entries appeared during the observed request window.
+
+## 2026-08-02 Persistent Aircraft Tracking + GPS Startup Guard
+
+Objective: make aircraft position tracking pilot-controlled and persistent, and fix the location-permission path where accepting browser GPS access could still throw an app error.
+
+Problems:
+
+- The map had two GPS-entry paths: route activation and the separate aircraft/location button. Both could request browser location, but only the generic location state was tracked.
+- Pilots could not intentionally keep aircraft tracking enabled as a remembered preference separate from activating a route.
+- If `navigator.geolocation.watchPosition(...)` threw synchronously after the permission prompt path, the effect did not catch it and the app could fall through to the global error boundary.
+- Existing copy used mixed “GPS/location” wording instead of pilot-facing “aircraft tracking” wording.
+
+Decisions:
+
+- Keep route activation and aircraft tracking separate:
+  - `Activate route` starts route guidance and can temporarily enable GPS.
+  - `Track aircraft` is the pilot-controlled persistent preference.
+  - `End route` only turns GPS off when the persistent aircraft-tracking preference is off.
+- Persist only the tracking preference, not live aircraft coordinates.
+- Disable the persistent preference after terminal permission/unavailable/error states so Halo does not repeatedly auto-prompt or auto-retry a blocked browser/system permission path.
+- Keep Playwright/E2E out of the verification path; user owns manual browser inspection.
+
+Solution:
+
+- Added a persisted `aircraftTrackingEnabled` preference to the map store and account planner snapshot schema.
+- Added `setAircraftTrackingEnabled(...)` so the tracking preference and active browser watcher state stay coordinated.
+- Added an app-shell effect that re-enables browser tracking from the stored preference on reload only when the GPS state is idle.
+- Wrapped `navigator.geolocation.watchPosition(...)` startup in `try/catch` and converted synchronous browser/platform failures into a safe `unavailable` UI state.
+- Preserved an already-active route GPS fix when the pilot turns persistent aircraft tracking on, so the aircraft marker does not disappear while waiting for another browser fix.
+- Preserved route-driven GPS when the pilot turns the persistent aircraft-tracking preference off during an active route.
+- Updated route and aircraft tracking button labels/tooltips to aviation wording: `Activate route`, `End route`, and `Track aircraft`.
+- Added unit tests for watcher startup failure formatting, persistent aircraft-tracking preference behavior, terminal permission failure handling, and planner snapshot serialization.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `stores/mapStore.ts`
+- `lib/planning/routeTracking.ts`
+- `lib/account/plannerSnapshot.ts`
+- `tests/planning/routeTracking.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `tests/account/plannerSnapshot.test.ts`
+
+Verification:
+
+- `pnpm test`: passed, 35 files / 158 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Code review:
+  - Initial important finding: route-driven GPS and persistent aircraft tracking were conflated, allowing the aircraft button to disable GPS during an active route.
+  - Fix: added an explicit preserve-active-GPS option when disabling the persistent preference during route guidance.
+  - Second important finding: enabling persistence while route GPS was already tracking reset status to `requesting`, and ARIA copy described the wrong action.
+  - Fix: preserved the existing tracking status/position when making route GPS persistent and changed ARIA state/labels to reflect the persistent preference.
+  - Reviewer re-check result: no Critical or Important issues.
+- No Playwright/E2E command was run.
+
+Deployment:
+
+- Pending production deployment after approved checks pass.

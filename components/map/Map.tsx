@@ -28,6 +28,7 @@ import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/li
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import {
   classifyBrowserLocationFailure,
+  formatLocationWatchStartFailure,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
 } from '@/lib/planning/routeTracking';
@@ -486,53 +487,67 @@ export default function Map({ className = '' }: MapProps) {
 
     setLocationTrackingStatus('requesting');
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        try {
-          const trackedLocation = normalizeTrackedLocation({
-            longitude: position.coords.longitude,
-            latitude: position.coords.latitude,
-            accuracyM: position.coords.accuracy,
-            altitudeM: position.coords.altitude,
-            altitudeAccuracyM: position.coords.altitudeAccuracy,
-            headingDeg: position.coords.heading,
-            speedMps: position.coords.speed,
-            timestamp: position.timestamp,
-          });
+    let watchId: number;
 
-          setTrackedLocation(trackedLocation);
-
-          const state = useMapStore.getState();
-          if (state.locationTracking.followMode && map.current) {
-            map.current.easeTo({
-              center: trackedLocation.coordinates,
-              duration: 650,
-              essential: true,
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          try {
+            const trackedLocation = normalizeTrackedLocation({
+              longitude: position.coords.longitude,
+              latitude: position.coords.latitude,
+              accuracyM: position.coords.accuracy,
+              altitudeM: position.coords.altitude,
+              altitudeAccuracyM: position.coords.altitudeAccuracy,
+              headingDeg: position.coords.heading,
+              speedMps: position.coords.speed,
+              timestamp: position.timestamp,
             });
+
+            setTrackedLocation(trackedLocation);
+
+            const state = useMapStore.getState();
+            if (state.locationTracking.followMode && map.current) {
+              map.current.easeTo({
+                center: trackedLocation.coordinates,
+                duration: 650,
+                essential: true,
+              });
+            }
+          } catch (locationError) {
+            console.error(JSON.stringify({
+              level: 'error',
+              message: 'location_tracking_fix_rejected',
+              error: locationError instanceof Error ? locationError.message : 'Invalid browser location payload',
+              timestamp: new Date().toISOString(),
+            }));
+            setLocationTrackingStatus(
+              'requesting',
+              'Halo received an invalid GPS fix and is waiting for the next browser location update.'
+            );
           }
-        } catch (locationError) {
-          console.error(JSON.stringify({
-            level: 'error',
-            message: 'location_tracking_fix_rejected',
-            error: locationError instanceof Error ? locationError.message : 'Invalid browser location payload',
-            timestamp: new Date().toISOString(),
-          }));
-          setLocationTrackingStatus(
-            'requesting',
-            'Halo received an invalid GPS fix and is waiting for the next browser location update.'
-          );
+        },
+        (positionError) => {
+          const failure = classifyBrowserLocationFailure(positionError);
+          setLocationTrackingStatus(failure.status, failure.message);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5_000,
+          timeout: 15_000,
         }
-      },
-      (positionError) => {
-        const failure = classifyBrowserLocationFailure(positionError);
-        setLocationTrackingStatus(failure.status, failure.message);
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5_000,
-        timeout: 15_000,
-      }
-    );
+      );
+    } catch (watchStartError) {
+      const failure = formatLocationWatchStartFailure(watchStartError);
+      console.warn(JSON.stringify({
+        level: 'warn',
+        message: 'location_tracking_watch_start_failed',
+        error: watchStartError instanceof Error ? watchStartError.message : String(watchStartError),
+        timestamp: new Date().toISOString(),
+      }));
+      setLocationTrackingStatus(failure.status, failure.message);
+      return;
+    }
 
     return () => {
       navigator.geolocation.clearWatch(watchId);

@@ -13,6 +13,7 @@ describe('planner snapshot helpers', () => {
       routeName: 'FAOR to FALA',
       cruiseAltitudeFt: 6500,
       activeMissionId: 'mission-local',
+      aircraftTrackingEnabled: true,
       missionLibrary: [
         {
           id: 'mission-local',
@@ -35,6 +36,7 @@ describe('planner snapshot helpers', () => {
       routeName: 'FAOR to FALA',
       cruiseAltitudeFt: 6500,
       activeMissionId: 'mission-local',
+      aircraftTrackingEnabled: true,
       missionLibrary: [
         {
           id: 'mission-local',
@@ -81,6 +83,7 @@ describe('planner snapshot helpers', () => {
         airports: true,
         airspaces: false,
       },
+      aircraftTrackingEnabled: false,
       weightBalanceLoading: {
         fuelGal: 28,
         stationWeights: {
@@ -103,6 +106,7 @@ describe('planner snapshot helpers', () => {
         airports: false,
         navaids: true,
       },
+      aircraftTrackingEnabled: true,
       weightBalanceLoading: {
         fuelGal: 20,
         stationWeights: {
@@ -127,6 +131,7 @@ describe('planner snapshot helpers', () => {
       navaids: true,
       airspaces: false,
     });
+    expect(merged.aircraftTrackingEnabled).toBe(false);
     expect(merged.weightBalanceLoading).toEqual({
       fuelGal: 28,
       stationWeights: {

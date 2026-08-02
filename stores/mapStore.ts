@@ -81,6 +81,7 @@ export interface MapState {
   sidebarPanel: HaloPanelId;
   planningMode: boolean;
   routeEditingActive: boolean;
+  aircraftTrackingEnabled: boolean;
   activeRoute: ActiveRouteState;
   locationTracking: LocationTrackingState;
 
@@ -120,6 +121,7 @@ export interface MapState {
   setRouteEditingActive: (active: boolean) => void;
   startActiveRoute: () => void;
   stopActiveRoute: () => void;
+  setAircraftTrackingEnabled: (enabled: boolean, options?: { keepLocationTrackingActive?: boolean }) => void;
   setLocationTrackingEnabled: (enabled: boolean) => void;
   setLocationFollowMode: (enabled: boolean) => void;
   setLocationTrackingStatus: (status: LocationTrackingStatus, error?: string) => void;
@@ -379,6 +381,9 @@ function mergePersistedMapState(
     },
     activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
     locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
+    aircraftTrackingEnabled: typeof persistedState?.aircraftTrackingEnabled === 'boolean'
+      ? persistedState.aircraftTrackingEnabled
+      : current.aircraftTrackingEnabled,
     sidebarPanel: normalizeHaloPanelId(persistedState?.sidebarPanel),
     weightBalanceLoading: {
       ...DEFAULT_WEIGHT_BALANCE_LOADING,
@@ -445,6 +450,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
       sidebarPanel: 'route',
       planningMode: true,
       routeEditingActive: false,
+      aircraftTrackingEnabled: false,
       activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
       locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
 
@@ -553,6 +559,44 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         },
       })),
 
+      setAircraftTrackingEnabled: (enabled, options) => set((state) => {
+        if (enabled && state.locationTracking.enabled) {
+          return {
+            aircraftTrackingEnabled: true,
+            locationTracking: {
+              ...state.locationTracking,
+              followMode: true,
+              status: state.locationTracking.status === 'idle'
+                ? 'requesting'
+                : state.locationTracking.status,
+            },
+          };
+        }
+
+        if (!enabled && options?.keepLocationTrackingActive && state.locationTracking.enabled) {
+          return {
+            aircraftTrackingEnabled: false,
+            locationTracking: {
+              ...state.locationTracking,
+              followMode: true,
+            },
+          };
+        }
+
+        return {
+          aircraftTrackingEnabled: enabled,
+          locationTracking: {
+            ...state.locationTracking,
+            enabled,
+            followMode: enabled,
+            status: enabled ? 'requesting' : 'idle',
+            error: undefined,
+            position: enabled ? state.locationTracking.position : undefined,
+            lastUpdatedAt: enabled ? state.locationTracking.lastUpdatedAt : undefined,
+          },
+        };
+      }),
+
       setLocationTrackingEnabled: (enabled) => set((state) => ({
         locationTracking: {
           ...state.locationTracking,
@@ -574,8 +618,10 @@ export const useMapStore = createWithEqualityFn<MapState>()(
 
       setLocationTrackingStatus: (status, error) => set((state) => {
         const terminal = status === 'idle' || status === 'denied' || status === 'unavailable' || status === 'error';
+        const permissionTerminal = status === 'denied' || status === 'unavailable' || status === 'error';
 
         return {
+          aircraftTrackingEnabled: permissionTerminal ? false : state.aircraftTrackingEnabled,
           locationTracking: {
             ...state.locationTracking,
             status,
@@ -912,6 +958,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         center: state.center,
         zoom: state.zoom,
         visibleLayers: state.visibleLayers,
+        aircraftTrackingEnabled: state.aircraftTrackingEnabled,
         sidebarPanel: state.sidebarPanel,
         routeName: state.routeName,
         routeNotes: state.routeNotes,
