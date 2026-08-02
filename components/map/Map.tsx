@@ -85,6 +85,7 @@ export default function Map({ className = '' }: MapProps) {
   const lastDragCoordinates = useRef<Coordinates | null>(null);
   const selectedWaypointIdRef = useRef<string | null>(null);
   const rubberBandHandlersAttached = useRef(false);
+  const routeGestureWindowCleanup = useRef<(() => void) | null>(null);
   const routeAirspaceReviewTimer = useRef<number | null>(null);
   const routeGestureClickSuppressionTimer = useRef<number | null>(null);
   const suppressNextMapClick = useRef(false);
@@ -391,6 +392,8 @@ export default function Map({ className = '' }: MapProps) {
       if (routeGestureClickSuppressionTimer.current) {
         window.clearTimeout(routeGestureClickSuppressionTimer.current);
       }
+      routeGestureWindowCleanup.current?.();
+      routeGestureWindowCleanup.current = null;
       useMapStore.getState().setRouteEditingActive(false);
     };
   }, []);
@@ -711,14 +714,22 @@ export default function Map({ className = '' }: MapProps) {
       }, ROUTE_GESTURE_CLICK_SUPPRESSION_MS);
     };
 
+    const restoreRouteGestureInteractivity = () => {
+      try {
+        mapInstance.dragPan.enable();
+        mapInstance.getCanvas().style.cursor = '';
+      } catch {
+        // MapLibre can throw during teardown; the component cleanup still resets store state.
+      }
+    };
+
     const clearRouteGestureState = () => {
       draggingWaypointId.current = null;
       draggingInsertedWaypoint.current = false;
       dragStartPoint.current = null;
       dragMoved.current = false;
       lastDragCoordinates.current = null;
-      mapInstance.dragPan.enable();
-      mapInstance.getCanvas().style.cursor = '';
+      restoreRouteGestureInteractivity();
     };
 
     const cancelRouteGesture = () => {
@@ -866,6 +877,44 @@ export default function Map({ className = '' }: MapProps) {
     mapInstance.on('touchend', finishDrag);
     mapInstance.on('touchcancel', cancelRouteGesture);
 
+    const finishRouteGestureOutsideMap = () => {
+      if (!draggingWaypointId.current) {
+        if (useMapStore.getState().routeEditingActive) {
+          useMapStore.getState().setRouteEditingActive(false);
+          updateRouteOverlayData(mapInstance, useMapStore.getState().waypoints, selectedWaypointIdRef.current);
+          restoreRouteGestureInteractivity();
+        }
+        return;
+      }
+
+      finishDrag();
+    };
+
+    const cancelRouteGestureOutsideMap = () => {
+      if (!draggingWaypointId.current && !useMapStore.getState().routeEditingActive) return;
+      cancelRouteGesture();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        cancelRouteGestureOutsideMap();
+      }
+    };
+
+    window.addEventListener('mouseup', finishRouteGestureOutsideMap);
+    window.addEventListener('touchend', finishRouteGestureOutsideMap);
+    window.addEventListener('touchcancel', cancelRouteGestureOutsideMap);
+    window.addEventListener('blur', cancelRouteGestureOutsideMap);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    routeGestureWindowCleanup.current = () => {
+      window.removeEventListener('mouseup', finishRouteGestureOutsideMap);
+      window.removeEventListener('touchend', finishRouteGestureOutsideMap);
+      window.removeEventListener('touchcancel', cancelRouteGestureOutsideMap);
+      window.removeEventListener('blur', cancelRouteGestureOutsideMap);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+
     mapInstance.on('mouseenter', 'halo-route-point-hit-target', () => {
       if (useMapStore.getState().planningMode) {
         mapInstance.getCanvas().style.cursor = 'grab';
@@ -999,6 +1048,17 @@ export default function Map({ className = '' }: MapProps) {
   useEffect(() => {
     updateRouteOverlay();
   }, [updateRouteOverlay]);
+
+  useEffect(() => {
+    if (routeEditingActive || !map.current) return;
+
+    try {
+      map.current.dragPan.enable();
+      map.current.getCanvas().style.cursor = '';
+    } catch {
+      // Ignore teardown races; normal map cleanup handles disposed instances.
+    }
+  }, [routeEditingActive]);
 
   useEffect(() => {
     updateEmergencyOverlay();

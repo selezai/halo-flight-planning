@@ -2954,3 +2954,57 @@ Safe path:
 2. Merge PR `#1` into `main` or set Vercel's production branch to the current agent branch until the merge is complete.
 3. Connect the surviving Vercel project `halo-flight-planning` to `selezai/halo-flight-planning`.
 4. Keep CLI deploys as the fallback until Git integration is confirmed with a successful preview/production deploy from the intended branch.
+
+## 2026-08-02 Aircraft Tracking Map Lock Deep Debug
+
+Objective: investigate the persistent issue where tapping Track Aircraft leaves Halo showing `GPS acquiring`/`Locating`, the map remains clickable but cannot be panned, and waypoints plotted during the stuck state only become visible after toggling tracking and refreshing.
+
+Evidence gathered before fixing:
+
+- Production Vercel logs did not show `/api/client-errors` or runtime exceptions for the flow.
+- Browser console showed only unrelated Clerk development-key warnings in production and local-only Vercel Analytics/Speed Insights messages during local smoke.
+- A controlled geolocation stub that never returned a fix reproduced the `Locating` state, but panning still worked:
+  - production test moved the map hash from `#9/-26.15/28.05` to `#9/-26.15/28.3247`.
+  - conclusion: GPS acquisition/requesting state alone was not the root cause.
+- Static code review found only one app path that can make MapLibre clickable but not pannable:
+  - `components/map/Map.tsx` route editing disables `mapInstance.dragPan`.
+  - cleanup re-enables drag pan only through MapLibre `mouseup`, `touchend`, or `touchcancel` handlers.
+- Route edit state is transient and not persisted, so refresh resets the interaction lock while persisted waypoints remain available.
+- Controlled browser reproduction before the fix:
+  - start a route edit on the rendered route/waypoint hit target;
+  - release over the top UI overlay;
+  - the next pan attempt did not move the map hash.
+- CDP touch verification confirmed the mobile route segment is touch-interactive:
+  - a single touch on the orange route segment changed stored waypoint count from 3 to 4, proving ordinary touch gestures near the route can enter rubber-band route editing.
+
+Root cause:
+
+- Track Aircraft was correlated with the issue but was not itself locking the map.
+- The actual lock was a stale rubber-band route gesture:
+  - route/waypoint touch starts disable MapLibre `dragPan`;
+  - if the browser, permission prompt, overlay, or visibility change prevents MapLibre from receiving the normal end/cancel event, the app can leave `dragPan` disabled;
+  - the map remains clickable because click handlers still run, but panning is blocked until the route gesture state is cleared by another interaction or page refresh.
+
+Solution:
+
+- Added route gesture interactivity restoration around MapLibre drag-pan cleanup.
+- Added global fallback cleanup for `mouseup`, `touchend`, `touchcancel`, window `blur`, and document `visibilitychange`.
+- Added component cleanup for the global gesture listeners.
+- Added a self-heal effect that re-enables MapLibre drag panning whenever `routeEditingActive` is false.
+- GPS acquisition logic was intentionally left unchanged for this fix.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- --runInBand`: passed, 37 files / 174 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production smoke with `PORT=3001 pnpm start`:
+  - geolocation stub stuck at `Locating` still allowed map panning;
+  - after an interrupted route gesture, the immediate next pan moved the map hash from `29.1651` to `29.4398`;
+  - before the fix, the same interrupted-gesture pattern caused the immediate next pan attempt to stay locked.
