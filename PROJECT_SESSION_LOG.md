@@ -2913,3 +2913,44 @@ Verification:
 - Code review:
   - A focused review agent was requested for the staged acquisition change.
   - It did not return within the practical wait window, so the slice proceeded using direct root-cause review plus the verification evidence above.
+
+## 2026-08-02 Vercel Git Connection Investigation
+
+Objective: investigate whether the wrong Halo Vercel project was removed after the dashboard showed the remaining project as not connected to a GitHub repository and the GitHub repo did not appear in the Vercel connection list.
+
+Findings:
+
+- Local `.vercel/project.json` is linked to:
+  - project: `halo-flight-planning`
+  - project id: `prj_wcjsA04jtds3ixcBLvwkOKhXdxkm`
+  - team/org id: `team_OyiMFd8cjjDEnqYASTWDrjsc`
+- Local Git remote is:
+  - `https://github.com/selezai/halo-flight-planning.git`
+- GitHub repo exists and the local GitHub account has admin access:
+  - `selezai/halo-flight-planning`
+  - visibility: public
+- Vercel project list now contains only one Halo project:
+  - `halo-flight-planning` / `prj_wcjsA04jtds3ixcBLvwkOKhXdxkm`
+- The live production alias points to that same surviving project:
+  - `https://halo-flight-planning.vercel.app`
+- Recent Halo deployments are production CLI deployments by `pilotmerch-5340`, not Git-triggered deployments.
+- Vercel aliases show Git-triggered alias history for other projects such as `sit-easy-git-*`, but no `halo-flight-planning-git-*` alias history was found in the inspected alias pages.
+- Local pulled Vercel deployment environment metadata has empty `VERCEL_GIT_*` fields, which confirms the current project is not Git-connected.
+
+Conclusion:
+
+- The evidence does not support that the live production project was deleted.
+- The surviving production project is the correct live project, but it is currently CLI-linked/deployed rather than GitHub-linked.
+- The repo missing from Vercel's dashboard Git repository picker is most likely a GitHub/Vercel integration permission or account-selection issue, not a missing GitHub repository.
+- There is a separate important release-management risk:
+  - deployed branch: `agent/complete-halo-flight-planner-20260719`
+  - open PR: `#1 Complete Halo flight planning app`
+  - `origin/main` is 79 commits behind the deployed branch
+  - connecting Vercel to Git with production branch `main` before merging/syncing would risk future Git-triggered production deployments using stale code.
+
+Safe path:
+
+1. Update the Vercel GitHub App installation or Vercel Git provider connection so it can access `selezai/halo-flight-planning`.
+2. Merge PR `#1` into `main` or set Vercel's production branch to the current agent branch until the merge is complete.
+3. Connect the surviving Vercel project `halo-flight-planning` to `selezai/halo-flight-planning`.
+4. Keep CLI deploys as the fallback until Git integration is confirmed with a successful preview/production deploy from the intended branch.
