@@ -2539,3 +2539,21 @@ Verification before deployment:
   - Reviewer re-check result: ready.
 - No Playwright/E2E command was run.
 - Browser/manual E2E inspection remains user-owned.
+
+Production deployment:
+
+- Commit: `22aec0d`
+- Deployment URL: https://halo-flight-planning-a45yrwh5q-pilotmerch-gmailcoms-projects.vercel.app
+- Production alias: https://halo-flight-planning.vercel.app
+- Deployment ID: `dpl_D6m19SQEwfox7PsMTPxRowQ2bV3W`
+
+Production smoke:
+
+- `/` returned HTTP 200 from the production alias.
+- `/sw.js` returned HTTP 200 from the production alias.
+- `/api/openaip/style` returned HTTP 200 with `Cache-Control: no-store`.
+
+Vercel runtime log scan:
+
+- `/api/openaip/style` structured request logs completed with HTTP 200 in 44 ms.
+- No runtime error entries appeared during the observed request window.
