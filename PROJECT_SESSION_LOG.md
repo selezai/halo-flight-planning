@@ -1,5 +1,96 @@
 # Halo Session Log
 
+## 2026-08-03 Track Aircraft Marker Fix
+
+Objective: fix the Track Aircraft stuck `GPS acquiring` state after Halo receives a granted browser GPS fix.
+
+Problem:
+
+- Mobile/Chrome testing showed the browser could return coordinates, but Halo remained in `GPS acquiring`.
+- Console evidence showed `location_overlay_failed` and `location_tracking_fix_rejected` with `Cannot read properties of undefined (reading 'lng')`.
+
+Root cause:
+
+- `components/map/Map.tsx` created the MapLibre aircraft `Marker` and called `.addTo(mapInstance)` before `.setLngLat(...)`.
+- MapLibre calls the marker's internal update immediately during `addTo`, and that update expects `_lngLat` to already be set.
+
+Solution:
+
+- Initialize the aircraft marker with `.setLngLat(trackedPosition.coordinates)` before `.addTo(mapInstance)`.
+- Keep later GPS updates on the existing marker via `marker.setLngLat(...)`.
+- Added a focused production-mode Playwright regression test that grants mobile geolocation, taps Track Aircraft, expects `Aircraft tracking`, expects the aircraft marker to render, and fails on overlay recovery logs.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `e2e/location-tracking.spec.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Red test before implementation: `PLAYWRIGHT_PORT=3025 pnpm exec playwright test e2e/location-tracking.spec.ts --project=chromium` failed with `GPS acquiring` and the overlay recovery message.
+- Green test after implementation: `PLAYWRIGHT_PORT=3026 pnpm exec playwright test e2e/location-tracking.spec.ts --project=chromium` passed, 1 test.
+- `pnpm test -- tests/planning/routeTracking.test.ts tests/stores/mapStore.test.ts`: passed, 37 files / 175 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed.
+
+Prevention:
+
+- MapLibre markers should always be positioned before they are attached to the map.
+- Browser GPS tests should verify both raw geolocation success and downstream overlay rendering, because a fetched fix can still fail after the callback.
+
+## 2026-08-03 Track Aircraft Location Fetch Investigation
+
+Objective: investigate why tapping Track Aircraft appears unable to fetch location on mobile/Chrome, without applying a fix.
+
+Evidence:
+
+- Current Track Aircraft flow is raw browser geolocation in `components/map/Map.tsx`, not MapLibre geolocation and not an API route.
+- The button only toggles Zustand state; the map effect then calls `navigator.geolocation.getCurrentPosition(...)` with `enableHighAccuracy: false`, `maximumAge: 300_000`, and `timeout: 15_000`.
+- Local production build passed, focused GPS/store tests passed, and a mobile Chromium Playwright context with granted geolocation returned coordinates to Halo.
+- In the controlled-success run, Halo received both `getCurrentPosition` and `watchPosition` successes, but the UI still fell back to `GPS acquiring`.
+- Browser console showed `location_overlay_failed` with `Cannot read properties of undefined (reading 'lng')`, followed by `location_tracking_fix_rejected` on refinement updates.
+- The overlay path creates a MapLibre `Marker` with `.addTo(mapInstance)` before `.setLngLat(...)`; MapLibre's `Marker.addTo` immediately calls `_update`, which expects `_lngLat` to already exist and can throw through `smartWrap`.
+- A simulated browser `POSITION_UNAVAILABLE` path correctly produced the visible `GPS unavailable` state and provider message, confirming that provider-unavailable is a separate browser/OS failure mode.
+
+Finding:
+
+- The main reproducible stuck state is not that Halo never receives a GPS fix. Halo can receive the coordinates, then the aircraft overlay fails before the marker is positioned, and the recovery boundary downgrades the UI back to `GPS acquiring`.
+- The desktop symptom where the map moves but no aircraft location appears is consistent with this: follow mode can receive/use the fix, while marker rendering fails afterward.
+- No implementation fix was applied in this investigation.
+
+## 2026-08-03 GPS Location Root-Cause Diagnostics
+
+Objective: stop guessing at the aircraft-tracking GPS failure and isolate raw browser geolocation behavior before changing or deploying the production tracker again.
+
+Evidence:
+
+- Production Halo now surfaces the browser error rather than hanging indefinitely: permission is enabled, but the browser returns `POSITION_UNAVAILABLE` / "Position update is unavailable."
+- This is not a JavaScript exception from Halo; it is the browser Geolocation API reporting that the OS/browser location provider did not deliver coordinates.
+- Multiple affected devices mean Halo should not assume this is a single-device settings issue without a controlled raw browser test.
+- Open-source map controls (MapLibre, Leaflet, OpenLayers) all use `navigator.geolocation`; they cannot bypass OS/browser location providers, but their patterns show useful handling differences such as keeping watch mode alive through temporary unavailable/timeout events.
+
+Decision:
+
+- Do not deploy another GPS change to production until local diagnostics identify a strategy that returns coordinates.
+- Add a standalone local diagnostic route that bypasses MapLibre, route state, waypoint handlers, and Halo overlays.
+- Compare permission state, current-position options, and watch-position options side by side.
+- If a watch strategy succeeds where current-position fails, update Halo's tracker to start watch mode earlier and treat unavailable watch events as recoverable.
+- If every raw strategy fails with code 2 on a device, the failure is below Halo and must be handled with device/browser guidance or a non-GPS fallback.
+
+Changes:
+
+- Added `app/gps-lab/page.tsx`.
+- The GPS Lab records environment details, permission state, raw `getCurrentPosition` results, raw `watchPosition` results, event logs, timings, coordinates, accuracy, browser messages, and copyable JSON output.
+- The route includes direct reference links for MDN, MapLibre, Leaflet, and OpenLayers geolocation behavior.
+
+Verification plan:
+
+- Run `pnpm typecheck`, `pnpm lint`, and `pnpm build`.
+- Smoke the local route only.
+- No Vercel production deploy for this diagnostic step.
+
 ## 2026-07-20 Full Pilot Pain-Point Completion - Slice 3 Data Freshness
 
 Objective: make stale/unknown planning data visible instead of letting old weather, NOTAM, airspace, route, or W&B state appear clear.

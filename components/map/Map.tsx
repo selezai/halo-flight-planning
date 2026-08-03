@@ -200,24 +200,27 @@ export default function Map({ className = '' }: MapProps) {
         return;
       }
 
-      if (!locationMarker.current) {
-        locationMarker.current = new maplibregl.Marker({
-          element: createHaloAircraftMarkerElement(),
-          anchor: 'center',
-          rotationAlignment: 'map',
-        }).addTo(mapInstance);
-      }
-
       const headingDeg = resolveAircraftTrackHeading(
         trackedPosition,
         waypoints,
         activeRoute.currentLegIndex
       );
+      let marker = locationMarker.current;
 
-      locationMarker.current
-        .setLngLat(trackedPosition.coordinates)
-        .getElement()
-        .style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
+      if (!marker) {
+        marker = new maplibregl.Marker({
+          element: createHaloAircraftMarkerElement(),
+          anchor: 'center',
+          rotationAlignment: 'map',
+        })
+          .setLngLat(trackedPosition.coordinates)
+          .addTo(mapInstance);
+        locationMarker.current = marker;
+      } else {
+        marker.setLngLat(trackedPosition.coordinates);
+      }
+
+      marker.getElement().style.setProperty('--halo-plane-heading', `${headingDeg}deg`);
     } catch (overlayError) {
       const message = overlayError instanceof Error
         ? overlayError.message
