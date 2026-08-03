@@ -3235,3 +3235,40 @@ Verification:
 Notes:
 
 - The pre-existing untracked `app/gps-lab/` route remains untracked and was not staged for this production commit. The local build still detected it because it is present on disk, but the Git deployment from `main` will not include it unless it is committed later.
+
+## 2026-08-03 GPS Lab Commit Check
+
+Objective: inspect the untracked `app/gps-lab/` route before committing it.
+
+Finding:
+
+- `app/gps-lab/page.tsx` was not required by the production Track Aircraft flow.
+- It was a standalone browser geolocation diagnostic page:
+  - no app state mutations;
+  - no server API calls;
+  - no secrets or environment variables;
+  - direct use of `navigator.geolocation`, Permissions API, and clipboard export for local result sharing.
+- Committing it as-is would have added a public `/gps-lab` route outside the dashboard auth gate.
+
+Decision:
+
+- Commit the GPS lab because it is useful for real-device GPS debugging, but do not expose it as an unauthenticated public route.
+
+Solution:
+
+- Moved the diagnostic UI into `app/gps-lab/GpsLabClient.tsx`.
+- Added a server `app/gps-lab/page.tsx` wrapper with metadata and Clerk auth enforcement when Clerk is configured.
+- Local/dev without Clerk keys can still open the lab, matching the dashboard fallback behavior.
+
+Files modified:
+
+- `app/gps-lab/GpsLabClient.tsx`
+- `app/gps-lab/page.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped.
