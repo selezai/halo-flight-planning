@@ -186,7 +186,7 @@ export default function Sidebar({
         className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
       >
         {selectedFeature ? (
-          <FeatureDisplay feature={selectedFeature} onClose={clearSelection} />
+          <FeatureDisplay feature={selectedFeature} onClose={closeSidebar} />
         ) : (
           <>
             {showPlannerHeader ? (

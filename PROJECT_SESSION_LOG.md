@@ -3272,3 +3272,45 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped.
+
+## 2026-08-03 Mobile GPS + Inspect Follow-up
+
+Problem / requested changes:
+
+- Confirm whether Clerk is configured, using CLI where possible.
+- Fix the edge case where Track aircraft followed by Start route temporarily removed the aircraft marker.
+- Change the live aircraft map marker to a plane icon.
+- Reposition the map layer panel on mobile/tablet so it does not sit on the bottom navigation.
+- Closing airspace inspect details should not reveal or force the Route tab.
+
+Root cause:
+
+- Vercel has Clerk environment variables configured, but the production browser warning shows the deployed publishable key is still a Clerk development/test key.
+- Starting route guidance re-enabled location tracking after an existing fix was already present. The store moved the status back to `requesting`, and the map overlay only rendered fixes while status was exactly `tracking`.
+- The layer menu was rendered inline under the left rail button, so short mobile/tablet viewports made it collide with bottom controls.
+- `clearSelection()` reset `sidebarPanel` to `route`, and the inspect close button only cleared selection instead of closing the inspect panel.
+
+Solution:
+
+- Preserved the current tracked fix/status when location tracking is enabled again with an existing fix.
+- Allowed the map aircraft marker to render while a previous fix is being kept during `requesting`.
+- Replaced the live location marker artwork with a top-down plane silhouette.
+- Anchored the mobile/tablet layer menu beside the rail with viewport-bounded width and height; desktop keeps the existing stacked behavior.
+- Changed inspect close to close the sidebar/sheet and changed selection clearing to preserve the active planner panel.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/sidebar/Sidebar.tsx`
+- `stores/mapStore.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/stores/mapStore.test.ts tests/planning/routeTracking.test.ts`: passed, 37 files / 176 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped per user instruction.

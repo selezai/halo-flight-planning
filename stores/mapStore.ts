@@ -750,7 +750,6 @@ export const useMapStore = createWithEqualityFn<MapState>()(
       clearSelection: () => set({ 
         selectedFeature: null,
         selectedFeatureCandidates: [],
-        sidebarPanel: 'route',
       }),
 
       setPlanningMode: (enabled) => set({ planningMode: enabled }),
@@ -837,17 +836,23 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         };
       }),
 
-      setLocationTrackingEnabled: (enabled) => set((state) => ({
-        locationTracking: {
-          ...state.locationTracking,
-          enabled,
-          followMode: enabled ? state.locationTracking.followMode : false,
-          status: enabled ? 'requesting' : 'idle',
-          error: undefined,
-          position: enabled ? state.locationTracking.position : undefined,
-          lastUpdatedAt: enabled ? state.locationTracking.lastUpdatedAt : undefined,
-        },
-      })),
+      setLocationTrackingEnabled: (enabled) => set((state) => {
+        const existingFix = state.locationTracking.position;
+
+        return {
+          locationTracking: {
+            ...state.locationTracking,
+            enabled,
+            followMode: enabled ? state.locationTracking.followMode : false,
+            status: enabled
+              ? existingFix ? state.locationTracking.status : 'requesting'
+              : 'idle',
+            error: undefined,
+            position: enabled ? existingFix : undefined,
+            lastUpdatedAt: enabled ? state.locationTracking.lastUpdatedAt : undefined,
+          },
+        };
+      }),
 
       setLocationFollowMode: (enabled) => set((state) => ({
         locationTracking: {

@@ -186,7 +186,7 @@ export default function Map({ className = '' }: MapProps) {
     if (!map.current || !mapLoaded || !styleLoaded) return;
 
     const mapInstance = map.current;
-    const trackedPosition = locationTracking.status === 'tracking'
+    const trackedPosition = locationTracking.status === 'tracking' || locationTracking.status === 'requesting'
       ? locationTracking.position
       : undefined;
 
@@ -1349,16 +1349,16 @@ function createHaloAircraftMarkerElement(): HTMLDivElement {
         style="transform:rotate(var(--halo-plane-heading, 0deg)); transform-origin:50% 50%; transition:transform 220ms ease-out;"
       >
         <path
-          d="M22 4.8 30.2 37.5 22 31.9 13.8 37.5 22 4.8Z"
+          d="M22 4.8c1.6 0 2.7 1.2 2.7 2.9v9.4l12.4 7.6v4.1l-12.4-3.7v7.4l4.5 3.5v3.1L22 36.9l-7.2 2.2V36l4.5-3.5v-7.4L6.9 28.8v-4.1l12.4-7.6V7.7c0-1.7 1.1-2.9 2.7-2.9Z"
           fill="#020617"
         />
         <path
-          d="M22 8.8 25.7 30.1 22 27.7 18.3 30.1 22 8.8Z"
+          d="M22 8.2c0.6 0 1 0.5 1 1.2v8.9l9.5 5.8v1.2L23 22.8v10.4l2.6 2.1v0.8L22 35l-3.6 1.1v-0.8l2.6-2.1V22.8l-9.5 2.5v-1.2l9.5-5.8V9.4c0-0.7 0.4-1.2 1-1.2Z"
           fill="#67e8f9"
           opacity="0.82"
         />
         <path
-          d="M22 4.8 30.2 37.5 22 31.9 13.8 37.5 22 4.8Z"
+          d="M22 4.8c1.6 0 2.7 1.2 2.7 2.9v9.4l12.4 7.6v4.1l-12.4-3.7v7.4l4.5 3.5v3.1L22 36.9l-7.2 2.2V36l4.5-3.5v-7.4L6.9 28.8v-4.1l12.4-7.6V7.7c0-1.7 1.1-2.9 2.7-2.9Z"
           fill="none"
           stroke="#f8fafc"
           stroke-width="1.15"

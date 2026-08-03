@@ -98,7 +98,7 @@ describe('map store route planning actions', () => {
     expect(savedMission?.state.waypoints).toEqual([first, second]);
   });
 
-  it('clears selected inspect features before planner panels reopen', () => {
+  it('clears selected inspect features without changing the active planner panel', () => {
     const airspace: ParsedFeature = {
       type: 'airspace',
       sourceId: 'airspace-test',
@@ -118,7 +118,7 @@ describe('map store route planning actions', () => {
     expect(state.selectedFeature).toBeNull();
     expect(state.selectedFeatureCandidates).toEqual([]);
     expect(state.sidebarOpen).toBe(true);
-    expect(state.sidebarPanel).toBe('route');
+    expect(state.sidebarPanel).toBe('briefing');
   });
 
   it('starts and stops active route tracking without persisting stale planning mode', () => {
@@ -288,6 +288,34 @@ describe('map store route planning actions', () => {
     useMapStore.getState().setAircraftTrackingEnabled(true);
 
     expect(useMapStore.getState().aircraftTrackingEnabled).toBe(true);
+    expect(useMapStore.getState().locationTracking).toMatchObject({
+      enabled: true,
+      followMode: true,
+      status: 'tracking',
+      position: {
+        coordinates: [28.2, -26.1],
+      },
+    });
+  });
+
+  it('keeps the aircraft fix visible when route guidance starts after aircraft tracking', () => {
+    const first = createUserWaypoint([28.246, -26.134], 1);
+    const second = createUserWaypoint([27.926, -25.939], 2);
+
+    useMapStore.setState({
+      waypoints: [first, second],
+    });
+
+    useMapStore.getState().setAircraftTrackingEnabled(true);
+    useMapStore.getState().setTrackedLocation({
+      coordinates: [28.2, -26.1],
+      accuracyM: 20,
+      timestamp: '2026-07-01T12:00:00.000Z',
+    });
+    useMapStore.getState().startActiveRoute();
+    useMapStore.getState().setLocationTrackingEnabled(true);
+
+    expect(useMapStore.getState().activeRoute.status).toBe('active');
     expect(useMapStore.getState().locationTracking).toMatchObject({
       enabled: true,
       followMode: true,
