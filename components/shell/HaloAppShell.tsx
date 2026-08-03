@@ -1037,6 +1037,13 @@ function MapToolsRail({
         </Tooltip>
       </div>
 
+      {locationTracking.error && locationTracking.status !== 'tracking' && (
+        <div className="pointer-events-auto max-w-[17rem] rounded-2xl border border-rose-200 bg-white/95 p-3 text-xs text-rose-900 shadow-lg shadow-slate-900/10 backdrop-blur-xl">
+          <p className="font-semibold">{formatLocationTrackingLabel(locationTracking)}</p>
+          <p className="mt-1 leading-5">{locationTracking.error}</p>
+        </div>
+      )}
+
       <div className="pointer-events-auto">
         <Tooltip>
           <TooltipTrigger asChild>

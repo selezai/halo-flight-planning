@@ -3008,3 +3008,59 @@ Verification:
   - geolocation stub stuck at `Locating` still allowed map panning;
   - after an interrupted route gesture, the immediate next pan moved the map hash from `29.1651` to `29.4398`;
   - before the fix, the same interrupted-gesture pattern caused the immediate next pan attempt to stay locked.
+
+## 2026-08-03 Location Acquisition Simplification
+
+Objective: address the remaining issue after the map-pan fix: Halo could still fail to acquire location on desktop Chrome and iPhone Safari/Chrome, while the UI stayed in an unhelpful `GPS acquiring` state.
+
+Evidence gathered before fixing:
+
+- Production headers are HTTPS/HSTS and do not set a `Permissions-Policy` blocking geolocation.
+- Production browser check showed:
+  - `isSecureContext: true`
+  - `navigator.geolocation` available
+  - Permissions API available
+  - geolocation permission initially `prompt`
+- Raw geolocation in the automation browser returned `PERMISSION_DENIED`, confirming the automation context cannot reproduce the user's allowed-device path.
+- MDN/W3C geolocation docs identify:
+  - secure context requirement;
+  - `PERMISSION_DENIED` code `1`;
+  - `POSITION_UNAVAILABLE` code `2`;
+  - `TIMEOUT` code `3`;
+  - `enableHighAccuracy: true` may take more time/power.
+- Existing Halo code started both:
+  - a fast `getCurrentPosition(...)`; and
+  - a high-accuracy `watchPosition(...)`
+  at the same time.
+- Existing Halo code treated initial `POSITION_UNAVAILABLE`/`TIMEOUT` as non-terminal `requesting`, which made real browser failures look like endless acquisition.
+
+Root cause:
+
+- The location acquisition path was over-engineered for the first fix.
+- It started high-accuracy refinement before any usable position existed.
+- It also hid initial browser failures as indefinite `GPS acquiring`, so pilots could not tell whether the problem was site permission, OS Location Services, Precise Location, signal, or a browser timeout.
+
+Solution:
+
+- Replace parallel acquisition with sequential acquisition:
+  1. request one normal first fix with `getCurrentPosition(...)`;
+  2. only after first success, start high-accuracy `watchPosition(...)` for refinement.
+- Increase first-fix tolerance to `maximumAge: 300_000` and `timeout: 15_000`.
+- Make initial `POSITION_UNAVAILABLE` and `TIMEOUT` terminal/visible instead of indefinite `requesting`.
+- Keep refinement-watch failures non-terminal only after Halo already has a usable aircraft position.
+- Show the actual browser GPS error message near the map controls so mobile users can see what failed without relying on desktop-only hover/tooltips.
+
+Files modified:
+
+- `components/map/Map.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `lib/planning/routeTracking.ts`
+- `tests/planning/routeTracking.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/routeTracking.test.ts tests/stores/mapStore.test.ts`: passed, 37 files / 175 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.

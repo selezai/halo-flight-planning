@@ -28,9 +28,9 @@ import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/li
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import {
   classifyBrowserLocationFailure,
-  FAST_LOCATION_FIX_OPTIONS,
   formatLocationWatchStartFailure,
-  HIGH_ACCURACY_LOCATION_WATCH_OPTIONS,
+  INITIAL_LOCATION_FIX_OPTIONS,
+  LOCATION_WATCH_OPTIONS,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
   shouldKeepExistingTrackedLocation,
@@ -531,7 +531,7 @@ export default function Map({ className = '' }: MapProps) {
 
     const acceptPosition = (
       position: GeolocationPosition,
-      source: 'fast-fix' | 'high-accuracy-watch'
+      source: 'initial-fix' | 'refinement-watch'
     ) => {
       if (cancelled) return;
 
@@ -557,7 +557,7 @@ export default function Map({ className = '' }: MapProps) {
         if (state.locationTracking.followMode && map.current) {
           map.current.easeTo({
             center: trackedLocation.coordinates,
-            duration: source === 'fast-fix' ? 350 : 650,
+            duration: source === 'initial-fix' ? 350 : 650,
             essential: true,
           });
         }
@@ -578,13 +578,16 @@ export default function Map({ className = '' }: MapProps) {
 
     const handleLocationFailure = (
       positionError: GeolocationPositionError,
-      source: 'fast-fix' | 'high-accuracy-watch'
+      source: 'initial-fix' | 'refinement-watch'
     ) => {
       if (cancelled) return;
 
-      const failure = classifyBrowserLocationFailure(positionError);
       const state = useMapStore.getState();
       const hasUsableFix = state.locationTracking.status === 'tracking' && Boolean(state.locationTracking.position);
+      const failure = classifyBrowserLocationFailure(positionError, {
+        phase: source === 'initial-fix' ? 'initial-fix' : 'watch',
+        hasUsableFix,
+      });
 
       if (failure.status === 'requesting' && hasUsableFix) {
         console.warn(JSON.stringify({
@@ -600,23 +603,47 @@ export default function Map({ className = '' }: MapProps) {
       setLocationTrackingStatus(failure.status, failure.message);
     };
 
+    const startLocationWatch = () => {
+      if (cancelled || typeof watchId === 'number') return;
+
+      try {
+        watchId = navigator.geolocation.watchPosition(
+          (position) => acceptPosition(position, 'refinement-watch'),
+          (positionError) => handleLocationFailure(positionError, 'refinement-watch'),
+          LOCATION_WATCH_OPTIONS
+        );
+      } catch (watchStartError) {
+        const failure = formatLocationWatchStartFailure(watchStartError);
+        console.warn(JSON.stringify({
+          level: 'warn',
+          message: 'location_tracking_watch_start_failed',
+          error: watchStartError instanceof Error ? watchStartError.message : String(watchStartError),
+          timestamp: new Date().toISOString(),
+        }));
+        if (useMapStore.getState().locationTracking.position) {
+          return;
+        }
+
+        setLocationTrackingStatus(failure.status, failure.message);
+      }
+    };
+
+    const acceptInitialPosition = (position: GeolocationPosition) => {
+      acceptPosition(position, 'initial-fix');
+      startLocationWatch();
+    };
+
     try {
       navigator.geolocation.getCurrentPosition(
-        (position) => acceptPosition(position, 'fast-fix'),
-        (positionError) => handleLocationFailure(positionError, 'fast-fix'),
-        FAST_LOCATION_FIX_OPTIONS
-      );
-
-      watchId = navigator.geolocation.watchPosition(
-        (position) => acceptPosition(position, 'high-accuracy-watch'),
-        (positionError) => handleLocationFailure(positionError, 'high-accuracy-watch'),
-        HIGH_ACCURACY_LOCATION_WATCH_OPTIONS
+        acceptInitialPosition,
+        (positionError) => handleLocationFailure(positionError, 'initial-fix'),
+        INITIAL_LOCATION_FIX_OPTIONS
       );
     } catch (watchStartError) {
       const failure = formatLocationWatchStartFailure(watchStartError);
       console.warn(JSON.stringify({
         level: 'warn',
-        message: 'location_tracking_watch_start_failed',
+        message: 'location_tracking_initial_start_failed',
         error: watchStartError instanceof Error ? watchStartError.message : String(watchStartError),
         timestamp: new Date().toISOString(),
       }));

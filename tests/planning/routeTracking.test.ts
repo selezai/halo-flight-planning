@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateActiveRouteProgress,
   classifyBrowserLocationFailure,
-  FAST_LOCATION_FIX_OPTIONS,
   formatLocationTrackingLabel,
   formatLocationWatchStartFailure,
-  HIGH_ACCURACY_LOCATION_WATCH_OPTIONS,
+  INITIAL_LOCATION_FIX_OPTIONS,
+  LOCATION_WATCH_OPTIONS,
   normalizeTrackedLocation,
   resolveAircraftTrackHeading,
   shouldKeepExistingTrackedLocation,
@@ -68,13 +68,13 @@ describe('route tracking helpers', () => {
     }).accuracyM).toBe(185_200);
   });
 
-  it('uses staged browser location acquisition options for fast first fix then high accuracy refinement', () => {
-    expect(FAST_LOCATION_FIX_OPTIONS).toEqual({
+  it('uses a normal first fix before starting high accuracy refinement', () => {
+    expect(INITIAL_LOCATION_FIX_OPTIONS).toEqual({
       enableHighAccuracy: false,
-      maximumAge: 120_000,
-      timeout: 3_500,
+      maximumAge: 300_000,
+      timeout: 15_000,
     });
-    expect(HIGH_ACCURACY_LOCATION_WATCH_OPTIONS).toEqual({
+    expect(LOCATION_WATCH_OPTIONS).toEqual({
       enableHighAccuracy: true,
       maximumAge: 30_000,
       timeout: 20_000,
@@ -167,18 +167,35 @@ describe('route tracking helpers', () => {
     )).toBeGreaterThan(0);
   });
 
-  it('keeps recoverable browser GPS acquisition failures non-terminal', () => {
-    expect(classifyBrowserLocationFailure({ code: 2 }).status).toBe('requesting');
-    expect(classifyBrowserLocationFailure({ code: 3 }).status).toBe('requesting');
+  it('makes initial browser GPS acquisition failures visible and terminal', () => {
+    expect(classifyBrowserLocationFailure({ code: 2 }).status).toBe('unavailable');
+    expect(classifyBrowserLocationFailure({ code: 2 }).message).toContain('could not determine a position');
+    expect(classifyBrowserLocationFailure({ code: 3 }).status).toBe('unavailable');
+    expect(classifyBrowserLocationFailure({ code: 3 }).message).toContain('timed out');
     expect(classifyBrowserLocationFailure({ code: 1 }).status).toBe('denied');
-    expect(classifyBrowserLocationFailure({ code: 1 }).message).toContain('system location access');
+    expect(classifyBrowserLocationFailure({ code: 1 }).message).toContain('system Location Services');
     expect(classifyBrowserLocationFailure({ code: 99, message: 'Unexpected GPS failure' })).toEqual({
       status: 'error',
       message: 'Unexpected GPS failure',
     });
   });
 
-  it('shows acquiring copy while waiting after browser GPS timeout/unavailable callbacks', () => {
+  it('keeps refinement watch timeout/unavailable callbacks non-terminal after a usable fix', () => {
+    expect(classifyBrowserLocationFailure(
+      { code: 2, message: 'temporary source failure' },
+      { phase: 'watch', hasUsableFix: true }
+    )).toEqual({
+      status: 'requesting',
+      message: 'GPS refinement is temporarily unavailable; Halo is keeping the last aircraft position. Browser message: temporary source failure',
+    });
+
+    expect(classifyBrowserLocationFailure(
+      { code: 3 },
+      { phase: 'watch', hasUsableFix: true }
+    ).status).toBe('requesting');
+  });
+
+  it('shows acquiring copy while waiting after refinement watch callbacks', () => {
     expect(formatLocationTrackingLabel({
       enabled: true,
       followMode: true,

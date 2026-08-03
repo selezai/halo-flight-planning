@@ -18,13 +18,13 @@ const KNOTS_PER_MPS = 1.943844492;
 const DEFAULT_ARRIVAL_RADIUS_NM = 0.25;
 const MAX_RENDERABLE_ACCURACY_M = METERS_PER_NM * 100;
 
-export const FAST_LOCATION_FIX_OPTIONS = {
+export const INITIAL_LOCATION_FIX_OPTIONS = {
   enableHighAccuracy: false,
-  maximumAge: 120_000,
-  timeout: 3_500,
+  maximumAge: 300_000,
+  timeout: 15_000,
 } satisfies PositionOptions;
 
-export const HIGH_ACCURACY_LOCATION_WATCH_OPTIONS = {
+export const LOCATION_WATCH_OPTIONS = {
   enableHighAccuracy: true,
   maximumAge: 30_000,
   timeout: 20_000,
@@ -70,6 +70,11 @@ export interface BrowserLocationErrorLike {
 export interface BrowserLocationFailure {
   status: LocationTrackingState['status'];
   message: string;
+}
+
+export interface BrowserLocationFailureOptions {
+  phase?: 'initial-fix' | 'watch';
+  hasUsableFix?: boolean;
 }
 
 export function normalizeTrackedLocation(input: RawLocationInput): TrackedLocation {
@@ -179,29 +184,48 @@ export function shouldKeepExistingTrackedLocation(
     nextTime < currentTime;
 }
 
-export function classifyBrowserLocationFailure(error: BrowserLocationErrorLike): BrowserLocationFailure {
+export function classifyBrowserLocationFailure(
+  error: BrowserLocationErrorLike,
+  options: BrowserLocationFailureOptions = {}
+): BrowserLocationFailure {
   const permissionDeniedCode = error.PERMISSION_DENIED ?? 1;
   const positionUnavailableCode = error.POSITION_UNAVAILABLE ?? 2;
   const timeoutCode = error.TIMEOUT ?? 3;
+  const phase = options.phase ?? 'initial-fix';
+  const detail = formatBrowserLocationErrorDetail(error);
 
   if (error.code === permissionDeniedCode) {
     return {
       status: 'denied',
-      message: 'Location permission was denied. Enable browser and system location access to show the aircraft on the map.',
+      message: `Location permission was denied. Enable browser and system Location Services for this browser, then try again.${detail}`,
     };
   }
 
   if (error.code === positionUnavailableCode) {
+    if (phase === 'watch' && options.hasUsableFix) {
+      return {
+        status: 'requesting',
+        message: `GPS refinement is temporarily unavailable; Halo is keeping the last aircraft position.${detail}`,
+      };
+    }
+
     return {
-      status: 'requesting',
-      message: 'Location permission is enabled; Halo is still waiting for a usable GPS fix.',
+      status: 'unavailable',
+      message: `Location permission is enabled, but the browser could not determine a position. Check OS Location Services for this browser, Precise Location, Wi-Fi/cellular signal, then try again.${detail}`,
     };
   }
 
   if (error.code === timeoutCode) {
+    if (phase === 'watch' && options.hasUsableFix) {
+      return {
+        status: 'requesting',
+        message: `GPS refinement timed out; Halo is keeping the last aircraft position.${detail}`,
+      };
+    }
+
     return {
-      status: 'requesting',
-      message: 'Location permission is enabled; GPS acquisition is still in progress.',
+      status: 'unavailable',
+      message: `Location permission is enabled, but the browser timed out before returning a position. Move near a window or enable OS Location Services for this browser, then try again.${detail}`,
     };
   }
 
@@ -220,6 +244,11 @@ export function formatLocationWatchStartFailure(error: unknown): BrowserLocation
       ? `Location tracking could not start: ${message}. Check browser site permissions and system Location Services.`
       : 'Location tracking could not start. Check browser site permissions and system Location Services.',
   };
+}
+
+function formatBrowserLocationErrorDetail(error: BrowserLocationErrorLike): string {
+  const message = typeof error.message === 'string' ? error.message.trim() : '';
+  return message ? ` Browser message: ${message}` : '';
 }
 
 function projectPointToRouteLeg(
