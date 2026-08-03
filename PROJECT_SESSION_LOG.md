@@ -3187,3 +3187,51 @@ Verification:
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
+
+## 2026-08-03 Planner UI Slices And Auth Gate
+
+Objective: complete the requested UI slices without Playwright or visual browser inspection, then commit and push so the Git-connected Vercel project can deploy from `main`.
+
+Problem / requested changes:
+
+- The waypoint editor could sit behind app chrome, sheets, or map controls on mobile and desktop.
+- The route tab had a separate "Route setup" block for editing the mission name instead of making the route tab header editable.
+- The map control rail still had emergency tools and focus route buttons, showed a layer count badge next to the layer icon, used the aircraft glyph for Track aircraft, and used route/stop iconography for active route state.
+- Tablet mode showed a "Tablet mission mode" hint and the medium-width map tools overlapped the Plan route / Inspect map control.
+- The planner was accessible before sign-in and used an in-sidebar account sync banner instead of gating access up front.
+
+Root cause:
+
+- The waypoint editor was rendered inside the map with `z-20`, below the shell header, mobile navigation, and Radix sheet/dialog layers.
+- The route name edit surface lived in the old setup card, so removing that card required moving the input to the top of the route panel.
+- The map controls had accumulated separate shortcuts after earlier planning iterations and shared the same tablet top offset as the map mode switcher.
+- Clerk was configured for sync, but the dashboard route did not require a user before rendering the planner.
+
+Solution:
+
+- Raised the waypoint editor to `z-[70]` so it sits above the shell and modal/sheet chrome.
+- Replaced the route setup card with a top route-name input and kept map mode controls as an unlabelled route-panel section.
+- Removed emergency and focus route map shortcuts.
+- Replaced route activation glyphs with play/pause icons and Track aircraft with the crosshair icon.
+- Made the map layer trigger icon-only while keeping the detailed count inside the layer menu.
+- Removed the tablet hint and moved the map controls lower at tablet widths.
+- Removed the sidebar account sync panel render and changed the dashboard page to require Clerk sign-in/sign-up before rendering the planner when Clerk is configured. Local/dev without Clerk keys still renders the planner to avoid a broken auth wall.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `components/map/Map.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/sidebar/Sidebar.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped per user instruction.
+
+Notes:
+
+- The pre-existing untracked `app/gps-lab/` route remains untracked and was not staged for this production commit. The local build still detected it because it is present on disk, but the Git deployment from `main` will not include it unless it is committed later.

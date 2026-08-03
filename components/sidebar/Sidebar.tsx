@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shallow } from 'zustand/shallow';
-import AccountSyncPanel from '@/components/auth/AccountSyncPanel';
 import {
   AlertTriangle,
   ArrowDown,
@@ -108,11 +107,9 @@ interface RouteWeatherState {
 }
 
 export default function Sidebar({
-  accountSyncEnabled,
   plannerHeader,
   variant = 'desktop',
 }: {
-  accountSyncEnabled: boolean;
   plannerHeader?: ReactNode;
   variant?: 'desktop' | 'sheet';
 }) {
@@ -174,10 +171,6 @@ export default function Sidebar({
         >
           <X className="h-5 w-5" />
         </button>
-      </div>
-
-      <div className="shrink-0">
-        <AccountSyncPanel enabled={accountSyncEnabled} />
       </div>
 
       {showPlannerNavigation && variant === 'desktop' && (
@@ -551,22 +544,22 @@ function RoutePanel() {
 
   return (
     <div className="space-y-5">
-      <PanelGroupHeader
-        eyebrow="Setup"
-        title="Route worksheet"
-        detail="Use the map as the editor. This panel keeps route details, sequence, and review items quick to scan."
-      />
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="route-name">Route</Label>
+          <input
+            id="route-name"
+            value={routeName}
+            onChange={(event) => setRouteName(event.target.value)}
+            placeholder="Route name"
+            className="mt-1 w-full rounded-xl border border-transparent bg-white/80 px-3 py-2 text-lg font-semibold text-slate-950 shadow-sm ring-1 ring-slate-200 transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+          />
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Use the map as the editor. This panel keeps route details, sequence, and review items quick to scan.
+          </p>
+        </div>
 
-      <PanelBlock title="Route setup" icon={<Navigation className="h-4 w-4" />}>
-        <Label htmlFor="route-name">Route name</Label>
-        <input
-          id="route-name"
-          value={routeName}
-          onChange={(event) => setRouteName(event.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-950 focus:outline-none"
-        />
-
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
           <div className="mb-2 px-1">
             <p className="text-sm font-semibold text-slate-900">Map mode</p>
             <p className="text-xs leading-5 text-slate-500">
@@ -600,7 +593,7 @@ function RoutePanel() {
             </button>
           </div>
         </div>
-      </PanelBlock>
+      </div>
 
       <PanelGroupHeader
         eyebrow="Sequence"

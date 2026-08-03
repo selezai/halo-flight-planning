@@ -14,15 +14,14 @@ import {
   MapPinned,
   Menu,
   Navigation,
+  Pause,
   Plane,
+  Play,
   PlusCircle,
   RadioTower,
   Route,
   Save,
-  ShieldAlert,
-  Square,
 } from 'lucide-react';
-import HaloPlaneIcon from '@/components/icons/HaloPlaneIcon';
 import ClientMap from '@/components/map/ClientMap';
 import OfflineMissionSupport from '@/components/offline/OfflineMissionSupport';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
@@ -66,11 +65,7 @@ interface MissionSaveFeedback {
   savedAt: string;
 }
 
-export default function HaloAppShell({
-  accountSyncEnabled,
-}: {
-  accountSyncEnabled: boolean;
-}) {
+export default function HaloAppShell() {
   const {
     waypoints,
     activeAircraft,
@@ -103,7 +98,6 @@ export default function HaloAppShell({
     setLocationTrackingEnabled,
     setLocationFollowMode,
     toggleLayer,
-    setViewport,
     saveActiveMission,
     createBlankMission,
     duplicateActiveMission,
@@ -141,7 +135,6 @@ export default function HaloAppShell({
     setLocationTrackingEnabled: state.setLocationTrackingEnabled,
     setLocationFollowMode: state.setLocationFollowMode,
     toggleLayer: state.toggleLayer,
-    setViewport: state.setViewport,
     saveActiveMission: state.saveActiveMission,
     createBlankMission: state.createBlankMission,
     duplicateActiveMission: state.duplicateActiveMission,
@@ -313,36 +306,6 @@ export default function HaloAppShell({
     });
   };
 
-  const focusRoute = () => {
-    if (waypoints.length === 0) {
-      setViewport([28.0, -26.0], 7);
-      return;
-    }
-
-    focusWaypointSet(waypoints, route.summary.totalDistanceNm);
-  };
-
-  const focusWaypointSet = (waypointSet: typeof waypoints, totalDistanceNm = 0) => {
-    if (waypointSet.length === 0) {
-      setViewport([28.0, -26.0], 7);
-      return;
-    }
-
-    const [longitudeSum, latitudeSum] = waypointSet.reduce(
-      (sum, waypoint) => [
-        sum[0] + waypoint.coordinates[0],
-        sum[1] + waypoint.coordinates[1],
-      ],
-      [0, 0]
-    );
-    const center: [number, number] = [
-      longitudeSum / waypointSet.length,
-      latitudeSum / waypointSet.length,
-    ];
-    const zoom = totalDistanceNm > 250 ? 5.5 : totalDistanceNm > 80 ? 7 : 8.5;
-    setViewport(center, zoom);
-  };
-
   const startRouteNavigation = () => {
     if (waypoints.length < 2) return;
 
@@ -452,8 +415,6 @@ export default function HaloAppShell({
           onStartRoute={startRouteNavigation}
           onStopRoute={stopRouteNavigation}
           onToggleLocationTracking={toggleLocationTracking}
-          onFocusRoute={focusRoute}
-          onOpenEmergency={() => openPanel('emergency')}
         />
       )}
 
@@ -463,7 +424,6 @@ export default function HaloAppShell({
       {isDesktop && plannerOpen && (
         <div className="absolute bottom-5 right-5 top-24 z-30 w-[min(440px,calc(100vw-2.5rem))]">
           <Sidebar
-            accountSyncEnabled={accountSyncEnabled}
             plannerHeader={(
               <PlannerSummaryHeader
                 compact
@@ -498,7 +458,6 @@ export default function HaloAppShell({
                 <SheetDescription>Route, weather, aircraft, briefing, admin, and emergency planning panels.</SheetDescription>
               </div>
               <Sidebar
-                accountSyncEnabled={accountSyncEnabled}
                 plannerHeader={(
                   <PlannerSummaryHeader
                     mission={mission}
@@ -514,13 +473,6 @@ export default function HaloAppShell({
             </SheetContent>
           </Sheet>
         </>
-      )}
-
-      {!plannerOpen && (
-        <div className="pointer-events-none absolute bottom-24 left-4 z-20 hidden max-w-xs rounded-2xl border border-white/70 bg-white/80 p-3 text-xs text-slate-600 shadow-lg shadow-slate-900/10 backdrop-blur-xl md:block lg:hidden">
-          <p className="font-semibold text-slate-950">Tablet mission mode</p>
-          <p className="mt-1">Map-first planning with Planner available from the top bar.</p>
-        </div>
       )}
 
       <MissionLibraryDialog
@@ -931,8 +883,6 @@ function MapToolsRail({
   onStartRoute,
   onStopRoute,
   onToggleLocationTracking,
-  onFocusRoute,
-  onOpenEmergency,
 }: {
   visibleLayers: MapState['visibleLayers'];
   routeWaypointCount: number;
@@ -943,8 +893,6 @@ function MapToolsRail({
   onStartRoute: () => void;
   onStopRoute: () => void;
   onToggleLocationTracking: () => void;
-  onFocusRoute: () => void;
-  onOpenEmergency: () => void;
 }) {
   const [layersOpen, setLayersOpen] = useState(false);
   const layerEntries = getOrderedMapLayerEntries(visibleLayers);
@@ -964,23 +912,9 @@ function MapToolsRail({
     routeActive &&
     !aircraftTrackingEnabled &&
     (locationTracking.enabled || locationTracking.status === 'tracking' || locationTracking.status === 'requesting');
-  const controls = [
-    {
-      label: 'Emergency tools',
-      icon: ShieldAlert,
-      onClick: onOpenEmergency,
-      active: false,
-    },
-    {
-      label: 'Focus route',
-      icon: Crosshair,
-      onClick: onFocusRoute,
-      active: false,
-    },
-  ];
 
   return (
-    <div className="pointer-events-none absolute left-3 top-[9.5rem] z-20 flex flex-col items-start gap-2 sm:left-5 sm:top-24 lg:bottom-24 lg:top-auto">
+    <div className="pointer-events-none absolute left-3 top-[9.5rem] z-20 flex flex-col items-start gap-2 sm:left-5 sm:top-[13rem] lg:bottom-24 lg:top-auto">
       <div className="pointer-events-auto flex flex-col gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -993,14 +927,14 @@ function MapToolsRail({
                 routeActive && 'border-rose-200 bg-rose-50 text-rose-800',
                 !routeActive && routeReady && 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'
               )}
-              aria-label={routeActive ? 'End route tracking' : 'Activate route guidance'}
+              aria-label={routeActive ? 'Pause route tracking' : 'Start route guidance'}
             >
-              {routeActive ? <Square className="h-4 w-4" /> : <Route className="h-4 w-4" />}
-              <span className="hidden sm:inline">{routeActive ? 'End route' : 'Activate route'}</span>
+              {routeActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              <span className="hidden sm:inline">{routeActive ? 'Pause route' : 'Start route'}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            {routeReady ? (routeActive ? 'End active route tracking' : 'Activate route guidance + GPS') : 'Add at least two waypoints first'}
+            {routeReady ? (routeActive ? 'Pause active route tracking' : 'Start route guidance + GPS') : 'Add at least two waypoints first'}
           </TooltipContent>
         </Tooltip>
 
@@ -1017,7 +951,7 @@ function MapToolsRail({
               aria-pressed={aircraftTrackingEnabled}
               aria-label={aircraftTrackingEnabled ? 'Disable persistent aircraft position tracking' : 'Track aircraft position'}
             >
-              <HaloPlaneIcon className="h-5 w-5" />
+              <Crosshair className="h-5 w-5" />
               <span className="hidden sm:inline">
                 {locationActive ? formatLocationTrackingLabel(locationTracking) : 'Track aircraft'}
               </span>
@@ -1051,17 +985,13 @@ function MapToolsRail({
               type="button"
               onClick={() => setLayersOpen((open) => !open)}
               className={cn(
-                'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-3 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
+                'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/90 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
                 layersOpen && 'border-cyan-200 bg-cyan-50 text-cyan-950'
               )}
               aria-expanded={layersOpen}
               aria-label="Map aviation layers"
             >
               <Layers className="h-5 w-5" />
-              <span className="hidden text-xs font-semibold sm:inline">Layers</span>
-              <span className="rounded-full bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {enabledLayerCount}
-              </span>
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">Map aviation layers</TooltipContent>
@@ -1108,27 +1038,6 @@ function MapToolsRail({
             </div>
           </div>
         )}
-      </div>
-
-      <div className="pointer-events-auto flex flex-col gap-2">
-        {controls.map((control) => (
-          <Tooltip key={control.label}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={control.onClick}
-                className={cn(
-                  'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/90 text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white',
-                  control.active && 'border-cyan-200 bg-cyan-50 text-cyan-900'
-                )}
-                aria-label={control.label}
-              >
-                <control.icon className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">{control.label}</TooltipContent>
-          </Tooltip>
-        ))}
       </div>
     </div>
   );

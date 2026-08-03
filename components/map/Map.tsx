@@ -1225,7 +1225,7 @@ function RouteWaypointEditor({
     );
 
   return (
-    <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-20 rounded-[1.35rem] border border-white/80 bg-white/95 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:bottom-24 sm:left-5 sm:right-auto sm:w-80">
+    <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-[70] rounded-[1.35rem] border border-white/80 bg-white/95 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:bottom-24 sm:left-5 sm:right-auto sm:w-80">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
