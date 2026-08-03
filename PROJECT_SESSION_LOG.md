@@ -1,5 +1,37 @@
 # Halo Session Log
 
+## 2026-08-03 Vercel Git Connection Repair
+
+Objective: investigate whether local untracked changes and missing Vercel Git integration caused GPS fixes not to reach production, then connect the Vercel project to GitHub.
+
+Findings:
+
+- The Vercel project `halo-flight-planning` was linked locally via `.vercel/project.json`, but production deployments before this repair were manual/CLI uploads rather than GitHub-triggered builds.
+- The production deployment that was live before repair was `halo-flight-planning-d4omr7r7q-pilotmerch-gmailcoms-projects.vercel.app`, created at `2026-08-03 02:55:21 +02:00`.
+- Its build logs showed uploaded deployment files rather than a Git clone, and the route list did not include `/gps-lab`.
+- Local `app/gps-lab/page.tsx` is still untracked and was not present in production. It is a diagnostic route, not the production Track Aircraft marker fix.
+- The actual production Track Aircraft fix is tracked in `components/map/Map.tsx` and was committed in `3772943`.
+
+Actions:
+
+- Connected the Vercel project to `https://github.com/selezai/halo-flight-planning.git` with `vercel git connect`.
+- Created and pushed empty commit `3c1b03a` (`Trigger Vercel Git deployment`) to force a Git-triggered production deployment after the connection was established.
+- Vercel then created production deployment `halo-flight-planning-8lkqe1rx1-pilotmerch-gmailcoms-projects.vercel.app`.
+- The new Vercel build logs show `Cloning github.com/selezai/halo-flight-planning (Branch: main, Commit: 3c1b03a)`.
+- The production alias `https://halo-flight-planning.vercel.app` now points to that Git-based deployment.
+
+Verification:
+
+- GitHub Actions for `3c1b03a` passed unit tests, typecheck, lint, and production build.
+- Vercel deployment `dpl_Bu4z12odQUScrEKa92Pyg3dNsdfB` completed with status `Ready`.
+- Production browser smoke against `https://halo-flight-planning.vercel.app` with granted mocked geolocation reached `Aircraft tracking`, rendered `.halo-location-aircraft-marker`, and emitted no `location_overlay_failed` or `location_tracking_fix_rejected` console events.
+
+Prevention:
+
+- Future pushes to GitHub `main` now produce Vercel Git deployments, so production source should match tracked Git state.
+- Avoid manual `vercel --prod` deployments from a dirty worktree because they can package local untracked files.
+- Keep `.vercel/` ignored because it contains local project linkage and environment material.
+
 ## 2026-08-03 Track Aircraft Marker Fix
 
 Objective: fix the Track Aircraft stuck `GPS acquiring` state after Halo receives a granted browser GPS fix.
