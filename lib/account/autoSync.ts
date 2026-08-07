@@ -1,0 +1,110 @@
+import {
+  extractPlannerSnapshotState,
+  mergePlannerSnapshotStates,
+  plannerSnapshotStateSchema,
+  type PlannerSnapshotState,
+} from '@/lib/account/plannerSnapshot';
+import {
+  DEFAULT_AIRCRAFT,
+  DEFAULT_PERSONAL_MINIMUMS,
+} from '@/lib/planning/aircraft';
+import {
+  DEFAULT_CLOSE_REMINDER,
+  DEFAULT_FILING_CHECKLIST,
+} from '@/lib/planning/filingReminder';
+import {
+  DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+  DEFAULT_NOTAM_BRIEFING_RECORD,
+} from '@/lib/planning/flightAdmin';
+import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
+import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
+
+const DEFAULT_VISIBLE_LAYERS = {
+  airports: true,
+  navaids: true,
+  airspaces: true,
+  reportingPoints: true,
+  obstacles: true,
+  hotspots: true,
+  hangGlidings: true,
+  rcAirfields: true,
+};
+
+export const DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE: PlannerSnapshotState = plannerSnapshotStateSchema.parse({
+  center: [28.0, -26.0],
+  zoom: 7,
+  visibleLayers: DEFAULT_VISIBLE_LAYERS,
+  aircraftTrackingEnabled: false,
+  routeName: 'South Africa cross-country',
+  routeNotes: '',
+  departureTime: '',
+  cruiseAltitudeFt: 6500,
+  activeMissionId: 'mission-local-active',
+  missionLibrary: [],
+  waypoints: [],
+  activeAircraft: DEFAULT_AIRCRAFT,
+  weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+  trainingWind: DEFAULT_TRAINING_WIND,
+  filingChecklist: DEFAULT_FILING_CHECKLIST,
+  notamBriefingRecord: DEFAULT_NOTAM_BRIEFING_RECORD,
+  flightPlanFilingRecord: DEFAULT_FLIGHT_PLAN_FILING_RECORD,
+  closeReminder: DEFAULT_CLOSE_REMINDER,
+  emergencyLandingSites: [],
+  personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
+});
+
+export function createPlannerSnapshotFingerprint(source: Record<string, unknown>): string {
+  return JSON.stringify(extractPlannerSnapshotState(source));
+}
+
+export function createPlannerSnapshotStateFingerprint(state: PlannerSnapshotState): string {
+  return JSON.stringify(plannerSnapshotStateSchema.parse(state));
+}
+
+export function hasLocalPlannerSnapshotStorage(storageValue: string | null | undefined): boolean {
+  if (!storageValue) return false;
+
+  try {
+    const parsed = JSON.parse(storageValue) as { state?: unknown };
+    return Boolean(parsed && typeof parsed === 'object' && parsed.state);
+  } catch {
+    return false;
+  }
+}
+
+export function hasMeaningfulLocalPlannerSnapshot(localState: PlannerSnapshotState): boolean {
+  return createPlannerSnapshotStateFingerprint(localState) !== createPlannerSnapshotStateFingerprint(DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE);
+}
+
+export function chooseAccountSyncRestoreState({
+  localState,
+  remoteState,
+  hasLocalPersistedState,
+}: {
+  localState: PlannerSnapshotState;
+  remoteState: PlannerSnapshotState;
+  hasLocalPersistedState: boolean;
+}): PlannerSnapshotState {
+  if (!hasLocalPersistedState || !hasMeaningfulLocalPlannerSnapshot(localState)) {
+    return remoteState;
+  }
+
+  return mergePlannerSnapshotStates(localState, remoteState);
+}
+
+export function shouldSaveAccountSyncRestoreState({
+  localState,
+  remoteState,
+  hasLocalPersistedState,
+}: {
+  localState: PlannerSnapshotState;
+  remoteState: PlannerSnapshotState;
+  hasLocalPersistedState: boolean;
+}): boolean {
+  if (!hasLocalPersistedState || !hasMeaningfulLocalPlannerSnapshot(localState)) {
+    return false;
+  }
+
+  const mergedState = mergePlannerSnapshotStates(localState, remoteState);
+  return createPlannerSnapshotStateFingerprint(mergedState) !== createPlannerSnapshotStateFingerprint(remoteState);
+}

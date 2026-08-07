@@ -1,4 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
+import AccountAutoSync from '@/components/auth/AccountAutoSync';
 import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import HaloAppShell from '@/components/shell/HaloAppShell';
 import HaloLogo from '@/components/shell/HaloLogo';
@@ -15,7 +16,12 @@ export default async function DashboardPage() {
     return <PlannerAccessGate />;
   }
 
-  return <HaloAppShell />;
+  return (
+    <>
+      <AccountAutoSync />
+      <HaloAppShell />
+    </>
+  );
 }
 
 function PlannerAccessGate() {

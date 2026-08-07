@@ -3316,6 +3316,52 @@ Verification:
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
 
+## 2026-08-07 Automatic Account Snapshot Sync
+
+Problem / requested change:
+
+- Test pilots can currently lose planner data when browser storage is cleared because the main UI relies on the local `halo-map-store` Zustand persistence.
+- The account snapshot API and Neon repository existed, but sync was manual-only and the manual panel was not mounted in the app shell.
+
+Root cause:
+
+- Clerk account identity survived browser-data clearing, but Halo planner data did not automatically reload from the authenticated server snapshot.
+- A naive auto-sync could overwrite a real remote account snapshot with startup defaults if the browser storage had been cleared or only contained the default store shape.
+
+Solution:
+
+- Added account auto-sync helpers that fingerprint only supported planner snapshot fields, detect local browser snapshot storage, and choose between direct remote restore or local/remote merge.
+- Added a hidden signed-in `AccountAutoSync` client component that:
+  - loads `/api/account/snapshot` after Clerk reports the user is signed in;
+  - restores the remote snapshot directly when local browser data is missing/default;
+  - merges local and remote planner data when local persisted edits exist;
+  - saves the merged restore back to the account when local edits changed the remote record;
+  - debounces future meaningful planner state changes back to `/api/account/snapshot`.
+- Mounted the hidden sync component in the authenticated dashboard only.
+- Added unit coverage for cleared-browser restore, default-local protection, local/remote merge, storage detection, and transient-state fingerprinting.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `components/auth/AccountAutoSync.tsx`
+- `lib/account/autoSync.ts`
+- `tests/account/autoSync.test.ts`
+- `docs/superpowers/plans/2026-08-07-automatic-account-sync.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/account/autoSync.test.ts tests/account/plannerSnapshot.test.ts tests/account/snapshotApi.test.ts`: passed, 38 files / 184 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 38 files / 184 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped per user instruction.
+
+Readiness note:
+
+- Halo is ready for controlled test-pilot E2E/beta testing after this slice, not operational release. The biggest product/process caveat remains Clerk development-instance auth on the `vercel.app` domain until a custom production domain is available.
+
 ## 2026-08-07 Clerk App Router Quickstart Alignment
 
 Problem / requested changes:
