@@ -1,5 +1,45 @@
 # Halo Session Log
 
+## 2026-08-07 Clerk Email/Password Auth Slice
+
+Objective: simplify production auth to email/password sign-up and sign-in only, hide Google OAuth in the Halo UI, and check whether Clerk live keys can be set up from the CLI.
+
+Findings:
+
+- The local Clerk CLI is available, but it is not authenticated. `npx clerk whoami` returned `auth_required` and instructed running `clerk auth login`.
+- Live Clerk production keys cannot be created, pulled, or safely copied into Vercel from this machine until the Clerk CLI session is authenticated.
+- Vercel Pro is not the blocker for this slice. Clerk production still needs a production Clerk instance, live keys, and a real custom domain/DNS configuration; a `*.vercel.app` domain alone is not enough for Clerk production.
+- Clerk email/password sign-up must be enabled in the Clerk instance settings. Google OAuth can remain disabled or unconfigured until later.
+- Clerk's prebuilt sign-in/sign-up buttons can expose enabled social providers from the Clerk Dashboard, so Halo should not use those buttons while Google OAuth is intentionally hidden.
+
+Solution:
+
+- Replaced the signed-out Halo auth buttons with a custom email/password modal using Clerk's App Router client hooks.
+- Added sign-up with email/password, email verification code handling, and sign-in with email/password.
+- Added the Clerk captcha container required by Clerk's custom sign-up flow when bot protection is enabled.
+- Reused the same email/password auth UI from the Account Sync panel so no Google/OAuth entry point remains in app UI.
+- Updated the dashboard gate copy to direct users to email/password sign-up and explain that Google sign-in is hidden until production OAuth is configured.
+
+Files modified:
+
+- `components/auth/HaloAuthNav.tsx`
+- `components/auth/AccountSyncPanel.tsx`
+- `app/(dashboard)/page.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm typecheck`: passed after widening the Clerk field-error helper for nullable fields.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 37 files / 176 tests.
+- `pnpm build`: passed on Next.js `15.5.18`, aside from existing browser-data freshness warnings.
+- Searched app code for `SignInButton`, `SignUpButton`, Google/OAuth text, and OAuth redirect calls. No Clerk prebuilt sign-in/up buttons or OAuth calls remain in app UI.
+- Playwright and visual inspection were intentionally skipped per user instruction.
+
+Next operator step:
+
+- Authenticate the Clerk CLI with `npx clerk auth login`, then use Clerk CLI or the Clerk Dashboard to create/promote the production instance and set the resulting `pk_live_...` / `sk_live_...` values in Vercel Production environment variables.
+
 ## 2026-08-03 Vercel Git Connection Repair
 
 Objective: investigate whether local untracked changes and missing Vercel Git integration caused GPS fixes not to reach production, then connect the Vercel project to GitHub.

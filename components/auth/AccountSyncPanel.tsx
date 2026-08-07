@@ -1,16 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { SignInButton, SignOutButton, SignUpButton, UserButton, useUser } from '@clerk/nextjs';
+import { SignOutButton, UserButton, useUser } from '@clerk/nextjs';
 import {
   AlertTriangle,
   CheckCircle2,
   Cloud,
   DownloadCloud,
-  LogIn,
   RefreshCcw,
   UploadCloud,
 } from 'lucide-react';
+import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import {
   buildPlannerSnapshotPayload,
   extractPlannerSnapshotState,
@@ -199,25 +199,7 @@ function ClerkAccountSyncPanel() {
             <p className="mt-1">Halo works locally. Sign in to sync saved planner data.</p>
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <SignInButton mode="modal">
-            <button
-              type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-slate-950 px-2 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button
-              type="button"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-white"
-            >
-              Create account
-            </button>
-          </SignUpButton>
-        </div>
+        <HaloAuthNav variant="gate" className="mt-3" />
       </div>
     );
   }

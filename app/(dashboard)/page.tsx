@@ -32,7 +32,7 @@ function PlannerAccessGate() {
             Sign in to open Halo Flight Planning
           </h1>
           <p className="text-sm leading-6 text-slate-600">
-            Use email sign-up or Google OAuth from the secure Clerk account window before accessing the planner.
+            Use email and password sign-up before accessing the planner. Google sign-in is hidden until production OAuth is configured.
           </p>
         </div>
 
