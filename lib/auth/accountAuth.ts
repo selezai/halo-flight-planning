@@ -1,3 +1,6 @@
+import { getConfiguredEnvValue, isSupabaseAuthConfigured } from '@/lib/supabase/config';
+import { getSupabaseServerUserId } from '@/lib/supabase/server';
+
 export interface AccountAuthSuccess {
   ok: true;
   userId: string;
@@ -11,42 +14,25 @@ export interface AccountAuthFailure {
 
 export type AccountAuthResult = AccountAuthSuccess | AccountAuthFailure;
 
-export function getConfiguredEnvValue(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed === '""' || trimmed === "''") return undefined;
-  return trimmed;
-}
-
-export function isPublicClerkConfigured(): boolean {
-  return Boolean(getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY));
-}
-
-export function isClerkConfigured(): boolean {
-  return Boolean(
-    getConfiguredEnvValue(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
-    getConfiguredEnvValue(process.env.CLERK_SECRET_KEY)
-  );
-}
+export { getConfiguredEnvValue };
 
 export async function requireAccountUserId(): Promise<AccountAuthResult> {
-  if (!isClerkConfigured()) {
+  if (!isSupabaseAuthConfigured()) {
     return {
       ok: false,
       status: 503,
-      error: 'Account sync is not configured. Finish Clerk setup before using cloud sync.',
+      error: 'Account sync is not configured. Finish Supabase setup before using cloud sync.',
     };
   }
 
-  let userId: string | null;
+  let userId: string | null = null;
   try {
-    const { auth } = await import('@clerk/nextjs/server');
-    const session = await auth();
-    userId = session.userId;
+    userId = await getSupabaseServerUserId();
   } catch {
     return {
       ok: false,
       status: 503,
-      error: 'Account sync authentication is unavailable. Check Clerk configuration.',
+      error: 'Account sync authentication is unavailable. Check Supabase configuration.',
     };
   }
 

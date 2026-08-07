@@ -1,16 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { SignOutButton, UserButton, useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
   Cloud,
   DownloadCloud,
+  LogOut,
   RefreshCcw,
   UploadCloud,
+  UserCircle,
 } from 'lucide-react';
 import HaloAuthNav from '@/components/auth/HaloAuthNav';
+import { useSupabaseAuthState } from '@/components/auth/useSupabaseAuthState';
 import {
   buildPlannerSnapshotPayload,
   extractPlannerSnapshotState,
@@ -44,7 +47,7 @@ export default function AccountSyncPanel({ enabled }: AccountSyncPanelProps) {
           <div>
             <p className="font-semibold">Local-only mode</p>
             <p className="mt-1 text-amber-800">
-              Finish Clerk and Neon setup to enable account sync.
+              Finish Supabase auth and Neon setup to enable account sync.
             </p>
           </div>
         </div>
@@ -52,11 +55,12 @@ export default function AccountSyncPanel({ enabled }: AccountSyncPanelProps) {
     );
   }
 
-  return <ClerkAccountSyncPanel />;
+  return <SupabaseAccountSyncPanel />;
 }
 
-function ClerkAccountSyncPanel() {
-  const { isLoaded, isSignedIn, user } = useUser();
+function SupabaseAccountSyncPanel() {
+  const router = useRouter();
+  const { authConfigured, isLoaded, isSignedIn, supabase, user } = useSupabaseAuthState();
   const restorePlannerSnapshotState = useMapStore((state) => state.restorePlannerSnapshotState);
   const [remoteSnapshot, setRemoteSnapshot] = useState<StoredPlannerSnapshot | null>(null);
   const [message, setMessage] = useState<SyncMessage>({
@@ -98,10 +102,10 @@ function ClerkAccountSyncPanel() {
   }, []);
 
   useEffect(() => {
-    if (isLoaded && isSignedIn) {
+    if (authConfigured && isLoaded && isSignedIn) {
       void loadRemoteSnapshot();
     }
-  }, [isLoaded, isSignedIn, loadRemoteSnapshot]);
+  }, [authConfigured, isLoaded, isSignedIn, loadRemoteSnapshot]);
 
   const saveCurrentPlanner = useCallback(async () => {
     setBusyAction('save');
@@ -181,6 +185,41 @@ function ClerkAccountSyncPanel() {
     }
   }, [remoteSnapshot, restorePlannerSnapshotState]);
 
+  const signOut = useCallback(async () => {
+    if (!supabase) return;
+    setBusyAction('signout');
+    setMessage({ tone: 'loading', text: 'Signing out…' });
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setMessage({ tone: 'error', text: error.message });
+      setBusyAction(null);
+      return;
+    }
+
+    setRemoteSnapshot(null);
+    setBusyAction(null);
+    setMessage({ tone: 'idle', text: 'Sign in to sync this planner across devices.' });
+    router.refresh();
+  }, [router, supabase]);
+
+  if (!authConfigured) {
+    return (
+      <div className="border-b border-slate-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">Account auth not configured</p>
+            <p className="mt-1 text-amber-800">
+              Add Supabase auth env vars before using cloud sync.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoaded) {
     return (
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
@@ -205,7 +244,7 @@ function ClerkAccountSyncPanel() {
   }
 
   const actionDisabled = Boolean(busyAction);
-  const userLabel = user.primaryEmailAddress?.emailAddress ?? user.fullName ?? 'Signed-in pilot';
+  const userLabel = user?.email ?? 'Signed-in pilot';
 
   return (
     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs">
@@ -217,7 +256,7 @@ function ClerkAccountSyncPanel() {
           </div>
           <p className="mt-1 truncate text-slate-600">{userLabel}</p>
         </div>
-        <UserButton />
+        <UserCircle className="h-7 w-7 flex-shrink-0 text-slate-500" />
       </div>
 
       <p className={`mt-2 flex items-start gap-1.5 ${getMessageToneClass(message.tone)}`}>
@@ -269,14 +308,15 @@ function ClerkAccountSyncPanel() {
         </button>
       </div>
 
-      <SignOutButton>
-        <button
-          type="button"
-          className="mt-2 text-[11px] font-medium text-slate-500 hover:text-slate-900"
-        >
-          Sign out
-        </button>
-      </SignOutButton>
+      <button
+        type="button"
+        onClick={() => void signOut()}
+        disabled={actionDisabled}
+        className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <LogOut className="h-3 w-3" />
+        Sign out
+      </button>
     </div>
   );
 }

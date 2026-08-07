@@ -10,4 +10,4 @@ create index if not exists halo_planner_snapshots_updated_at_idx
   on halo_planner_snapshots (updated_at desc);
 
 comment on table halo_planner_snapshots is
-  'Latest owner-scoped Halo planner snapshot for Clerk-authenticated account sync.';
+  'Latest owner-scoped Halo planner snapshot for Supabase-authenticated account sync.';

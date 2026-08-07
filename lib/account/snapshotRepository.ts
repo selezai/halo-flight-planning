@@ -90,7 +90,7 @@ export async function ensureAccountSnapshotSchema(): Promise<void> {
 
   await sql.query(`
     comment on table halo_planner_snapshots is
-      'Latest owner-scoped Halo planner snapshot for Clerk-authenticated account sync.'
+      'Latest owner-scoped Halo planner snapshot for Supabase-authenticated account sync.'
   `);
 }
 

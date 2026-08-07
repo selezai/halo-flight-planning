@@ -38,7 +38,14 @@ NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Account sync is optional. After Clerk and Neon are approved/provisioned through Vercel Marketplace, pull env vars and migrate:
+For test-pilot auth, add Supabase email/password env vars:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+```
+
+After Neon is approved/provisioned through Vercel Marketplace, pull env vars and migrate account-sync storage:
 
 ```bash
 vercel env pull .env.local --yes
@@ -95,7 +102,7 @@ pnpm dev -- -p 3001
 ## Next Steps
 
 - Explore the map and click on airports/navaids
-- Use the Account Sync panel after Clerk + Neon are configured
+- Use the Account Sync panel after Supabase auth and Neon storage are configured
 - Read [SETUP.md](./SETUP.md) for detailed documentation
 
 ## Project Commands

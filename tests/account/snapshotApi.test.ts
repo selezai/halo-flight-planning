@@ -8,7 +8,7 @@ describe('account snapshot API route', () => {
     vi.resetModules();
   });
 
-  it('requires an authenticated Clerk user before reading a snapshot', async () => {
+  it('requires an authenticated Supabase user before reading a snapshot', async () => {
     const { GET, getAccountPlannerSnapshot } = await loadRouteWithMocks({
       authResult: { ok: false, status: 401, error: 'Sign in to sync Halo planner data.' },
       databaseConfigured: true,
@@ -24,7 +24,7 @@ describe('account snapshot API route', () => {
 
   it('returns a setup error when Neon is not configured', async () => {
     const { PUT, upsertAccountPlannerSnapshot } = await loadRouteWithMocks({
-      authResult: { ok: true, userId: 'user_123' },
+      authResult: { ok: true, userId: '00000000-0000-4000-8000-000000000123' },
       databaseConfigured: false,
     });
 
@@ -41,7 +41,7 @@ describe('account snapshot API route', () => {
 
   it('validates snapshot payloads before saving', async () => {
     const { PUT, upsertAccountPlannerSnapshot } = await loadRouteWithMocks({
-      authResult: { ok: true, userId: 'user_123' },
+      authResult: { ok: true, userId: '00000000-0000-4000-8000-000000000123' },
       databaseConfigured: true,
     });
 
@@ -62,13 +62,13 @@ describe('account snapshot API route', () => {
       new Date('2026-07-20T10:00:00Z')
     );
     const stored = {
-      userId: 'user_123',
+      userId: '00000000-0000-4000-8000-000000000123',
       snapshot,
       createdAt: '2026-07-20T10:00:00.000Z',
       updatedAt: '2026-07-20T10:00:00.000Z',
     };
     const { PUT, upsertAccountPlannerSnapshot } = await loadRouteWithMocks({
-      authResult: { ok: true, userId: 'user_123' },
+      authResult: { ok: true, userId: '00000000-0000-4000-8000-000000000123' },
       databaseConfigured: true,
       savedSnapshot: stored,
     });
@@ -81,7 +81,7 @@ describe('account snapshot API route', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ snapshot: stored });
-    expect(upsertAccountPlannerSnapshot).toHaveBeenCalledWith('user_123', snapshot);
+    expect(upsertAccountPlannerSnapshot).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000123', snapshot);
   });
 
   it('returns the current authenticated user snapshot', async () => {
@@ -90,13 +90,13 @@ describe('account snapshot API route', () => {
       new Date('2026-07-20T10:00:00Z')
     );
     const stored = {
-      userId: 'user_123',
+      userId: '00000000-0000-4000-8000-000000000123',
       snapshot,
       createdAt: '2026-07-20T10:00:00.000Z',
       updatedAt: '2026-07-20T10:00:00.000Z',
     };
     const { GET, getAccountPlannerSnapshot } = await loadRouteWithMocks({
-      authResult: { ok: true, userId: 'user_123' },
+      authResult: { ok: true, userId: '00000000-0000-4000-8000-000000000123' },
       databaseConfigured: true,
       storedSnapshot: stored,
     });
@@ -106,7 +106,7 @@ describe('account snapshot API route', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ snapshot: stored });
-    expect(getAccountPlannerSnapshot).toHaveBeenCalledWith('user_123');
+    expect(getAccountPlannerSnapshot).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000123');
   });
 });
 
