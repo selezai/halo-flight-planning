@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { ClerkProvider } from '@clerk/nextjs';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Geist, Geist_Mono } from 'next/font/google';
@@ -28,11 +29,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn(geistSans.variable, geistMono.variable)}>
       <body className="font-sans antialiased">
-        <TooltipProvider>
-          {children}
-          <Analytics />
-          <SpeedInsights />
-        </TooltipProvider>
+        <ClerkProvider>
+          <TooltipProvider>
+            {children}
+            <Analytics />
+            <SpeedInsights />
+          </TooltipProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

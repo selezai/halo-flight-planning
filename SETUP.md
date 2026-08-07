@@ -66,24 +66,13 @@ Do not use browser automation, scraping, or public-summary parsing for live oper
 
 Set `NOTAM_PROVIDER=faa` with these credentials only when FAA coverage is desired. Without them Halo will still run using the South Africa official manual briefing mode.
 
-### Test Pilot Auth: Supabase Email/Password
+### Account Sync: Clerk + Neon (Optional until launch)
 
-Create or choose a Supabase project for Halo test pilots, then enable Email as an auth provider in the Supabase Dashboard. Add the production site URL and `https://halo-flight-planning.vercel.app/auth/confirm` to Supabase Auth redirect URLs.
-
-Expected auth env vars:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-# NEXT_PUBLIC_SUPABASE_ANON_KEY is also supported for older Supabase projects.
-```
-
-### Account Sync: Supabase Auth + Neon
-
-Halo uses Supabase for the test-pilot identity and Neon for existing planner snapshot storage. Provision Neon through Vercel Marketplace:
+Halo runs without accounts in local-only mode. For cross-device sync, provision both integrations through Vercel Marketplace:
 
 ```bash
 vercel integration add neon
+vercel integration add clerk
 vercel env pull .env.local --yes
 pnpm db:migrate
 ```
@@ -95,8 +84,8 @@ If pulled Marketplace secrets appear locally as empty placeholders, do not print
 Expected env vars:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
 POSTGRES_URL=
 # DATABASE_URL is also supported.
 DATABASE_URL=
@@ -115,11 +104,9 @@ OPENAIP_API_KEY=your_actual_openaip_key_here
 # MapTiler (for glyphs/fonts)
 NEXT_PUBLIC_MAPTILER_KEY=your_actual_maptiler_key_here
 
-# Test pilot auth
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-
-# Account sync storage
+# Account sync (optional until Clerk + Neon are provisioned)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
 POSTGRES_URL=
 DATABASE_URL=
 
