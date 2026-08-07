@@ -1,6 +1,5 @@
-import { SignInButton, SignUpButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
-import { LogIn, UserPlus } from 'lucide-react';
+import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import HaloAppShell from '@/components/shell/HaloAppShell';
 import HaloLogo from '@/components/shell/HaloLogo';
 import { isClerkConfigured } from '@/lib/auth/accountAuth';
@@ -37,26 +36,7 @@ function PlannerAccessGate() {
           </p>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <SignInButton mode="modal">
-            <button
-              type="button"
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              <LogIn className="h-4 w-4" />
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button
-              type="button"
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-            >
-              <UserPlus className="h-4 w-4" />
-              Create account
-            </button>
-          </SignUpButton>
-        </div>
+        <HaloAuthNav variant="gate" className="mt-6" />
       </section>
     </main>
   );

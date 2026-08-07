@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next';
+import { ClerkProvider } from '@clerk/nextjs';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import HaloClerkProvider from '@/components/auth/HaloClerkProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import './globals.css';
@@ -29,13 +29,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn(geistSans.variable, geistMono.variable)}>
       <body className="font-sans antialiased">
-        <HaloClerkProvider>
+        <ClerkProvider>
           <TooltipProvider>
             {children}
             <Analytics />
             <SpeedInsights />
           </TooltipProvider>
-        </HaloClerkProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

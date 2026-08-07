@@ -3232,6 +3232,52 @@ Verification:
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
 
+## 2026-08-07 Clerk App Router Quickstart Alignment
+
+Problem / requested changes:
+
+- Align the existing App Router Clerk setup with the current Clerk quickstart prompt.
+- Install the latest `@clerk/nextjs` with the existing package manager.
+- Add a `proxy.ts` entrypoint using `clerkMiddleware()`.
+- Include Clerk's auto-proxy matcher path.
+- Put `ClerkProvider` directly inside `app/layout.tsx`'s `<body>`.
+- Use `Show`, `UserButton`, `SignInButton`, and `SignUpButton` from `@clerk/nextjs`.
+
+Root cause / context:
+
+- Halo already used Clerk, but it still had the active request hook in `middleware.ts` only.
+- The app is currently on Next.js `15.5.18`. Clerk's current quickstart says `proxy.ts` is the newer pattern, while Next.js 15 and below still require `middleware.ts` as the active file name.
+- The root layout used a project-specific `HaloClerkProvider` wrapper instead of showing the provider directly inside `<body>`.
+
+Solution:
+
+- Updated `@clerk/nextjs` from `7.5.20` to `7.7.0` with `pnpm`.
+- Added `proxy.ts` with `clerkMiddleware()` and matchers for app routes, `'/__clerk/:path*'`, and API/trpc routes.
+- Kept `middleware.ts` for Next 15 compatibility and made it delegate to the new proxy implementation with the same matcher config.
+- Replaced the root layout wrapper with direct `<ClerkProvider>` inside `<body>`.
+- Added `components/auth/HaloAuthNav.tsx` using `Show`, `SignInButton`, `SignUpButton`, and `UserButton`.
+- Reused the auth nav on the access gate and planner header.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `app/layout.tsx`
+- `components/auth/HaloAuthNav.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `middleware.ts`
+- `proxy.ts`
+- `package.json`
+- `pnpm-lock.yaml`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- `pnpm test`: passed, 37 files / 176 tests.
+- Playwright and visual inspection were intentionally skipped.
+
 Notes:
 
 - The pre-existing untracked `app/gps-lab/` route remains untracked and was not staged for this production commit. The local build still detected it because it is present on disk, but the Git deployment from `main` will not include it unless it is committed later.

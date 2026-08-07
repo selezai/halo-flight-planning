@@ -23,6 +23,7 @@ import {
   Save,
 } from 'lucide-react';
 import ClientMap from '@/components/map/ClientMap';
+import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import OfflineMissionSupport from '@/components/offline/OfflineMissionSupport';
 import RouteAirspaceReviewSync from '@/components/planning/RouteAirspaceReviewSync';
 import RouteNotamReviewSync from '@/components/planning/RouteNotamReviewSync';
@@ -393,6 +394,7 @@ export default function HaloAppShell() {
               <Menu className="h-3.5 w-3.5" />
               Planner
             </Button>
+            <HaloAuthNav className="shrink-0" />
           </div>
         </div>
       </div>
