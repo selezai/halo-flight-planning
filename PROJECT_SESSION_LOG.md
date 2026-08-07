@@ -1,5 +1,49 @@
 # Halo Session Log
 
+## 2026-08-07 Clerk Revert + Aircraft Heading Slice
+
+Objective: revert the temporary Supabase auth swap back to Clerk because Halo's backend/account-sync path is not Supabase, then improve the aircraft marker heading so it follows the direction of travel.
+
+Findings:
+
+- Reverted commit `f372c79` with `git revert`, restoring the Clerk + Neon account/auth path from commit `5bb1c47`.
+- Clerk CLI is authenticated as `pilotmerch@gmail.com` and the repo is linked to Clerk app `app_3HahEvSCHPXoBp44iz961RlsKp4` (`My Application`).
+- `npx clerk deploy status --mode agent` reports no Clerk production instance yet: `state=not_started`, `domain=null`, `productionInstanceId=null`.
+- Official Clerk docs state that Vercel production needs production Clerk keys and a domain you own; `*.vercel.app` cannot be used for Clerk production because required DNS records cannot be added there.
+- Vercel aliases for Halo are only `*.vercel.app` aliases. No Halo-specific custom domain is attached to the Vercel project.
+- Existing Vercel Production has encrypted `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` variables, but there are no live production Clerk keys available to pull because no Clerk production instance exists.
+- The aircraft marker already accepted browser `coords.heading`, but browsers commonly return `null` until there are enough movement samples. Halo then fell back directly to route-leg bearing, so the marker could point along the plan instead of the aircraft's actual movement.
+
+Solution:
+
+- Kept the Clerk revert as its own commit.
+- Added movement-derived heading calculation from consecutive GPS fixes when the browser does not provide `coords.heading`.
+- Kept browser GPS heading as highest priority.
+- Kept route-leg bearing as the last fallback when neither browser heading nor movement heading is available.
+- Added safeguards so tiny/noisy movement inside the GPS accuracy gate does not create a jittery aircraft heading.
+
+Files modified after the revert:
+
+- `components/map/Map.tsx`
+- `lib/planning/routeTracking.ts`
+- `tests/planning/routeTracking.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/routeTracking.test.ts`: passed, 37 files / 178 tests.
+- `pnpm typecheck`: failed once because local `node_modules` still reflected the reverted Supabase install and `.next/types` still referenced the deleted `/auth/confirm` route.
+- Remediation: ran `pnpm install` against the restored Clerk lockfile and cleared generated `.next/types`.
+- `pnpm typecheck`: passed after dependency/type regeneration.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 37 files / 178 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection remain intentionally skipped per user instruction.
+
+Production note:
+
+- The app can be pushed back to the Clerk code path on `halo-flight-planning.vercel.app`, but true Clerk production keys cannot be created for only `halo-flight-planning.vercel.app`. Clerk production needs a custom Halo domain with DNS control.
+
 ## 2026-08-07 Clerk Email/Password Auth Slice
 
 Objective: simplify production auth to email/password sign-up and sign-in only, hide Google OAuth in the Halo UI, and check whether Clerk live keys can be set up from the CLI.

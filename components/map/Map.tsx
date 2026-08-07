@@ -28,6 +28,7 @@ import { calculateDistanceNm, createUserWaypoint, formatCoordinates } from '@/li
 import { getNearestRouteLegIndex } from '@/lib/planning/rubberBandRoute';
 import {
   classifyBrowserLocationFailure,
+  deriveMovementHeading,
   formatLocationWatchStartFailure,
   INITIAL_LOCATION_FIX_OPTIONS,
   LOCATION_WATCH_OPTIONS,
@@ -539,7 +540,7 @@ export default function Map({ className = '' }: MapProps) {
       if (cancelled) return;
 
       try {
-        const trackedLocation = normalizeTrackedLocation({
+        const normalizedLocation = normalizeTrackedLocation({
           longitude: position.coords.longitude,
           latitude: position.coords.latitude,
           accuracyM: position.coords.accuracy,
@@ -551,9 +552,14 @@ export default function Map({ className = '' }: MapProps) {
         });
 
         const state = useMapStore.getState();
-        if (shouldKeepExistingTrackedLocation(trackedLocation, state.locationTracking.position)) {
+        if (shouldKeepExistingTrackedLocation(normalizedLocation, state.locationTracking.position)) {
           return;
         }
+
+        const trackedLocation = deriveMovementHeading(
+          normalizedLocation,
+          state.locationTracking.position
+        );
 
         setTrackedLocation(trackedLocation);
 

@@ -17,6 +17,9 @@ const FEET_PER_METER = 3.280839895;
 const KNOTS_PER_MPS = 1.943844492;
 const DEFAULT_ARRIVAL_RADIUS_NM = 0.25;
 const MAX_RENDERABLE_ACCURACY_M = METERS_PER_NM * 100;
+const MIN_MOVEMENT_HEADING_DISTANCE_M = 15;
+const MAX_MOVEMENT_HEADING_ACCURACY_GATE_M = 100;
+const MAX_MOVEMENT_HEADING_FIX_GAP_MS = 120_000;
 
 export const INITIAL_LOCATION_FIX_OPTIONS = {
   enableHighAccuracy: false,
@@ -89,6 +92,41 @@ export function normalizeTrackedLocation(input: RawLocationInput): TrackedLocati
     headingDeg: normalizeOptionalHeading(input.headingDeg),
     speedKts: convertMetersPerSecondToKnots(input.speedMps),
     timestamp: normalizeTimestamp(input.timestamp),
+  };
+}
+
+export function deriveMovementHeading(
+  location: TrackedLocation,
+  previousLocation: TrackedLocation | undefined
+): TrackedLocation {
+  if (typeof location.headingDeg === 'number' || !previousLocation) {
+    return location;
+  }
+
+  const nextTime = Date.parse(location.timestamp);
+  const previousTime = Date.parse(previousLocation.timestamp);
+  if (
+    !Number.isFinite(nextTime) ||
+    !Number.isFinite(previousTime) ||
+    nextTime <= previousTime ||
+    nextTime - previousTime > MAX_MOVEMENT_HEADING_FIX_GAP_MS
+  ) {
+    return location;
+  }
+
+  if (typeof location.speedKts === 'number' && location.speedKts < 2) {
+    return location;
+  }
+
+  const distanceM = calculateDistanceNm(previousLocation.coordinates, location.coordinates) * METERS_PER_NM;
+  const accuracyGateM = getMovementHeadingAccuracyGate(location, previousLocation);
+  if (distanceM < accuracyGateM) {
+    return location;
+  }
+
+  return {
+    ...location,
+    headingDeg: calculateTrueBearingDeg(previousLocation.coordinates, location.coordinates),
   };
 }
 
@@ -313,6 +351,22 @@ function convertMetersToFeet(value: number | null | undefined): number | undefin
 function convertMetersPerSecondToKnots(value: number | null | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined;
   return value * KNOTS_PER_MPS;
+}
+
+function getMovementHeadingAccuracyGate(
+  location: TrackedLocation,
+  previousLocation: TrackedLocation
+): number {
+  const accuracies = [location.accuracyM, previousLocation.accuracyM]
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+
+  if (accuracies.length === 0) return MIN_MOVEMENT_HEADING_DISTANCE_M;
+
+  const averageAccuracy = accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length;
+  return Math.max(
+    MIN_MOVEMENT_HEADING_DISTANCE_M,
+    Math.min(MAX_MOVEMENT_HEADING_ACCURACY_GATE_M, averageAccuracy)
+  );
 }
 
 function finiteOptional(value: number | null | undefined): number | undefined {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateActiveRouteProgress,
   classifyBrowserLocationFailure,
+  deriveMovementHeading,
   formatLocationTrackingLabel,
   formatLocationWatchStartFailure,
   INITIAL_LOCATION_FIX_OPTIONS,
@@ -165,6 +166,49 @@ describe('route tracking helpers', () => {
       route,
       0
     )).toBeGreaterThan(0);
+  });
+
+  it('derives aircraft course from consecutive GPS fixes when browser heading is missing', () => {
+    const previous = normalizeTrackedLocation({
+      longitude: 28,
+      latitude: -26,
+      accuracyM: 10,
+      timestamp: '2026-07-25T08:30:00.000Z',
+    });
+    const next = normalizeTrackedLocation({
+      longitude: 28.02,
+      latitude: -26,
+      accuracyM: 10,
+      timestamp: '2026-07-25T08:30:05.000Z',
+    });
+
+    const resolved = deriveMovementHeading(next, previous);
+
+    expect(resolved.headingDeg).toBeCloseTo(90, 0);
+  });
+
+  it('keeps browser GPS heading and ignores noisy movement headings', () => {
+    const previous = normalizeTrackedLocation({
+      longitude: 28,
+      latitude: -26,
+      accuracyM: 80,
+      timestamp: '2026-07-25T08:30:00.000Z',
+    });
+    const tinyMove = normalizeTrackedLocation({
+      longitude: 28.00001,
+      latitude: -26,
+      accuracyM: 80,
+      timestamp: '2026-07-25T08:30:05.000Z',
+    });
+    const gpsHeading = normalizeTrackedLocation({
+      longitude: 28.02,
+      latitude: -26,
+      headingDeg: 271,
+      timestamp: '2026-07-25T08:30:05.000Z',
+    });
+
+    expect(deriveMovementHeading(tinyMove, previous).headingDeg).toBeUndefined();
+    expect(deriveMovementHeading(gpsHeading, previous).headingDeg).toBe(271);
   });
 
   it('makes initial browser GPS acquisition failures visible and terminal', () => {
