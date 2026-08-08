@@ -3316,6 +3316,46 @@ Verification:
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
 
+## 2026-08-08 Production Account Sync Recovery Screen Hotfix
+
+Problem:
+
+- Production showed Halo's app error boundary with "Reload the planner" after the automatic account sync deployment.
+
+Evidence:
+
+- `vercel inspect halo-flight-planning.vercel.app` showed the production alias was serving deployment `dpl_EpnqNF861kqBBrSGmzxyepBhdCZj` from commit `dba550d`.
+- `curl https://halo-flight-planning.vercel.app/` returned the expected signed-out server-rendered auth gate.
+- `curl https://halo-flight-planning.vercel.app/api/account/snapshot` returned the expected unauthenticated `401`.
+- Vercel runtime logs for the triggered snapshot request showed normal request start/complete logs, not a server crash.
+
+Root cause:
+
+- The new `AccountAutoSync` component computed the account snapshot fingerprint during React render using strict snapshot validation.
+- Any legacy or partially invalid browser planner value could throw during hydration/render before the sync component's effect-level error handling ran, which moved the whole dashboard into the recovery screen.
+
+Solution:
+
+- Added safe account-sync snapshot extraction that validates fields independently and omits invalid legacy fields from autosync payloads.
+- Switched `AccountAutoSync` to use the safe extractor and payload builder for render-time fingerprinting, initial local-state capture, and debounced saves.
+- Added regression coverage for invalid legacy local planner fields such as `activeAircraft: null` and nested `undefined` values.
+
+Files modified:
+
+- `components/auth/AccountAutoSync.tsx`
+- `lib/account/autoSync.ts`
+- `tests/account/autoSync.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/account/autoSync.test.ts tests/account/plannerSnapshot.test.ts tests/account/snapshotApi.test.ts`: passed, 38 files / 185 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 38 files / 185 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped per user instruction.
+
 ## 2026-08-07 Automatic Account Snapshot Sync
 
 Problem / requested change:

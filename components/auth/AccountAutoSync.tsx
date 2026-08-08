@@ -2,15 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { type StoredPlannerSnapshot } from '@/lib/account/plannerSnapshot';
 import {
-  buildPlannerSnapshotPayload,
-  extractPlannerSnapshotState,
-  type StoredPlannerSnapshot,
-} from '@/lib/account/plannerSnapshot';
-import {
+  buildAccountSyncSnapshotPayload,
   chooseAccountSyncRestoreState,
   createPlannerSnapshotFingerprint,
   createPlannerSnapshotStateFingerprint,
+  extractAccountSyncSnapshotState,
   hasLocalPlannerSnapshotStorage,
   shouldSaveAccountSyncRestoreState,
 } from '@/lib/account/autoSync';
@@ -66,7 +64,7 @@ export default function AccountAutoSync() {
       const response = await fetch('/api/account/snapshot', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPlannerSnapshotPayload(currentState)),
+        body: JSON.stringify(buildAccountSyncSnapshotPayload(currentState)),
       });
       const payload = await parseSnapshotResponse(response);
 
@@ -127,7 +125,7 @@ export default function AccountAutoSync() {
     let cancelled = false;
 
     async function loadRemoteSnapshot() {
-      const localState = extractPlannerSnapshotState(
+      const localState = extractAccountSyncSnapshotState(
         useMapStore.getState() as unknown as Record<string, unknown>
       );
       const hasLocalPersistedState = hasLocalPlannerSnapshotStorage(

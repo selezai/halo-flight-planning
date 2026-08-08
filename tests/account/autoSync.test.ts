@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAccountSyncSnapshotPayload,
   chooseAccountSyncRestoreState,
   createPlannerSnapshotFingerprint,
   DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE,
+  extractAccountSyncSnapshotState,
   hasLocalPlannerSnapshotStorage,
   hasMeaningfulLocalPlannerSnapshot,
   shouldSaveAccountSyncRestoreState,
@@ -141,5 +143,31 @@ describe('account auto sync helpers', () => {
     });
 
     expect(changedTransientState).toBe(baseline);
+  });
+
+  it('does not throw during autosync when legacy local planner fields are invalid', () => {
+    const legacyState = {
+      routeName: 'Legacy browser route',
+      activeAircraft: null,
+      weightBalanceLoading: {
+        fuelGal: 20,
+        stationWeights: {
+          pilot: undefined,
+        },
+      },
+      selectedFeature: {
+        id: 'transient-airspace',
+      },
+    };
+
+    expect(() => createPlannerSnapshotFingerprint(legacyState)).not.toThrow();
+    expect(() => extractAccountSyncSnapshotState(legacyState)).not.toThrow();
+    expect(() => buildAccountSyncSnapshotPayload(legacyState, new Date('2026-08-08T08:00:00Z'))).not.toThrow();
+
+    const snapshot = extractAccountSyncSnapshotState(legacyState);
+    expect(snapshot.routeName).toBe('Legacy browser route');
+    expect(snapshot.activeAircraft).toBeUndefined();
+    expect(snapshot.weightBalanceLoading).toBeUndefined();
+    expect(snapshot).not.toHaveProperty('selectedFeature');
   });
 });

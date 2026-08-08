@@ -1,7 +1,9 @@
 import {
-  extractPlannerSnapshotState,
   mergePlannerSnapshotStates,
   plannerSnapshotStateSchema,
+  PLANNER_SNAPSHOT_KEYS,
+  PLANNER_SNAPSHOT_VERSION,
+  type PlannerSnapshotPayload,
   type PlannerSnapshotState,
 } from '@/lib/account/plannerSnapshot';
 import {
@@ -54,11 +56,41 @@ export const DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE: PlannerSnapshotState = planner
 });
 
 export function createPlannerSnapshotFingerprint(source: Record<string, unknown>): string {
-  return JSON.stringify(extractPlannerSnapshotState(source));
+  return createPlannerSnapshotStateFingerprint(extractAccountSyncSnapshotState(source));
 }
 
 export function createPlannerSnapshotStateFingerprint(state: PlannerSnapshotState): string {
   return JSON.stringify(plannerSnapshotStateSchema.parse(state));
+}
+
+export function buildAccountSyncSnapshotPayload(
+  source: Record<string, unknown>,
+  now = new Date()
+): PlannerSnapshotPayload {
+  return {
+    version: PLANNER_SNAPSHOT_VERSION,
+    savedAt: now.toISOString(),
+    source: 'halo-browser',
+    state: extractAccountSyncSnapshotState(source),
+  };
+}
+
+export function extractAccountSyncSnapshotState(source: Record<string, unknown>): PlannerSnapshotState {
+  const snapshot: Record<string, unknown> = {};
+
+  for (const key of PLANNER_SNAPSHOT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+
+    const candidate = {
+      [key]: source[key],
+    };
+
+    if (plannerSnapshotStateSchema.safeParse(candidate).success) {
+      snapshot[key] = source[key];
+    }
+  }
+
+  return plannerSnapshotStateSchema.parse(snapshot);
 }
 
 export function hasLocalPlannerSnapshotStorage(storageValue: string | null | undefined): boolean {
