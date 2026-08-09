@@ -41,6 +41,7 @@ import {
   buildMissionDisplayName,
   cloneMissionPlannerState,
   createMissionRecord,
+  markMissionRecordFlown,
   sortMissionRecords,
   upsertMissionRecord,
 } from '@/lib/planning/missions';
@@ -135,6 +136,8 @@ export interface MapState {
   duplicateActiveMission: () => void;
   loadMission: (id: string) => void;
   archiveMission: (id: string) => void;
+  markMissionFlown: (id: string) => void;
+  duplicateMissionFromHistory: (id: string) => void;
   addRouteWaypoint: (waypoint: Waypoint) => void;
   insertRouteWaypoint: (index: number, waypoint: Waypoint) => void;
   addUserWaypoint: (coordinates: Coordinates) => string;
@@ -487,13 +490,21 @@ function normalizeMissionRecord(value: unknown): HaloMissionRecord | null {
     ? state.weightBalanceLoading
     : {};
   const updatedAtMs = Date.parse(value.updatedAt);
+  const status = normalizeMissionStatus(value.status);
+  const flownAtMs = typeof value.flownAt === 'string' ? Date.parse(value.flownAt) : NaN;
 
   return createMissionRecord({
     id: value.id,
-    status: normalizeMissionStatus(value.status),
+    status,
     now: Number.isFinite(updatedAtMs) ? new Date(updatedAtMs) : new Date(),
     name: value.name,
-    existing: value,
+    existing: {
+      ...value,
+      status,
+      flownAt: status === 'flown' && Number.isFinite(flownAtMs)
+        ? new Date(flownAtMs).toISOString()
+        : undefined,
+    },
     state: {
       ...createBlankMissionPlannerState(),
       center: normalizeCoordinates(state.center, [28.0, -26.0]),
@@ -977,7 +988,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
 
       loadMission: (id) => set((state) => {
         const target = state.missionLibrary.find((mission) => mission.id === id);
-        if (!target || target.status === 'archived') return state;
+        if (!target || target.status === 'archived' || target.status === 'flown') return state;
 
         const savedActive = buildSavedActiveMission(state);
 
@@ -989,9 +1000,80 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         };
       }),
 
+      markMissionFlown: (id) => set((state) => {
+        const now = new Date();
+
+        if (id === state.activeMissionId) {
+          const flownMission = createMissionRecord({
+            id: state.activeMissionId || DEFAULT_ACTIVE_MISSION_ID,
+            state: captureMissionPlannerState(state),
+            status: 'flown',
+            now,
+            existing: state.missionLibrary.find((mission) => mission.id === state.activeMissionId),
+          });
+          const blankId = createMissionId();
+          const blankRecord = createMissionRecord({
+            id: blankId,
+            state: createBlankMissionPlannerState(),
+            status: 'draft',
+            now,
+          });
+
+          return {
+            ...getMissionActivationState(blankRecord.state),
+            activeMissionId: blankId,
+            missionLibrary: upsertMissionRecord(
+              upsertMissionRecord(state.missionLibrary, flownMission),
+              blankRecord
+            ),
+            sidebarOpen: true,
+          };
+        }
+
+        const target = state.missionLibrary.find((mission) => mission.id === id);
+        if (!target || target.status === 'archived' || target.status === 'flown') return state;
+
+        return {
+          missionLibrary: upsertMissionRecord(
+            state.missionLibrary,
+            markMissionRecordFlown(target, now)
+          ),
+        };
+      }),
+
+      duplicateMissionFromHistory: (id) => set((state) => {
+        const target = state.missionLibrary.find((mission) => mission.id === id);
+        if (!target || target.status !== 'flown') return state;
+
+        const now = new Date();
+        const savedActive = buildSavedActiveMission(state, undefined, now);
+        const duplicateId = createMissionId();
+        const duplicateName = `Copy of ${target.name}`;
+        const duplicateRecord = createMissionRecord({
+          id: duplicateId,
+          state: {
+            ...cloneMissionPlannerState(target.state),
+            routeName: duplicateName,
+          },
+          status: 'draft',
+          now,
+          name: duplicateName,
+        });
+
+        return {
+          ...getMissionActivationState(duplicateRecord.state),
+          activeMissionId: duplicateId,
+          missionLibrary: upsertMissionRecord(
+            upsertMissionRecord(state.missionLibrary, savedActive),
+            duplicateRecord
+          ),
+          sidebarOpen: true,
+        };
+      }),
+
       archiveMission: (id) => set((state) => {
         const target = state.missionLibrary.find((mission) => mission.id === id);
-        if (!target) return state;
+        if (!target || target.status === 'flown') return state;
 
         const archivedMission = archiveMissionRecord(target);
         const missionLibrary = upsertMissionRecord(state.missionLibrary, archivedMission);

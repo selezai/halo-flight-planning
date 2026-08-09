@@ -10,7 +10,11 @@ import {
   buildMissionDisplayName,
   buildMissionRouteLabel,
   createMissionRecord,
+  getArchivedMissionRecords,
+  getDraftMissionRecords,
+  getFlightHistoryRecords,
   getMissionStatusFromHaloStatus,
+  markMissionRecordFlown,
   upsertMissionRecord,
 } from '@/lib/planning/missions';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
@@ -140,5 +144,54 @@ describe('mission library helpers', () => {
     expect(getMissionStatusFromHaloStatus('ready')).toBe('ready');
     expect(getMissionStatusFromHaloStatus('review')).toBe('needs-review');
     expect(getMissionStatusFromHaloStatus('stop')).toBe('needs-review');
+  });
+
+  it('marks a saved mission as flown with a flown timestamp', () => {
+    const record = createMissionRecord({
+      id: 'mission-1',
+      state: missionState({ routeName: 'Training nav', waypoints: [faor, fawb] }),
+      now: new Date('2026-07-21T08:00:00Z'),
+    });
+
+    const flown = markMissionRecordFlown(record, new Date('2026-07-21T10:30:00Z'));
+
+    expect(flown).toMatchObject({
+      id: 'mission-1',
+      name: 'Training nav',
+      status: 'flown',
+      flownAt: '2026-07-21T10:30:00.000Z',
+      updatedAt: '2026-07-21T10:30:00.000Z',
+      archivedAt: undefined,
+    });
+    expect(flown.state.waypoints).toEqual([faor, fawb]);
+  });
+
+  it('groups mission records for drafts, history, and archived UI tabs', () => {
+    const draft = createMissionRecord({
+      id: 'draft',
+      state: missionState({ routeName: 'Draft' }),
+      now: new Date('2026-07-21T08:00:00Z'),
+    });
+    const flown = markMissionRecordFlown(
+      createMissionRecord({
+        id: 'flown',
+        state: missionState({ routeName: 'Flown' }),
+        now: new Date('2026-07-21T09:00:00Z'),
+      }),
+      new Date('2026-07-21T11:00:00Z')
+    );
+    const archived = archiveMissionRecord(
+      createMissionRecord({
+        id: 'archived',
+        state: missionState({ routeName: 'Archived' }),
+        now: new Date('2026-07-21T10:00:00Z'),
+      }),
+      new Date('2026-07-21T12:00:00Z')
+    );
+    const records = [draft, flown, archived];
+
+    expect(getDraftMissionRecords(records).map((record) => record.id)).toEqual(['draft']);
+    expect(getFlightHistoryRecords(records).map((record) => record.id)).toEqual(['flown']);
+    expect(getArchivedMissionRecords(records).map((record) => record.id)).toEqual(['archived']);
   });
 });

@@ -98,6 +98,78 @@ describe('map store route planning actions', () => {
     expect(savedMission?.state.waypoints).toEqual([first, second]);
   });
 
+  it('marks the active mission flown and creates a new active draft', () => {
+    const first = createUserWaypoint([28.0, -26.0], 1);
+    const second = createUserWaypoint([28.5, -26.4], 2);
+
+    useMapStore.setState({
+      activeMissionId: 'mission-current-map',
+      missionLibrary: [],
+      routeName: 'Current map route',
+      waypoints: [first, second],
+      sidebarOpen: false,
+    });
+
+    useMapStore.getState().markMissionFlown('mission-current-map');
+
+    const state = useMapStore.getState();
+    const flownMission = state.missionLibrary.find((mission) => mission.id === 'mission-current-map');
+    const activeDraft = state.missionLibrary.find((mission) => mission.id === state.activeMissionId);
+
+    expect(flownMission).toMatchObject({
+      id: 'mission-current-map',
+      name: 'Current map route',
+      status: 'flown',
+      waypointCount: 2,
+    });
+    expect(flownMission?.flownAt).toBeDefined();
+    expect(flownMission?.state.waypoints).toEqual([first, second]);
+    expect(state.activeMissionId).not.toBe('mission-current-map');
+    expect(activeDraft?.status).toBe('draft');
+    expect(state.routeName).toBe('Untitled mission');
+    expect(state.waypoints).toEqual([]);
+    expect(state.sidebarOpen).toBe(true);
+  });
+
+  it('keeps history read-only while allowing duplicate-to-plan', () => {
+    const first = createUserWaypoint([28.0, -26.0], 1);
+    const second = createUserWaypoint([28.5, -26.4], 2);
+
+    useMapStore.setState({
+      activeMissionId: 'mission-history-source',
+      missionLibrary: [],
+      routeName: 'History source',
+      waypoints: [first, second],
+    });
+
+    useMapStore.getState().markMissionFlown('mission-history-source');
+    const blankDraftId = useMapStore.getState().activeMissionId;
+
+    useMapStore.getState().loadMission('mission-history-source');
+    expect(useMapStore.getState().activeMissionId).toBe(blankDraftId);
+
+    useMapStore.getState().duplicateMissionFromHistory('mission-history-source');
+
+    const state = useMapStore.getState();
+    const historyMission = state.missionLibrary.find((mission) => mission.id === 'mission-history-source');
+    const duplicate = state.missionLibrary.find((mission) => mission.id === state.activeMissionId);
+
+    expect(historyMission).toMatchObject({
+      id: 'mission-history-source',
+      name: 'History source',
+      status: 'flown',
+    });
+    expect(duplicate).toMatchObject({
+      name: 'Copy of History source',
+      status: 'draft',
+      waypointCount: 2,
+    });
+    expect(duplicate?.id).not.toBe(historyMission?.id);
+    expect(duplicate?.state.waypoints).toEqual([first, second]);
+    expect(historyMission?.state.routeName).toBe('History source');
+    expect(state.routeName).toBe('Copy of History source');
+  });
+
   it('clears selected inspect features without changing the active planner panel', () => {
     const airspace: ParsedFeature = {
       type: 'airspace',
@@ -434,6 +506,40 @@ describe('map store route planning actions', () => {
       ident: 'FAOR',
       name: 'FAOR',
       coordinates: [28.246, -26.139],
+    });
+  });
+
+  it('restores flown mission history with the flown timestamp', () => {
+    useMapStore.getState().restorePlannerSnapshotState({
+      missionLibrary: [
+        {
+          id: 'history-mission',
+          name: 'History mission',
+          status: 'flown',
+          createdAt: '2026-07-01T12:00:00.000Z',
+          updatedAt: '2026-07-01T13:00:00.000Z',
+          flownAt: '2026-07-01T13:00:00.000Z',
+          state: {
+            routeName: 'History mission',
+            waypoints: [
+              {
+                id: 'history-wp',
+                type: 'airport',
+                ident: 'FAOR',
+                coordinates: [28.246, -26.139],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const mission = useMapStore.getState().missionLibrary[0];
+    expect(mission).toMatchObject({
+      id: 'history-mission',
+      name: 'History mission',
+      status: 'flown',
+      flownAt: '2026-07-01T13:00:00.000Z',
     });
   });
 

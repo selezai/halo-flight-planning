@@ -68,6 +68,7 @@ export function createMissionRecord({
     waypointCount: state.waypoints.length,
     createdAt: existing?.createdAt ?? savedAt,
     updatedAt: savedAt,
+    flownAt: status === 'flown' ? existing?.flownAt ?? savedAt : undefined,
     archivedAt: status === 'archived' ? existing?.archivedAt ?? savedAt : undefined,
     state: cloneMissionPlannerState({
       ...state,
@@ -99,6 +100,18 @@ export function sortMissionRecords(records: HaloMissionRecord[]): HaloMissionRec
   });
 }
 
+export function getDraftMissionRecords(records: HaloMissionRecord[]): HaloMissionRecord[] {
+  return records.filter((record) => record.status !== 'archived' && record.status !== 'flown');
+}
+
+export function getFlightHistoryRecords(records: HaloMissionRecord[]): HaloMissionRecord[] {
+  return records.filter((record) => record.status === 'flown');
+}
+
+export function getArchivedMissionRecords(records: HaloMissionRecord[]): HaloMissionRecord[] {
+  return records.filter((record) => record.status === 'archived');
+}
+
 export function getMissionStatusFromHaloStatus(status: HaloMissionSummaryStatus): HaloMissionStatus {
   if (status === 'ready') return 'ready';
   if (status === 'idle') return 'draft';
@@ -116,6 +129,21 @@ export function archiveMissionRecord(
     status: 'archived',
     archivedAt,
     updatedAt: archivedAt,
+  };
+}
+
+export function markMissionRecordFlown(
+  record: HaloMissionRecord,
+  now = new Date()
+): HaloMissionRecord {
+  const flownAt = now.toISOString();
+
+  return {
+    ...record,
+    status: 'flown',
+    flownAt,
+    archivedAt: undefined,
+    updatedAt: flownAt,
   };
 }
 

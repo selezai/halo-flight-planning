@@ -10,6 +10,7 @@ import {
   Copy,
   Crosshair,
   FolderOpen,
+  History,
   Layers,
   MapPinned,
   Menu,
@@ -40,13 +41,20 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HALO_PANEL_META } from '@/components/shell/haloNavigation';
 import HaloLogo from '@/components/shell/HaloLogo';
 import { assessDataFreshness, FRESHNESS_THRESHOLDS_MINUTES } from '@/lib/planning/freshness';
 import { buildFlightAdminReview } from '@/lib/planning/flightAdmin';
 import { buildFilingWorkflowReview } from '@/lib/planning/filingReminder';
-import { getMissionStatusFromHaloStatus, sortMissionRecords } from '@/lib/planning/missions';
+import {
+  getArchivedMissionRecords,
+  getDraftMissionRecords,
+  getFlightHistoryRecords,
+  getMissionStatusFromHaloStatus,
+  sortMissionRecords,
+} from '@/lib/planning/missions';
 import { calculateRoute } from '@/lib/planning/navigation';
 import { formatLocationTrackingLabel } from '@/lib/planning/routeTracking';
 import { calculateWeightBalance } from '@/lib/planning/weightBalance';
@@ -104,6 +112,8 @@ export default function HaloAppShell() {
     duplicateActiveMission,
     loadMission,
     archiveMission,
+    markMissionFlown,
+    duplicateMissionFromHistory,
   } = useMapStore((state) => ({
     waypoints: state.waypoints,
     activeAircraft: state.activeAircraft,
@@ -141,6 +151,8 @@ export default function HaloAppShell() {
     duplicateActiveMission: state.duplicateActiveMission,
     loadMission: state.loadMission,
     archiveMission: state.archiveMission,
+    markMissionFlown: state.markMissionFlown,
+    duplicateMissionFromHistory: state.duplicateMissionFromHistory,
   }), shallow);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [missionLibraryOpen, setMissionLibraryOpen] = useState(false);
@@ -254,7 +266,7 @@ export default function HaloAppShell() {
     [missionLibrary]
   );
   const activeSavedMissionCount = useMemo(
-    () => sortedMissionLibrary.filter((savedMission) => savedMission.status !== 'archived').length,
+    () => getDraftMissionRecords(sortedMissionLibrary).length,
     [sortedMissionLibrary]
   );
 
@@ -498,6 +510,11 @@ export default function HaloAppShell() {
           setMissionLibraryOpen(false);
         }}
         onArchiveMission={archiveMission}
+        onMarkMissionFlown={markMissionFlown}
+        onDuplicateHistoryMission={(id) => {
+          duplicateMissionFromHistory(id);
+          setMissionLibraryOpen(false);
+        }}
       />
     </main>
   );
@@ -601,6 +618,8 @@ function MissionLibraryDialog({
   onDuplicateActive,
   onLoadMission,
   onArchiveMission,
+  onMarkMissionFlown,
+  onDuplicateHistoryMission,
 }: {
   activeMissionId: string;
   mission: ReturnType<typeof buildHaloMissionSummary>;
@@ -613,12 +632,20 @@ function MissionLibraryDialog({
   onDuplicateActive: () => void;
   onLoadMission: (id: string) => void;
   onArchiveMission: (id: string) => void;
+  onMarkMissionFlown: (id: string) => void;
+  onDuplicateHistoryMission: (id: string) => void;
 }) {
-  const activeMissions = missionLibrary.filter((savedMission) => savedMission.status !== 'archived');
-  const archivedMissions = missionLibrary.filter((savedMission) => savedMission.status === 'archived');
+  const [missionLibraryTab, setMissionLibraryTab] = useState('drafts');
+  const draftMissions = getDraftMissionRecords(missionLibrary);
+  const historyMissions = getFlightHistoryRecords(missionLibrary);
+  const archivedMissions = getArchivedMissionRecords(missionLibrary);
   const savedActiveMission = missionLibrary.find((savedMission) => savedMission.id === activeMissionId);
   const saved = Boolean(saveFeedback);
   const SaveIcon = saved ? CheckCircle2 : Save;
+  const markMissionFlown = (id: string) => {
+    onMarkMissionFlown(id);
+    setMissionLibraryTab('history');
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -637,98 +664,139 @@ function MissionLibraryDialog({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 p-5">
-          <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white to-cyan-50/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={cn('border px-2 py-1 capitalize', getStatusBadgeClass(mission.status))}>
-                    {mission.status}
-                  </Badge>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Active on map
-                  </span>
+        <Tabs value={missionLibraryTab} onValueChange={setMissionLibraryTab} className="p-5">
+          <TabsList className="grid h-10 w-full grid-cols-2 rounded-2xl bg-slate-100 p-1">
+            <TabsTrigger value="drafts" className="rounded-xl">
+              <BookOpen className="h-3.5 w-3.5" />
+              Drafts
+            </TabsTrigger>
+            <TabsTrigger value="history" className="rounded-xl">
+              <History className="h-3.5 w-3.5" />
+              History
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="drafts" className="mt-4 space-y-4">
+            <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white to-cyan-50/60 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={cn('border px-2 py-1 capitalize', getStatusBadgeClass(mission.status))}>
+                      {mission.status}
+                    </Badge>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      Active on map
+                    </span>
+                  </div>
+                  <h3 className="mt-2 line-clamp-1 text-base font-semibold text-slate-950">
+                    {savedActiveMission?.name ?? mission.title}
+                  </h3>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{mission.detail}</p>
                 </div>
-                <h3 className="mt-2 line-clamp-1 text-base font-semibold text-slate-950">
-                  {savedActiveMission?.name ?? mission.title}
-                </h3>
-                <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{mission.detail}</p>
               </div>
-            </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Button
-                type="button"
-                onClick={onSaveActive}
-                className={cn(
-                  'bg-slate-950 text-white hover:bg-slate-800',
-                  saved && 'bg-emerald-600 hover:bg-emerald-600'
-                )}
-                aria-live="polite"
-              >
-                <SaveIcon className="h-3.5 w-3.5" />
-                {saved ? 'Saved' : 'Save active'}
-              </Button>
-              <Button type="button" variant="outline" onClick={onDuplicateActive} className="border-slate-200 bg-white/80">
-                <Copy className="h-3.5 w-3.5" />
-                Duplicate
-              </Button>
-              <Button type="button" variant="outline" onClick={onCreateBlank} className="border-cyan-200 bg-cyan-50/70 text-cyan-950">
-                <PlusCircle className="h-3.5 w-3.5" />
-                New mission
-              </Button>
-            </div>
+              <div className="mt-4 grid grid-cols-1 gap-2 min-[460px]:grid-cols-2">
+                <Button
+                  type="button"
+                  onClick={onSaveActive}
+                  className={cn(
+                    'bg-slate-950 text-white hover:bg-slate-800',
+                    saved && 'bg-emerald-600 hover:bg-emerald-600'
+                  )}
+                  aria-live="polite"
+                >
+                  <SaveIcon className="h-3.5 w-3.5" />
+                  {saved ? 'Saved' : 'Save active'}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => markMissionFlown(activeMissionId)} className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Mark flown
+                </Button>
+                <Button type="button" variant="outline" onClick={onDuplicateActive} className="border-slate-200 bg-white/80">
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </Button>
+                <Button type="button" variant="outline" onClick={onCreateBlank} className="border-cyan-200 bg-cyan-50/70 text-cyan-950">
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  New mission
+                </Button>
+              </div>
 
-            {saveFeedback && (
-              <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800" aria-live="polite">
-                Saved to Missions · {saveFeedback.missionName} · {formatDateTimeShort(saveFeedback.savedAt)}
-              </p>
+              {saveFeedback && (
+                <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800" aria-live="polite">
+                  Saved to Missions · {saveFeedback.missionName} · {formatDateTimeShort(saveFeedback.savedAt)}
+                </p>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-950">Saved drafts</h3>
+                <span className="text-xs font-medium text-slate-500">{draftMissions.length} active</span>
+              </div>
+
+              {draftMissions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-600">
+                  Save this mission to keep it in your library. Halo still keeps the current active mission locally.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {draftMissions.map((savedMission) => (
+                    <MissionLibraryRow
+                      key={savedMission.id}
+                      mission={savedMission}
+                      active={savedMission.id === activeMissionId}
+                      onLoad={() => onLoadMission(savedMission.id)}
+                      onArchive={() => onArchiveMission(savedMission.id)}
+                      onMarkFlown={() => markMissionFlown(savedMission.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {archivedMissions.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-slate-950">Archived</h3>
+                <div className="space-y-2">
+                  {archivedMissions.map((savedMission) => (
+                    <MissionLibraryRow
+                      key={savedMission.id}
+                      mission={savedMission}
+                      active={false}
+                      archived
+                    />
+                  ))}
+                </div>
+              </section>
             )}
-          </section>
+          </TabsContent>
 
-          <section className="space-y-2">
+          <TabsContent value="history" className="mt-4 space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-950">Saved drafts</h3>
-              <span className="text-xs font-medium text-slate-500">{activeMissions.length} active</span>
+              <h3 className="text-sm font-semibold text-slate-950">Mission history</h3>
+              <span className="text-xs font-medium text-slate-500">{historyMissions.length} flown</span>
             </div>
 
-            {activeMissions.length === 0 ? (
+            {historyMissions.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-600">
-                Save this mission to keep it in your library. Halo still keeps the current active mission locally.
+                Mark a saved mission as flown to add it to history.
               </div>
             ) : (
               <div className="space-y-2">
-                {activeMissions.map((savedMission) => (
-                  <MissionLibraryRow
-                    key={savedMission.id}
-                    mission={savedMission}
-                    active={savedMission.id === activeMissionId}
-                    onLoad={() => onLoadMission(savedMission.id)}
-                    onArchive={() => onArchiveMission(savedMission.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {archivedMissions.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-slate-950">Archived</h3>
-              <div className="space-y-2">
-                {archivedMissions.map((savedMission) => (
+                {historyMissions.map((savedMission) => (
                   <MissionLibraryRow
                     key={savedMission.id}
                     mission={savedMission}
                     active={false}
-                    archived
-                    onLoad={() => undefined}
-                    onArchive={() => undefined}
+                    history
+                    onDuplicateFromHistory={() => onDuplicateHistoryMission(savedMission.id)}
                   />
                 ))}
               </div>
-            </section>
-          )}
-        </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
@@ -738,20 +806,32 @@ function MissionLibraryRow({
   mission,
   active,
   archived = false,
+  history = false,
   onLoad,
   onArchive,
+  onMarkFlown,
+  onDuplicateFromHistory,
 }: {
   mission: HaloMissionRecord;
   active: boolean;
   archived?: boolean;
-  onLoad: () => void;
-  onArchive: () => void;
+  history?: boolean;
+  onLoad?: () => void;
+  onArchive?: () => void;
+  onMarkFlown?: () => void;
+  onDuplicateFromHistory?: () => void;
 }) {
+  const waypointText = `${mission.waypointCount} waypoint${mission.waypointCount === 1 ? '' : 's'}`;
+  const activityText = history
+    ? `Flown ${formatDateTimeShort(mission.flownAt ?? mission.updatedAt)}`
+    : `Updated ${formatDateTimeShort(mission.updatedAt)}`;
+
   return (
     <article className={cn(
       'rounded-2xl border bg-white/80 p-3 shadow-sm shadow-slate-900/5',
       active ? 'border-cyan-200 ring-1 ring-cyan-100' : 'border-slate-200/80',
-      archived && 'bg-slate-50/80 opacity-75'
+      (archived || history) && 'bg-slate-50/80',
+      archived && 'opacity-75'
     )}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -768,11 +848,24 @@ function MissionLibraryRow({
           <h4 className="mt-2 line-clamp-1 text-sm font-semibold text-slate-950">{mission.name}</h4>
           <p className="mt-1 text-xs text-slate-600">{mission.routeLabel}</p>
           <p className="mt-1 text-xs text-slate-500">
-            {mission.aircraftLabel} · Updated {formatDateTimeShort(mission.updatedAt)}
+            {mission.aircraftLabel} · {waypointText} · {activityText}
           </p>
         </div>
-        {!archived && (
+        {history ? (
           <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onDuplicateFromHistory}
+              className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate to plan
+            </Button>
+          </div>
+        ) : !archived && (
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -783,6 +876,16 @@ function MissionLibraryRow({
             >
               <FolderOpen className="h-3.5 w-3.5" />
               Load
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onMarkFlown}
+              className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Mark flown
             </Button>
             <Button
               type="button"

@@ -397,6 +397,7 @@ export interface HaloMissionRecord {
   waypointCount: number;
   createdAt: string;
   updatedAt: string;
+  flownAt?: string;
   archivedAt?: string;
   state: HaloMissionPlannerState;
 }

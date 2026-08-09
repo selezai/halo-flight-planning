@@ -1,5 +1,95 @@
 # Halo Session Log
 
+## 2026-08-08 Mission History UI Implementation
+
+Problem / requested change:
+
+- Add Mission History inside the existing Mission Library UI.
+- Keep v1 as basic mission history, not a pilot logbook.
+- Support manual `Mark flown` and read-only history entries with `Duplicate to plan`.
+
+Solution:
+
+- Added a `flownAt` timestamp to saved mission records.
+- Added mission helpers for marking records flown and grouping Mission Library records into drafts, history, and archived lists.
+- Added store actions:
+  - `markMissionFlown(id)`
+  - `duplicateMissionFromHistory(id)`
+- Marking the active mission flown now snapshots the current planner state, writes a `flown` history entry, and creates a new active blank draft.
+- Flown/history entries cannot be loaded or archived directly; the UI exposes only `Duplicate to plan`.
+- Reworked the Mission Library dialog into `Drafts` and `History` tabs.
+
+Files modified:
+
+- `components/shell/HaloAppShell.tsx`
+- `lib/planning/missions.ts`
+- `stores/mapStore.ts`
+- `types/planning.ts`
+- `tests/planning/missions.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/missions.test.ts tests/stores/mapStore.test.ts`: passed, 38 files / 190 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual inspection were intentionally skipped per user preference.
+
+## 2026-08-08 Flight Logs / History Capability Check
+
+Question: does Halo currently have flight logs or history?
+
+Finding:
+
+- Halo has a Mission Library for saved planning drafts, mission switching, duplication, and archiving.
+- Saved missions include route/planner state, aircraft label, waypoint count, status, created/updated timestamps, and archived timestamp.
+- The code has a `flown` mission status type, but no UI/action currently marks missions as flown.
+- Halo does not currently have a dedicated flight logbook, completed-flight history, persisted GPS breadcrumb track, block/off/on/landing times, Hobbs/Tach fields, pilot remarks, or post-flight records.
+
+## 2026-08-08 Clerk Verification Branding Correction
+
+Objective: verify why Halo branding did not appear in the live email verification code message.
+
+Findings:
+
+- User-provided screenshot shows the live verification email is still using Clerk's default development template from the Vercel Marketplace Clerk resource `clerk-celeste-island`.
+- The deployed Halo app at `https://halo-flight-planning.vercel.app/` is using `fancy-burro-13.clerk.accounts.dev`.
+- The local Clerk CLI remains linked to a different app, `app_3HahEvSCHPXoBp44iz961RlsKp4` (`My Application`), whose development instance is `up-wallaby-87.clerk.accounts.dev`.
+- The previous CLI template branding update therefore targeted the wrong Clerk app and cannot affect emails sent by the live Halo deployment.
+- Clerk development-instance emails are expected to use Clerk's development sender domain/labeling; do not force custom production-style email behavior while Halo is still on the development Clerk instance.
+
+Decision:
+
+- Do not add workaround code or force email branding from the app.
+- Treat the live dev-mode verification email as acceptable for test pilots until Clerk/Vercel auth is aligned or a real production Clerk instance/domain is configured.
+
+## 2026-08-08 Clerk Pilotmerch Account Deletion Check
+
+Objective: delete the `pilotmerch` test account so it can be registered again.
+
+Findings:
+
+- The live app at `https://halo-flight-planning.vercel.app/` is booting with a Clerk test publishable key for `fancy-burro-13.clerk.accounts.dev`.
+- The local Clerk CLI is authenticated as `pilotmerch@gmail.com`, but it is linked to a different Clerk app, `app_3HahEvSCHPXoBp44iz961RlsKp4`, whose development instance uses `up-wallaby-87.clerk.accounts.dev`.
+- Listing users in the CLI-linked Clerk development instance returned no users, including no `pilotmerch@gmail.com` user.
+- Vercel has encrypted Production and Preview Clerk env vars attached through the `clerk-celeste-island` Marketplace integration, but `vercel env pull --environment=production` writes empty Clerk values locally.
+- Because no usable `CLERK_SECRET_KEY` for the live `fancy-burro-13` instance is available in the current CLI/session, deleting through automation would target the wrong Clerk instance.
+- A temporary preview-only deletion route was drafted locally for investigation, but the path was abandoned because Preview Deployment Protection added unnecessary complexity for this one-off task. The local route file, empty route directories, one-off token file, and temporary preview deployment `dpl_F9htwsdpnDaCPDxEDrjc8BEM7Z8k` were removed before any commit.
+
+Decision:
+
+- No account was deleted. Deleting from `up-wallaby-87` would not affect the live Halo login on `fancy-burro-13`.
+- No production code was changed or deployed.
+- User will delete the live test account manually in Clerk.
+- Current test-pilot users do not need to be retained when Halo moves from testing to real production; treat this auth/data set as disposable.
+
+Next operator step:
+
+- Open the Clerk Dashboard from the Vercel Marketplace integration resource `clerk-celeste-island`, select the live `fancy-burro-13` instance, and delete the `pilotmerch@gmail.com` user there.
+- Later, fix the repo/CLI auth alignment so future account and template operations target the same Clerk instance that the deployed Halo app uses.
+
 ## 2026-08-07 Clerk Revert + Aircraft Heading Slice
 
 Objective: revert the temporary Supabase auth swap back to Clerk because Halo's backend/account-sync path is not Supabase, then improve the aircraft marker heading so it follows the direction of travel.
@@ -3315,6 +3405,52 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
+
+## 2026-08-08 Clerk Verification Email Branding
+
+Objective:
+
+- Add Halo branding to the Clerk email verification code template used by the test-pilot email/password auth flow.
+
+Context:
+
+- The linked Clerk app is still the development instance `ins_3HahEtO1WB7MLYHxxu8LLEP1cAw`; no Clerk production instance exists yet.
+- `auth_email` is configured with `verify_at_sign_up: true` and `verification_strategies: ["email_code"]`.
+- The active verification template is Clerk email template `verification_code`.
+
+Change made:
+
+- Updated Clerk template `email/verification_code` through the Clerk API.
+- Changed the subject to `{{otp_code}} is your Halo verification code`.
+- Replaced the default body with a Halo-branded HTML email:
+  - Halo Flight Planning header.
+  - Public Halo icon URL from `https://halo-flight-planning.vercel.app/icon.svg`.
+  - Branded cyan/navy verification code panel.
+  - Pilot-account wording.
+  - Security note not to share the code.
+  - Request metadata using `{{requested_from}}` and `{{requested_at}}`.
+- Preserved the required `{{otp_code}}` variable.
+- Kept `delivered_by_clerk: true`.
+
+Verification:
+
+- Clerk preview before applying rendered subject `123456 is your Halo verification code` and contained Halo copy plus OTP.
+- Clerk API update returned:
+  - `is_custom: true`
+  - `enabled: true`
+  - `delivered_by_clerk: true`
+  - `hasHalo: true`
+  - `hasOtp: true`
+- Readback from Clerk confirmed:
+  - subject is `{{otp_code}} is your Halo verification code`
+  - `can_revert: true`
+  - body contains Halo Flight Planning, the hosted Halo icon, and `{{otp_code}}`.
+- Clerk preview after applying confirmed the rendered sender remains `notifications@accounts.dev` because this is still the development instance.
+
+Notes:
+
+- This external Clerk config change did not require app code changes or a Vercel deployment.
+- When a Clerk production instance is created later, this template must be copied to production.
 
 ## 2026-08-08 Production Account Sync Recovery Screen Hotfix
 
