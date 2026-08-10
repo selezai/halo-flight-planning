@@ -1,5 +1,38 @@
 # Halo Session Log
 
+## 2026-08-10 Neon Account Sync Env Repair
+
+Problem / requested fix:
+
+- Halo account sync was returning `/api/account/snapshot` HTTP 503 after sign-in.
+- User asked to repair `DATABASE_URL` and `POSTGRES_URL` using CLI/app tooling.
+
+Root cause:
+
+- The Vercel project had the Neon Marketplace resource `neon-amber-xylophone` connected, but the previously pulled Production env values for Neon normalized to empty quoted strings.
+- Without a usable Postgres URL, the account snapshot API could not connect to Neon, so account data could not persist or restore reliably across sign-out/sign-in, browser clearing, or other devices.
+
+Actions:
+
+- Used latest Vercel CLI `58.9.0` because the installed `48.10.2` CLI did not expose marketplace resource commands.
+- Inspected `neon-amber-xylophone` and confirmed it is an owned, available Neon resource connected to `halo-flight-planning`.
+- Ran a scoped disconnect/reconnect:
+  - `vercel integration-resource disconnect neon-amber-xylophone halo-flight-planning --yes`
+  - `vercel integration-resource connect neon-amber-xylophone halo-flight-planning -e production -e preview --yes`
+- Confirmed Vercel recreated Neon env vars for Production and Preview.
+- Confirmed a fresh Production env pull now includes real Postgres-shaped `DATABASE_URL` and `POSTGRES_URL` values.
+- Ran a read-only Neon connectivity smoke check; connection succeeded.
+- Confirmed `halo_planner_snapshots` does not exist yet. This is acceptable because the first authenticated snapshot save creates it idempotently through `ensureAccountSnapshotSchema()`.
+- Triggered a production redeploy with `vercel redeploy halo-flight-planning.vercel.app --no-wait` so the repaired env revision can reach runtime.
+
+Verification:
+
+- `vercel integration-resource inspect neon-amber-xylophone`: connected to `halo-flight-planning (production, preview)`.
+- `vercel env ls production`: Neon env vars recreated for Production and Preview.
+- Fresh env pull shape check: `DATABASE_URL` and `POSTGRES_URL` were present, non-empty, and started with a Postgres URL scheme.
+- Read-only DB smoke check: connected successfully; no DB mutations were run.
+- Production redeploy started and was intentionally not waited on.
+
 ## 2026-08-10 Mission Library Layout + Account Scope Hardening
 
 Problem / requested check:
