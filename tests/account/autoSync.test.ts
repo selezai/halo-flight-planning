@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACCOUNT_SYNC_OWNER_STORAGE_KEY,
   buildAccountSyncSnapshotPayload,
   chooseAccountSyncRestoreState,
   createPlannerSnapshotFingerprint,
@@ -7,7 +8,9 @@ import {
   extractAccountSyncSnapshotState,
   hasLocalPlannerSnapshotStorage,
   hasMeaningfulLocalPlannerSnapshot,
+  isLocalPlannerSnapshotTrustedForUser,
   shouldSaveAccountSyncRestoreState,
+  shouldResetLocalPlannerSnapshotForUser,
 } from '@/lib/account/autoSync';
 
 describe('account auto sync helpers', () => {
@@ -124,6 +127,49 @@ describe('account auto sync helpers', () => {
     expect(hasLocalPlannerSnapshotStorage(null)).toBe(false);
     expect(hasLocalPlannerSnapshotStorage('not-json')).toBe(false);
     expect(hasLocalPlannerSnapshotStorage(JSON.stringify({ state: DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE, version: 3 }))).toBe(true);
+  });
+
+  it('trusts browser planner data only for the same signed-in account owner', () => {
+    expect(ACCOUNT_SYNC_OWNER_STORAGE_KEY).toBe('halo-account-sync-owner');
+
+    expect(isLocalPlannerSnapshotTrustedForUser({
+      currentUserId: 'user_a',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: 'user_a',
+    })).toBe(true);
+    expect(shouldResetLocalPlannerSnapshotForUser({
+      currentUserId: 'user_a',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: 'user_a',
+    })).toBe(false);
+
+    expect(isLocalPlannerSnapshotTrustedForUser({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: 'user_a',
+    })).toBe(false);
+    expect(shouldResetLocalPlannerSnapshotForUser({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: 'user_a',
+    })).toBe(true);
+
+    expect(isLocalPlannerSnapshotTrustedForUser({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: null,
+    })).toBe(false);
+    expect(shouldResetLocalPlannerSnapshotForUser({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: null,
+    })).toBe(true);
+
+    expect(shouldResetLocalPlannerSnapshotForUser({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: false,
+      storedOwnerUserId: 'user_a',
+    })).toBe(false);
   });
 
   it('fingerprints only account snapshot fields and ignores transient UI/navigation state', () => {

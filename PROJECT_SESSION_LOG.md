@@ -1,5 +1,47 @@
 # Halo Session Log
 
+## 2026-08-10 Same-Browser Account Isolation Check
+
+Problem / requested check:
+
+- Verify that signing into a different Halo account on the same browser/device does not load or save the previous account's planner data.
+
+Root cause:
+
+- Server snapshots are correctly scoped by Clerk `userId`.
+- The browser Zustand store uses one shared local storage key, `halo-map-store`, for the device/browser.
+- Account auto-sync previously treated any meaningful local planner state as mergeable local data, without knowing which Clerk user wrote it.
+- If Account B signed in after Account A on the same browser and Account B had no remote snapshot yet, Account A's local planner state could be saved into Account B's account snapshot.
+
+Solution:
+
+- Added a local account-owner marker, `halo-account-sync-owner`.
+- Local planner state is now trusted only when that marker matches the currently signed-in Clerk user id.
+- If the marker is missing or belongs to another account, Halo resets local planner state to the default account-sync snapshot before remote merge/save decisions.
+- Added an account-scoped client boundary so the planner shell does not render until the local account-owner check has run, preventing a previous account's planner from flashing for the new account.
+- Included the owner marker in Halo local recovery export/reset handling.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `components/auth/AccountAutoSync.tsx`
+- `components/auth/AccountScopedPlanner.tsx`
+- `lib/account/autoSync.ts`
+- `lib/recovery/haloClientRecovery.ts`
+- `tests/account/autoSync.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/account/autoSync.test.ts tests/account/plannerSnapshot.test.ts tests/account/snapshotApi.test.ts tests/recovery/haloClientRecovery.test.ts`: passed, 38 files / 191 tests.
+- `pnpm typecheck`: failed once on TypeScript narrowing for `user.id` inside the async loader.
+- Fixed by capturing the guarded Clerk id into `signedInUserId` before defining the loader.
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed, 38 files / 191 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- Playwright and visual testing were not run.
+
 ## 2026-08-08 Mission History UI Implementation
 
 Problem / requested change:

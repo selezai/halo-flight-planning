@@ -55,6 +55,8 @@ export const DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE: PlannerSnapshotState = planner
   personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
 });
 
+export const ACCOUNT_SYNC_OWNER_STORAGE_KEY = 'halo-account-sync-owner';
+
 export function createPlannerSnapshotFingerprint(source: Record<string, unknown>): string {
   return createPlannerSnapshotStateFingerprint(extractAccountSyncSnapshotState(source));
 }
@@ -102,6 +104,30 @@ export function hasLocalPlannerSnapshotStorage(storageValue: string | null | und
   } catch {
     return false;
   }
+}
+
+export function isLocalPlannerSnapshotTrustedForUser({
+  currentUserId,
+  hasLocalPersistedState,
+  storedOwnerUserId,
+}: {
+  currentUserId: string;
+  hasLocalPersistedState: boolean;
+  storedOwnerUserId: string | null | undefined;
+}): boolean {
+  return hasLocalPersistedState && storedOwnerUserId === currentUserId;
+}
+
+export function shouldResetLocalPlannerSnapshotForUser({
+  currentUserId,
+  hasLocalPersistedState,
+  storedOwnerUserId,
+}: {
+  currentUserId: string;
+  hasLocalPersistedState: boolean;
+  storedOwnerUserId: string | null | undefined;
+}): boolean {
+  return hasLocalPersistedState && storedOwnerUserId !== currentUserId;
 }
 
 export function hasMeaningfulLocalPlannerSnapshot(localState: PlannerSnapshotState): boolean {

@@ -1,4 +1,5 @@
 import { HALO_OFFLINE_MISSION_SNAPSHOT_KEY } from '@/lib/planning/offlineMission';
+import { ACCOUNT_SYNC_OWNER_STORAGE_KEY } from '@/lib/account/autoSync';
 
 export const HALO_MAP_STORE_KEY = 'halo-map-store';
 export const HALO_RECOVERY_BACKUP_PREFIX = 'halo-recovery-backup-';
@@ -8,6 +9,7 @@ export const HALO_BUILD_ID = process.env.NEXT_PUBLIC_HALO_BUILD_ID || 'local';
 
 export const HALO_LOCAL_STORAGE_KEYS = [
   HALO_MAP_STORE_KEY,
+  ACCOUNT_SYNC_OWNER_STORAGE_KEY,
   HALO_OFFLINE_MISSION_SNAPSHOT_KEY,
 ] as const;
 

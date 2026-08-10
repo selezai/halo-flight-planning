@@ -4,13 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { type StoredPlannerSnapshot } from '@/lib/account/plannerSnapshot';
 import {
+  ACCOUNT_SYNC_OWNER_STORAGE_KEY,
   buildAccountSyncSnapshotPayload,
   chooseAccountSyncRestoreState,
   createPlannerSnapshotFingerprint,
   createPlannerSnapshotStateFingerprint,
+  DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE,
   extractAccountSyncSnapshotState,
   hasLocalPlannerSnapshotStorage,
+  isLocalPlannerSnapshotTrustedForUser,
   shouldSaveAccountSyncRestoreState,
+  shouldResetLocalPlannerSnapshotForUser,
 } from '@/lib/account/autoSync';
 import { HALO_MAP_STORE_KEY } from '@/lib/recovery/haloClientRecovery';
 import { useMapStore } from '@/stores/mapStore';
@@ -123,14 +127,32 @@ export default function AccountAutoSync() {
     if (!isSignedIn || !user?.id) return;
 
     let cancelled = false;
+    const signedInUserId = user.id;
 
     async function loadRemoteSnapshot() {
-      const localState = extractAccountSyncSnapshotState(
-        useMapStore.getState() as unknown as Record<string, unknown>
-      );
       const hasLocalPersistedState = hasLocalPlannerSnapshotStorage(
         readBrowserStorageValue(HALO_MAP_STORE_KEY)
       );
+      const storedOwnerUserId = readBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY);
+      const localSnapshotTrusted = isLocalPlannerSnapshotTrustedForUser({
+        currentUserId: signedInUserId,
+        hasLocalPersistedState,
+        storedOwnerUserId,
+      });
+
+      if (shouldResetLocalPlannerSnapshotForUser({
+        currentUserId: signedInUserId,
+        hasLocalPersistedState,
+        storedOwnerUserId,
+      })) {
+        restorePlannerSnapshotState(DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE);
+      }
+
+      const localState = localSnapshotTrusted
+        ? extractAccountSyncSnapshotState(
+            useMapStore.getState() as unknown as Record<string, unknown>
+          )
+        : DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE;
 
       try {
         const response = await fetch('/api/account/snapshot', {
@@ -151,12 +173,12 @@ export default function AccountAutoSync() {
           const shouldSaveRestoredState = shouldSaveAccountSyncRestoreState({
             localState,
             remoteState: payload.snapshot.snapshot.state,
-            hasLocalPersistedState,
+            hasLocalPersistedState: localSnapshotTrusted,
           });
           const restoreState = chooseAccountSyncRestoreState({
             localState,
             remoteState: payload.snapshot.snapshot.state,
-            hasLocalPersistedState,
+            hasLocalPersistedState: localSnapshotTrusted,
           });
 
           restorePlannerSnapshotState(restoreState);
@@ -166,13 +188,14 @@ export default function AccountAutoSync() {
                 useMapStore.getState() as unknown as Record<string, unknown>
               );
         } else {
-          lastSavedFingerprintRef.current = hasLocalPersistedState
+          lastSavedFingerprintRef.current = localSnapshotTrusted
             ? null
             : createPlannerSnapshotFingerprint(
                 useMapStore.getState() as unknown as Record<string, unknown>
               );
         }
 
+        writeBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY, signedInUserId);
         syncReadyRef.current = true;
         setSyncReady(true);
       } catch (error) {
@@ -229,6 +252,16 @@ function readBrowserStorageValue(key: string): string | null {
     return window.localStorage.getItem(key);
   } catch {
     return null;
+  }
+}
+
+function writeBrowserStorageValue(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Account sync should still work when browser storage is blocked.
   }
 }
 
