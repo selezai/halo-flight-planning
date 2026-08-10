@@ -664,8 +664,8 @@ function MissionLibraryDialog({
           </div>
         </DialogHeader>
 
-        <Tabs value={missionLibraryTab} onValueChange={setMissionLibraryTab} className="p-5">
-          <TabsList className="grid h-10 w-full grid-cols-2 rounded-2xl bg-slate-100 p-1">
+        <Tabs value={missionLibraryTab} onValueChange={setMissionLibraryTab} className="w-full min-w-0 gap-4 p-4 sm:p-5">
+          <TabsList className="grid h-11 w-full grid-cols-2 rounded-2xl bg-slate-100 p-1">
             <TabsTrigger value="drafts" className="rounded-xl">
               <BookOpen className="h-3.5 w-3.5" />
               Drafts
@@ -676,9 +676,9 @@ function MissionLibraryDialog({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="drafts" className="mt-4 space-y-4">
-            <section className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white to-cyan-50/60 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+          <TabsContent value="drafts" className="mt-0 w-full min-w-0 space-y-4">
+            <section className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-cyan-50/60 p-3 sm:p-4">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge className={cn('border px-2 py-1 capitalize', getStatusBadgeClass(mission.status))}>
@@ -693,33 +693,33 @@ function MissionLibraryDialog({
                   </h3>
                   <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{mission.detail}</p>
                 </div>
-              </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-2 min-[460px]:grid-cols-2">
-                <Button
-                  type="button"
-                  onClick={onSaveActive}
-                  className={cn(
-                    'bg-slate-950 text-white hover:bg-slate-800',
-                    saved && 'bg-emerald-600 hover:bg-emerald-600'
-                  )}
-                  aria-live="polite"
-                >
-                  <SaveIcon className="h-3.5 w-3.5" />
-                  {saved ? 'Saved' : 'Save active'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => markMissionFlown(activeMissionId)} className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Mark flown
-                </Button>
-                <Button type="button" variant="outline" onClick={onDuplicateActive} className="border-slate-200 bg-white/80">
-                  <Copy className="h-3.5 w-3.5" />
-                  Duplicate
-                </Button>
-                <Button type="button" variant="outline" onClick={onCreateBlank} className="border-cyan-200 bg-cyan-50/70 text-cyan-950">
-                  <PlusCircle className="h-3.5 w-3.5" />
-                  New mission
-                </Button>
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:grid-cols-1">
+                  <Button
+                    type="button"
+                    onClick={onSaveActive}
+                    className={cn(
+                      'w-full bg-slate-950 text-white hover:bg-slate-800',
+                      saved && 'bg-emerald-600 hover:bg-emerald-600'
+                    )}
+                    aria-live="polite"
+                  >
+                    <SaveIcon className="h-3.5 w-3.5" />
+                    {saved ? 'Saved' : 'Save active'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => markMissionFlown(activeMissionId)} className="w-full border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Mark flown
+                  </Button>
+                  <Button type="button" variant="outline" onClick={onDuplicateActive} className="w-full border-slate-200 bg-white/80">
+                    <Copy className="h-3.5 w-3.5" />
+                    Duplicate
+                  </Button>
+                  <Button type="button" variant="outline" onClick={onCreateBlank} className="w-full border-cyan-200 bg-cyan-50/70 text-cyan-950">
+                    <PlusCircle className="h-3.5 w-3.5" />
+                    New mission
+                  </Button>
+                </div>
               </div>
 
               {saveFeedback && (
@@ -772,7 +772,7 @@ function MissionLibraryDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4 space-y-2">
+          <TabsContent value="history" className="mt-0 w-full min-w-0 space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-950">Mission history</h3>
               <span className="text-xs font-medium text-slate-500">{historyMissions.length} flown</span>

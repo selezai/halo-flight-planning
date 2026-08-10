@@ -1,5 +1,42 @@
 # Halo Session Log
 
+## 2026-08-10 Mission Library Responsive Reconstruction
+
+Problem / requested fix:
+
+- The Mission Library saved missions/drafts tab still rendered out of order on tablet/mobile widths.
+- The visible symptom was the Drafts/History tab strip and content sitting side-by-side, squeezing the active mission card into a narrow column.
+
+Root cause:
+
+- The shared `Tabs` component used `data-horizontal:*` and `group-data-horizontal:*` selectors, but the Radix tabs root exposes `data-orientation="horizontal"`.
+- Because those selectors never matched, horizontal tabs kept the default `flex-row` layout and placed the tab list beside the tab content.
+- The tab trigger active-state selectors also used `data-active:*` instead of Radix `data-state="active"`.
+
+Solution:
+
+- Updated `components/ui/tabs.tsx` so horizontal tabs render as `flex-col` directly from the `orientation` prop.
+- Updated tabs list/trigger orientation and active-state selectors to match Radix data attributes.
+- Reworked the Mission Library dialog tab layout:
+  - tab list is always full-width above content;
+  - draft/history content is full-width with `min-w-0`;
+  - active mission card actions are stacked or two-column on mobile/tablet and only move to a desktop side column at large widths;
+  - history/draft rows retain predictable stacked behavior on smaller widths.
+
+Files modified:
+
+- `components/ui/tabs.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/planning/missions.test.ts tests/stores/mapStore.test.ts`: passed, 38 files / 192 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual testing were not run per user preference.
+
 ## 2026-08-10 Neon Account Sync Env Repair
 
 Problem / requested fix:
