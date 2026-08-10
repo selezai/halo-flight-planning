@@ -9,6 +9,7 @@ import {
   hasLocalPlannerSnapshotStorage,
   hasMeaningfulLocalPlannerSnapshot,
   isLocalPlannerSnapshotTrustedForUser,
+  resolveAccountScopedPlannerStorage,
   shouldSaveAccountSyncRestoreState,
   shouldResetLocalPlannerSnapshotForUser,
 } from '@/lib/account/autoSync';
@@ -170,6 +171,38 @@ describe('account auto sync helpers', () => {
       hasLocalPersistedState: false,
       storedOwnerUserId: 'user_a',
     })).toBe(false);
+  });
+
+  it('claims the browser owner for the signed-in account before cloud sync availability matters', () => {
+    expect(resolveAccountScopedPlannerStorage({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: 'user_a',
+    })).toEqual({
+      ownerUserId: 'user_b',
+      shouldResetLocalPlannerState: true,
+      localSnapshotTrusted: false,
+    });
+
+    expect(resolveAccountScopedPlannerStorage({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: true,
+      storedOwnerUserId: null,
+    })).toEqual({
+      ownerUserId: 'user_b',
+      shouldResetLocalPlannerState: true,
+      localSnapshotTrusted: false,
+    });
+
+    expect(resolveAccountScopedPlannerStorage({
+      currentUserId: 'user_b',
+      hasLocalPersistedState: false,
+      storedOwnerUserId: 'user_a',
+    })).toEqual({
+      ownerUserId: 'user_b',
+      shouldResetLocalPlannerState: false,
+      localSnapshotTrusted: false,
+    });
   });
 
   it('fingerprints only account snapshot fields and ignores transient UI/navigation state', () => {

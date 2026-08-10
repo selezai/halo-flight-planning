@@ -649,7 +649,7 @@ function MissionLibraryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(92dvh,760px)] overflow-y-auto rounded-[1.75rem] border-white/70 bg-white/95 p-0 shadow-[0_30px_100px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:max-w-2xl">
+      <DialogContent className="max-h-[min(92dvh,760px)] overflow-x-hidden overflow-y-auto rounded-[1.75rem] border-white/70 bg-white/95 p-0 shadow-[0_30px_100px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:max-w-2xl">
         <DialogHeader className="border-b border-slate-200/70 px-5 py-4 pr-12">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800 ring-1 ring-cyan-100">
@@ -833,7 +833,7 @@ function MissionLibraryRow({
       (archived || history) && 'bg-slate-50/80',
       archived && 'opacity-75'
     )}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="grid gap-3 min-[680px]:grid-cols-[minmax(0,1fr)_auto] min-[680px]:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={cn('border px-2 py-1 text-[10px] capitalize', getSavedMissionStatusClass(mission.status))}>
@@ -852,27 +852,27 @@ function MissionLibraryRow({
           </p>
         </div>
         {history ? (
-          <div className="flex shrink-0 gap-2">
+          <div className="grid w-full gap-2 min-[680px]:w-auto">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={onDuplicateFromHistory}
-              className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80"
+              className="w-full border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80 min-[680px]:w-auto"
             >
               <Copy className="h-3.5 w-3.5" />
               Duplicate to plan
             </Button>
           </div>
         ) : !archived && (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 min-[680px]:w-[15.5rem]">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={onLoad}
               disabled={active}
-              className="border-slate-200 bg-white/80"
+              className="w-full border-slate-200 bg-white/80"
             >
               <FolderOpen className="h-3.5 w-3.5" />
               Load
@@ -882,7 +882,7 @@ function MissionLibraryRow({
               variant="outline"
               size="sm"
               onClick={onMarkFlown}
-              className="border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80"
+              className="w-full border-cyan-200 bg-cyan-50/70 text-cyan-950 hover:bg-cyan-100/80"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               Mark flown
@@ -892,7 +892,7 @@ function MissionLibraryRow({
               variant="outline"
               size="sm"
               onClick={onArchive}
-              className="border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100/80"
+              className="col-span-2 w-full border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100/80"
             >
               <Archive className="h-3.5 w-3.5" />
               Archive

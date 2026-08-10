@@ -5,7 +5,7 @@ import {
   ACCOUNT_SYNC_OWNER_STORAGE_KEY,
   DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE,
   hasLocalPlannerSnapshotStorage,
-  shouldResetLocalPlannerSnapshotForUser,
+  resolveAccountScopedPlannerStorage,
 } from '@/lib/account/autoSync';
 import { HALO_MAP_STORE_KEY } from '@/lib/recovery/haloClientRecovery';
 import { useMapStore } from '@/stores/mapStore';
@@ -23,14 +23,17 @@ export default function AccountScopedPlanner({ userId }: { userId: string }) {
     );
     const storedOwnerUserId = readBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY);
 
-    if (shouldResetLocalPlannerSnapshotForUser({
+    const scopeResolution = resolveAccountScopedPlannerStorage({
       currentUserId: userId,
       hasLocalPersistedState,
       storedOwnerUserId,
-    })) {
+    });
+
+    if (scopeResolution.shouldResetLocalPlannerState) {
       restorePlannerSnapshotState(DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE);
     }
 
+    writeBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY, scopeResolution.ownerUserId);
     setAccountScopeChecked(true);
   }, [restorePlannerSnapshotState, userId]);
 
@@ -60,5 +63,15 @@ function readBrowserStorageValue(key: string): string | null {
     return window.localStorage.getItem(key);
   } catch {
     return null;
+  }
+}
+
+function writeBrowserStorageValue(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Account scoping should not crash the planner when browser storage is blocked.
   }
 }

@@ -1,5 +1,45 @@
 # Halo Session Log
 
+## 2026-08-10 Mission Library Layout + Account Scope Hardening
+
+Problem / requested check:
+
+- The Mission Library saved drafts layout was out of order on tablet/mobile width.
+- Re-check the same-browser account isolation fix with more scrutiny.
+
+Root cause:
+
+- Mission rows placed mission details and action buttons in a wrapping flex row. At tablet widths, the shrink-wrapped action group could steal horizontal space and make controls appear out of order.
+- The previous account isolation fix reset mismatched local planner data before rendering, but the local owner marker was only written after `/api/account/snapshot` loaded successfully.
+- Production account sync is currently not healthy: `vercel env pull --environment=production` shows Neon-related env keys are present but all pulled Neon values normalize to empty quoted strings, including `DATABASE_URL`, `POSTGRES_URL`, `PGHOST`, `PGUSER`, `PGPASSWORD`, and `NEON_PROJECT_ID`.
+- Vercel Marketplace lists the Neon resource `neon-amber-xylophone` as connected to `halo-flight-planning`, so the issue is empty/unusable provisioned env values rather than a missing code migration.
+
+Solution:
+
+- Changed Mission Library rows to a stable grid: mission details first, action buttons in a predictable button grid, with side-by-side layout only once there is enough width.
+- Added `overflow-x-hidden` to the Mission Library dialog as a defensive guard against accidental horizontal overflow.
+- Added `resolveAccountScopedPlannerStorage()` so account startup decisions are centralized.
+- `AccountScopedPlanner` and `AccountAutoSync` now write `halo-account-sync-owner` for the signed-in Clerk user before cloud sync availability matters.
+- This means if Account B signs in while account sync is returning 503, Account B still claims local browser ownership immediately after any reset, preventing those edits from later being trusted as Account A's data.
+
+Files modified:
+
+- `components/shell/HaloAppShell.tsx`
+- `components/auth/AccountAutoSync.tsx`
+- `components/auth/AccountScopedPlanner.tsx`
+- `lib/account/autoSync.ts`
+- `tests/account/autoSync.test.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/account/autoSync.test.ts tests/account/snapshotApi.test.ts tests/stores/mapStore.test.ts tests/planning/missions.test.ts`: passed, 38 files / 192 tests.
+- `git diff --check`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Playwright and visual testing were not run per user preference.
+
 ## 2026-08-10 Same-Browser Account Isolation Check
 
 Problem / requested check:

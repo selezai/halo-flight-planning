@@ -130,6 +130,34 @@ export function shouldResetLocalPlannerSnapshotForUser({
   return hasLocalPersistedState && storedOwnerUserId !== currentUserId;
 }
 
+export function resolveAccountScopedPlannerStorage({
+  currentUserId,
+  hasLocalPersistedState,
+  storedOwnerUserId,
+}: {
+  currentUserId: string;
+  hasLocalPersistedState: boolean;
+  storedOwnerUserId: string | null | undefined;
+}): {
+  ownerUserId: string;
+  shouldResetLocalPlannerState: boolean;
+  localSnapshotTrusted: boolean;
+} {
+  return {
+    ownerUserId: currentUserId,
+    shouldResetLocalPlannerState: shouldResetLocalPlannerSnapshotForUser({
+      currentUserId,
+      hasLocalPersistedState,
+      storedOwnerUserId,
+    }),
+    localSnapshotTrusted: isLocalPlannerSnapshotTrustedForUser({
+      currentUserId,
+      hasLocalPersistedState,
+      storedOwnerUserId,
+    }),
+  };
+}
+
 export function hasMeaningfulLocalPlannerSnapshot(localState: PlannerSnapshotState): boolean {
   return createPlannerSnapshotStateFingerprint(localState) !== createPlannerSnapshotStateFingerprint(DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE);
 }

@@ -12,9 +12,8 @@ import {
   DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE,
   extractAccountSyncSnapshotState,
   hasLocalPlannerSnapshotStorage,
-  isLocalPlannerSnapshotTrustedForUser,
+  resolveAccountScopedPlannerStorage,
   shouldSaveAccountSyncRestoreState,
-  shouldResetLocalPlannerSnapshotForUser,
 } from '@/lib/account/autoSync';
 import { HALO_MAP_STORE_KEY } from '@/lib/recovery/haloClientRecovery';
 import { useMapStore } from '@/stores/mapStore';
@@ -134,21 +133,18 @@ export default function AccountAutoSync() {
         readBrowserStorageValue(HALO_MAP_STORE_KEY)
       );
       const storedOwnerUserId = readBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY);
-      const localSnapshotTrusted = isLocalPlannerSnapshotTrustedForUser({
+      const scopeResolution = resolveAccountScopedPlannerStorage({
         currentUserId: signedInUserId,
         hasLocalPersistedState,
         storedOwnerUserId,
       });
 
-      if (shouldResetLocalPlannerSnapshotForUser({
-        currentUserId: signedInUserId,
-        hasLocalPersistedState,
-        storedOwnerUserId,
-      })) {
+      if (scopeResolution.shouldResetLocalPlannerState) {
         restorePlannerSnapshotState(DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE);
       }
+      writeBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY, scopeResolution.ownerUserId);
 
-      const localState = localSnapshotTrusted
+      const localState = scopeResolution.localSnapshotTrusted
         ? extractAccountSyncSnapshotState(
             useMapStore.getState() as unknown as Record<string, unknown>
           )
@@ -173,12 +169,12 @@ export default function AccountAutoSync() {
           const shouldSaveRestoredState = shouldSaveAccountSyncRestoreState({
             localState,
             remoteState: payload.snapshot.snapshot.state,
-            hasLocalPersistedState: localSnapshotTrusted,
+            hasLocalPersistedState: scopeResolution.localSnapshotTrusted,
           });
           const restoreState = chooseAccountSyncRestoreState({
             localState,
             remoteState: payload.snapshot.snapshot.state,
-            hasLocalPersistedState: localSnapshotTrusted,
+            hasLocalPersistedState: scopeResolution.localSnapshotTrusted,
           });
 
           restorePlannerSnapshotState(restoreState);
@@ -188,14 +184,13 @@ export default function AccountAutoSync() {
                 useMapStore.getState() as unknown as Record<string, unknown>
               );
         } else {
-          lastSavedFingerprintRef.current = localSnapshotTrusted
+          lastSavedFingerprintRef.current = scopeResolution.localSnapshotTrusted
             ? null
             : createPlannerSnapshotFingerprint(
                 useMapStore.getState() as unknown as Record<string, unknown>
               );
         }
 
-        writeBrowserStorageValue(ACCOUNT_SYNC_OWNER_STORAGE_KEY, signedInUserId);
         syncReadyRef.current = true;
         setSyncReady(true);
       } catch (error) {
