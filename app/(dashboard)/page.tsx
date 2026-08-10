@@ -3,16 +3,51 @@ import AccountScopedPlanner from '@/components/auth/AccountScopedPlanner';
 import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import HaloAppShell from '@/components/shell/HaloAppShell';
 import HaloLogo from '@/components/shell/HaloLogo';
+import TestPilotTracker from '@/components/testing/TestPilotTracker';
 import { isClerkConfigured } from '@/lib/auth/accountAuth';
+import {
+  resolveTestPilotLinkContext,
+  type TestPilotSearchParams,
+} from '@/lib/testing/testPilotAccess';
 
-export default async function DashboardPage() {
+type DashboardPageProps = {
+  searchParams?: Promise<TestPilotSearchParams>;
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
+  const testPilotContext = resolveTestPilotLinkContext((await searchParams) ?? {});
+
   if (!isClerkConfigured()) {
-    return <HaloAppShell />;
+    return (
+      <>
+        {testPilotContext.enabled ? (
+          <TestPilotTracker
+            source={testPilotContext.source}
+            pilotCode={testPilotContext.pilotCode}
+          />
+        ) : null}
+        <HaloAppShell />
+      </>
+    );
   }
 
   const { userId } = await auth();
 
   if (!userId) {
+    if (testPilotContext.enabled) {
+      return (
+        <>
+          <TestPilotTracker
+            source={testPilotContext.source}
+            pilotCode={testPilotContext.pilotCode}
+          />
+          <HaloAppShell />
+        </>
+      );
+    }
+
     return <PlannerAccessGate />;
   }
 

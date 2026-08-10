@@ -1,5 +1,26 @@
 # Halo Session Log
 
+## 2026-08-10 Mission Library Production Promotion
+
+Problem / requested check:
+
+- User noticed the Mission Library responsive layout deployment appeared as Preview only in Vercel, so production was still showing the old broken layout.
+
+Finding:
+
+- `origin/main` and the working branch both pointed at `b0c78b0`.
+- Vercel had created the `b0c78b0` deployment as Preview (`halo-flight-planning-pkedokn7g...`), but the production alias still pointed at the older `dpl_FeY7a4tL9XARpcBiUTwncAkAouy1` deployment.
+
+Action:
+
+- Promoted the ready `b0c78b0` preview deployment to production with Vercel CLI.
+- Vercel created production deployment `dpl_AbWeQZbXZrvYonoymmsMfXEGW5ij`.
+
+Verification:
+
+- `vercel inspect halo-flight-planning-kluqlprgu-pilotmerch-gmailcoms-projects.vercel.app`: status `Ready`, target `production`.
+- The production deployment aliases include `https://halo-flight-planning.vercel.app`.
+
 ## 2026-08-10 Mission Library Responsive Reconstruction
 
 Problem / requested fix:
@@ -3557,6 +3578,63 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
+
+## 2026-08-10 Test Pilot Access
+
+Problem / requested change:
+
+- The first real-pilot testing day showed interest but signup was acting as an activation barrier.
+- Add a "Continue as test pilot" path so invited pilots can open Halo before creating a Clerk account.
+- Track coded links without putting personal names, emails, or phone numbers in URLs.
+
+Root cause:
+
+- The existing dashboard page required a Clerk user whenever Clerk was configured, so unsigned invitees could not experience the planner before account creation.
+- The lightest viable tracking path already existed through mounted Vercel Analytics, so a database migration was unnecessary for the first testing round.
+- During verification, the first typecheck failed because the dashboard page used a default props parameter. Next 15 generated types require the page first argument to match `PageProps`; allowing `undefined` in that function argument violated the generated contract.
+
+Solution:
+
+- Added coded-link parsing for `?testPilot=1&source=...&pilot=...`, with unsafe values falling back to non-identifying defaults.
+- Added a gate-only "Continue as test pilot" link pointing to `/?testPilot=1&source=access-gate`.
+- Let unsigned `testPilot=1` visitors open the existing local-only `HaloAppShell` without mounting account auto-sync.
+- Added `TestPilotTracker` to create a browser-local anonymous session id and emit `test_pilot_started` once plus `test_pilot_opened` on each test-pilot open.
+- Fixed the Next page prop typing by using `searchParams?: Promise<TestPilotSearchParams>` and removing the default page props argument.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `components/auth/HaloAuthNav.tsx`
+- `components/testing/TestPilotTracker.tsx`
+- `lib/testing/testPilotAccess.ts`
+- `tests/testing/testPilotAccess.test.ts`
+- `docs/superpowers/plans/2026-08-10-test-pilot-access-design.md`
+- `docs/superpowers/plans/2026-08-10-test-pilot-access.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/testing/testPilotAccess.test.ts`: passed, 39 files / 196 tests.
+- First `pnpm typecheck`: failed with `.next/types/app/(dashboard)/page.ts(34,29)` because the page function props type included `undefined`.
+- Follow-up `pnpm typecheck`: passed after correcting the page prop type.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 39 files / 196 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production server: `pnpm start` served `http://localhost:3000`.
+- Browser verification against `http://localhost:3000/?testPilot=1&source=whatsapp-dm&pilot=p01`: rendered planner content, no Next/framework overlay, no captured console errors, and stored `halo-test-pilot-session` plus `halo-test-pilot-started=1`.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-dplikhczf-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_Hj5LNpSTLYfWyVZBofJeXNSJot2r`
+- Production alias HTTP smoke for `/?testPilot=1&source=smoke&pilot=p01`: returned HTTP 200 and served assets with `dpl=dpl_Hj5LNpSTLYfWyVZBofJeXNSJot2r`.
+- Production browser verification:
+  - `/` showed the signed-out account gate text and included `Sign in`, `Sign up`, and `Continue as test pilot`.
+  - `/?testPilot=1&source=smoke&pilot=p01` rendered planner content, had no Next/framework overlay, had no captured console errors, and stored the anonymous test-pilot session keys.
+
+Notes:
+
+- Local `.env.local` does not fully configure Clerk, so the normal local `/` route still uses the pre-existing local-only fallback. Production behavior with Clerk configured will show the account gate unless the visitor uses `testPilot=1`.
+- The unique deployment URL is protected by Vercel SSO in this project, so pilot links should use the production alias.
 
 ## 2026-08-08 Clerk Verification Email Branding
 
