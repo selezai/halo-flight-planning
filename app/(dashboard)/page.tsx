@@ -3,7 +3,7 @@ import AccountScopedPlanner from '@/components/auth/AccountScopedPlanner';
 import HaloAuthNav from '@/components/auth/HaloAuthNav';
 import HaloAppShell from '@/components/shell/HaloAppShell';
 import HaloLogo from '@/components/shell/HaloLogo';
-import TestPilotTracker from '@/components/testing/TestPilotTracker';
+import TestPilotPlanner from '@/components/testing/TestPilotPlanner';
 import { isClerkConfigured } from '@/lib/auth/accountAuth';
 import {
   resolveTestPilotLinkContext,
@@ -20,17 +20,16 @@ export default async function DashboardPage({
   const testPilotContext = resolveTestPilotLinkContext((await searchParams) ?? {});
 
   if (!isClerkConfigured()) {
-    return (
-      <>
-        {testPilotContext.enabled ? (
-          <TestPilotTracker
-            source={testPilotContext.source}
-            pilotCode={testPilotContext.pilotCode}
-          />
-        ) : null}
-        <HaloAppShell />
-      </>
-    );
+    if (testPilotContext.enabled) {
+      return (
+        <TestPilotPlanner
+          source={testPilotContext.source}
+          pilotCode={testPilotContext.pilotCode}
+        />
+      );
+    }
+
+    return <HaloAppShell />;
   }
 
   const { userId } = await auth();
@@ -38,13 +37,10 @@ export default async function DashboardPage({
   if (!userId) {
     if (testPilotContext.enabled) {
       return (
-        <>
-          <TestPilotTracker
-            source={testPilotContext.source}
-            pilotCode={testPilotContext.pilotCode}
-          />
-          <HaloAppShell />
-        </>
+        <TestPilotPlanner
+          source={testPilotContext.source}
+          pilotCode={testPilotContext.pilotCode}
+        />
       );
     }
 

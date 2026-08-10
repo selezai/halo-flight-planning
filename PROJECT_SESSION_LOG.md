@@ -3592,6 +3592,8 @@ Root cause:
 - The existing dashboard page required a Clerk user whenever Clerk was configured, so unsigned invitees could not experience the planner before account creation.
 - The lightest viable tracking path already existed through mounted Vercel Analytics, so a database migration was unnecessary for the first testing round.
 - During verification, the first typecheck failed because the dashboard page used a default props parameter. Next 15 generated types require the page first argument to match `PageProps`; allowing `undefined` in that function argument violated the generated contract.
+- Follow-up finding: `Continue as test pilot` originally used the same browser-local `halo-map-store` key as the normal planner. On a browser that had stale data from a deleted account, test-pilot mode could hydrate that stale local planner state. This does not expose data across devices, but it can confuse same-browser testing.
+- First storage-reset fix failed in browser because clearing `localStorage` alone did not reset an already-hydrated Zustand store during client navigation. The live map store also had to be reset before rendering the app shell.
 
 Solution:
 
@@ -3600,11 +3602,15 @@ Solution:
 - Let unsigned `testPilot=1` visitors open the existing local-only `HaloAppShell` without mounting account auto-sync.
 - Added `TestPilotTracker` to create a browser-local anonymous session id and emit `test_pilot_started` once plus `test_pilot_opened` on each test-pilot open.
 - Fixed the Next page prop typing by using `searchParams?: Promise<TestPilotSearchParams>` and removing the default page props argument.
+- Added `TestPilotPlanner` as a client wrapper that prepares test-pilot storage before lazy-loading `HaloAppShell`.
+- Test-pilot entry now backs up any previous `halo-map-store` / owner values, writes a clean test-pilot planner store, marks the browser owner as `test-pilot`, and resets the live map store when stale data was already hydrated.
+- Reloads after the browser is already marked as `test-pilot` preserve the pilot's own test data.
 
 Files modified:
 
 - `app/(dashboard)/page.tsx`
 - `components/auth/HaloAuthNav.tsx`
+- `components/testing/TestPilotPlanner.tsx`
 - `components/testing/TestPilotTracker.tsx`
 - `lib/testing/testPilotAccess.ts`
 - `tests/testing/testPilotAccess.test.ts`
@@ -3622,6 +3628,10 @@ Verification:
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Local production server: `pnpm start` served `http://localhost:3000`.
 - Browser verification against `http://localhost:3000/?testPilot=1&source=whatsapp-dm&pilot=p01`: rendered planner content, no Next/framework overlay, no captured console errors, and stored `halo-test-pilot-session` plus `halo-test-pilot-started=1`.
+- Follow-up stale-local-data reproduction:
+  - Seeded `localStorage` with `routeName="Deleted account route"`, one old waypoint, and `halo-account-sync-owner="deleted_user"`.
+  - Opened `http://localhost:3000/?testPilot=1&source=stale-local-test&pilot=p01`.
+  - Verified the planner rendered clean with `routeName="South Africa cross-country"`, `waypoints=0`, `halo-account-sync-owner="test-pilot"`, one backup key, no framework overlay, and no captured console errors.
 - Production deployment inspected as Ready:
   - Deployment URL: https://halo-flight-planning-dplikhczf-pilotmerch-gmailcoms-projects.vercel.app
   - Production alias: https://halo-flight-planning.vercel.app
