@@ -9,8 +9,10 @@ import {
   buildFreshTestPilotMapStoreValue,
   prepareTestPilotLocalPlannerStorage,
   resolveTestPilotLinkContext,
+  shouldTrackTestPilotOpened,
   TEST_PILOT_CONTINUE_HREF,
   TEST_PILOT_MAP_STORE_VERSION,
+  TEST_PILOT_OPENED_STORAGE_KEY,
   TEST_PILOT_OWNER_STORAGE_VALUE,
   TEST_PILOT_STORAGE_BACKUP_PREFIX,
 } from '@/lib/testing/testPilotAccess';
@@ -109,6 +111,56 @@ describe('test pilot access links', () => {
     expect(JSON.parse(buildFreshTestPilotMapStoreValue())).toMatchObject({
       version: HALO_MAP_STORE_VERSION,
     });
+  });
+
+  it('dedupes repeated opened events for the same session inside a short window', () => {
+    const storage = createMemoryStorage({});
+
+    expect(shouldTrackTestPilotOpened({
+      storage,
+      source: 'whatsapp-group',
+      pilotCode: 'p01',
+      sessionId: 'session-123',
+      now: new Date('2026-08-17T10:00:00.000Z'),
+    })).toBe(true);
+
+    expect(storage.getItem(TEST_PILOT_OPENED_STORAGE_KEY)).toContain('session-123');
+
+    expect(shouldTrackTestPilotOpened({
+      storage,
+      source: 'whatsapp-group',
+      pilotCode: 'p01',
+      sessionId: 'session-123',
+      now: new Date('2026-08-17T10:00:05.000Z'),
+    })).toBe(false);
+
+    expect(shouldTrackTestPilotOpened({
+      storage,
+      source: 'whatsapp-group',
+      pilotCode: 'p01',
+      sessionId: 'session-123',
+      now: new Date('2026-08-17T10:00:11.000Z'),
+    })).toBe(true);
+  });
+
+  it('tracks opened events when the source or pilot code changes', () => {
+    const storage = createMemoryStorage({});
+
+    expect(shouldTrackTestPilotOpened({
+      storage,
+      source: 'whatsapp-group',
+      pilotCode: 'p01',
+      sessionId: 'session-123',
+      now: new Date('2026-08-17T10:00:00.000Z'),
+    })).toBe(true);
+
+    expect(shouldTrackTestPilotOpened({
+      storage,
+      source: 'whatsapp-dm',
+      pilotCode: 'p01',
+      sessionId: 'session-123',
+      now: new Date('2026-08-17T10:00:05.000Z'),
+    })).toBe(true);
   });
 });
 

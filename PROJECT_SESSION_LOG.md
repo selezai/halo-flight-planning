@@ -3906,3 +3906,66 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
+
+## 2026-08-17 Production Activity Audit
+
+Objective: check whether real users/test pilots are using the production Halo app and identify which telemetry sources currently show activity.
+
+Findings:
+
+- Production deployment is Ready at `https://halo-flight-planning.vercel.app`, backed by deployment `dpl_33bG96DXSeLLJNKvrZLd4UJWxuqy`.
+- The app mounts `@vercel/analytics` and sends test-pilot custom events in code, but the Vercel Web Analytics API returns `web_analytics_not_enabled` for this project. This means pageview and `test_pilot_started` / `test_pilot_opened` event reporting is not currently available from Vercel Analytics until Web Analytics is enabled in the project settings.
+- Vercel runtime logs were streamed for the maximum five-minute CLI window and returned no runtime log entries during that check.
+- Production Neon is configured and reachable, but Halo's `public.halo_planner_snapshots` table does not exist. Because the app creates this table on first authenticated account-sync save, there is no evidence of account-synced planner usage yet.
+- Neon Auth tables exist, but `neon_auth.user` and `neon_auth.session` both contain zero rows, so no Neon Auth users or sessions are present.
+- Pulled production env values show `DATABASE_URL` / `POSTGRES_URL` populated, but `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` are empty in the pulled environment. Account sign-up/sign-in tracking through Clerk is therefore not available from this deployment environment as checked.
+
+Conclusion:
+
+- Current observable evidence shows no account-backed user activity and no live server-side activity during the audit window.
+- Test-pilot link click/open tracking cannot be confirmed because Vercel Web Analytics is disabled at the project level, despite analytics code being present in the app.
+
+Recommended next step:
+
+- Enable Web Analytics for `halo-flight-planning` in Vercel so existing `test_pilot_started` and `test_pilot_opened` events start recording.
+- Re-check Clerk environment variables before relying on account sign-up as a test metric.
+
+## 2026-08-17 First-Party Test Pilot Activity Tracking
+
+Objective: add reliable first-party tracking for anonymous test-pilot link opens because Vercel Web Analytics is disabled for the project.
+
+Decisions:
+
+- Keep the Vercel Analytics calls in place, but do not depend on them for the first testing phase.
+- Store anonymous test-pilot activity in Neon with no names, emails, Clerk user ids, or mission data.
+- Keep the route public for no-signup test pilots, with authorization limited to a strict allowlist of event names and sanitized tracking values.
+- Dedupe repeated `test_pilot_opened` events inside a short same-session window after browser verification showed the initial effect path could send two open events on one page load.
+
+Changes:
+
+- Added `halo_test_pilot_events` migration and Drizzle schema.
+- Added `POST /api/testing/test-pilot-events`.
+- Added server validation/repository helpers in `lib/testing/testPilotEvents.ts`.
+- Added a client fire-and-forget sender and wired `TestPilotTracker` to record `test_pilot_started` and `test_pilot_opened`.
+- Updated the migration runner to apply all sorted SQL files in `db/migrations`.
+- Added focused Vitest coverage for validation, API behavior, client sending, and opened-event dedupe.
+
+Production:
+
+- Applied the additive production Neon migration: 7 idempotent statements from 2 migration files.
+- Deployed production deployment `dpl_AAn5Gv3bg8SRetTrWkB4VTXxuYvJ`.
+- Production alias: `https://halo-flight-planning.vercel.app`.
+- Browser smoke against `/?testPilot=1&source=agent-dedupe&pilot=agent` recorded exactly one `test_pilot_started` and one `test_pilot_opened` row.
+
+Current activity:
+
+- Real test-pilot events excluding `source like 'agent-%'`: 0 events, 0 sessions, 0 pilot codes as of 2026-08-17 11:27 UTC.
+- The table contains agent smoke rows from deployment verification; exclude `agent-%` sources when checking real pilot activity.
+
+Verification:
+
+- `pnpm test tests/testing/testPilotEvents.test.ts tests/testing/testPilotEventsApi.test.ts tests/testing/testPilotEventClient.test.ts`: passed, 3 files / 11 tests.
+- `pnpm test tests/testing/testPilotAccess.test.ts tests/testing/testPilotEvents.test.ts tests/testing/testPilotEventsApi.test.ts tests/testing/testPilotEventClient.test.ts`: passed, 4 files / 20 tests.
+- `pnpm test`: passed, 42 files / 212 tests.
+- `pnpm typecheck`: passed.
+- `pnpm build`: passed on Next.js `15.5.18`.

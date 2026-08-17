@@ -9,6 +9,7 @@ export const TEST_PILOT_SOURCE_QUERY_PARAM = 'source';
 export const TEST_PILOT_CODE_QUERY_PARAM = 'pilot';
 export const TEST_PILOT_SESSION_STORAGE_KEY = 'halo-test-pilot-session';
 export const TEST_PILOT_STARTED_STORAGE_KEY = 'halo-test-pilot-started';
+export const TEST_PILOT_OPENED_STORAGE_KEY = 'halo-test-pilot-opened';
 export const TEST_PILOT_CONTINUE_HREF = '/?testPilot=1&source=access-gate';
 export const TEST_PILOT_OWNER_STORAGE_VALUE = 'test-pilot';
 export const TEST_PILOT_STORAGE_BACKUP_PREFIX = 'halo-test-pilot-storage-backup-';
@@ -32,10 +33,20 @@ export interface TestPilotStoragePreparation {
   backupKey?: string;
 }
 
+export interface TestPilotOpenedTrackingContext {
+  storage: TestPilotStorageLike | undefined;
+  source: string;
+  pilotCode: string;
+  sessionId: string;
+  now?: Date;
+  dedupeWindowMs?: number;
+}
+
 const DEFAULT_TEST_PILOT_SOURCE = 'direct';
 const UNKNOWN_TEST_PILOT_CODE = 'unknown';
 const MAX_TRACKING_VALUE_LENGTH = 80;
 const SAFE_TRACKING_VALUE_PATTERN = /^[a-z0-9][a-z0-9._:-]*$/i;
+const DEFAULT_OPENED_DEDUPE_WINDOW_MS = 10_000;
 
 export function resolveTestPilotLinkContext(
   searchParams: TestPilotSearchParams
@@ -101,6 +112,36 @@ export function buildFreshTestPilotMapStoreValue(): string {
   });
 }
 
+export function shouldTrackTestPilotOpened({
+  storage,
+  source,
+  pilotCode,
+  sessionId,
+  now = new Date(),
+  dedupeWindowMs = DEFAULT_OPENED_DEDUPE_WINDOW_MS,
+}: TestPilotOpenedTrackingContext): boolean {
+  if (!storage) return true;
+
+  const openedAt = now.getTime();
+  const previous = parseOpenedTrackingValue(readStorageValue(storage, TEST_PILOT_OPENED_STORAGE_KEY));
+  const matchesPreviousOpen =
+    previous?.source === source &&
+    previous.pilotCode === pilotCode &&
+    previous.sessionId === sessionId &&
+    openedAt - previous.openedAt < dedupeWindowMs;
+
+  if (matchesPreviousOpen) return false;
+
+  writeStorageValue(storage, TEST_PILOT_OPENED_STORAGE_KEY, JSON.stringify({
+    source,
+    pilotCode,
+    sessionId,
+    openedAt,
+  }));
+
+  return true;
+}
+
 function getSingleSearchParam(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;
@@ -153,4 +194,31 @@ function writeStorageValue(storage: TestPilotStorageLike, key: string, value: st
   } catch {
     return false;
   }
+}
+
+function parseOpenedTrackingValue(value: string | null): {
+  source: string;
+  pilotCode: string;
+  sessionId: string;
+  openedAt: number;
+} | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.source === 'string' &&
+      typeof parsed.pilotCode === 'string' &&
+      typeof parsed.sessionId === 'string' &&
+      typeof parsed.openedAt === 'number'
+    ) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }

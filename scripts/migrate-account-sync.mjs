@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { neon } from '@neondatabase/serverless';
@@ -15,16 +15,21 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const migrationPath = resolve(projectRoot, 'db/migrations/0001_halo_account_snapshots.sql');
-const migrationSql = readFileSync(migrationPath, 'utf8');
-const statements = splitSqlStatements(migrationSql);
+const migrationsDir = resolve(projectRoot, 'db/migrations');
+const migrationPaths = readdirSync(migrationsDir)
+  .filter((file) => file.endsWith('.sql'))
+  .sort()
+  .map((file) => resolve(migrationsDir, file));
+const statements = migrationPaths.flatMap((migrationPath) =>
+  splitSqlStatements(readFileSync(migrationPath, 'utf8'))
+);
 const sql = neon(databaseUrl);
 
 for (const statement of statements) {
   await sql.query(statement);
 }
 
-console.log(`Applied ${statements.length} account sync migration statement(s).`);
+console.log(`Applied ${statements.length} migration statement(s) from ${migrationPaths.length} file(s).`);
 
 function loadEnvFile(path) {
   if (!existsSync(path)) return;

@@ -4,9 +4,11 @@ import { useEffect } from 'react';
 import { track } from '@vercel/analytics/react';
 import {
   createTestPilotSessionId,
+  shouldTrackTestPilotOpened,
   TEST_PILOT_SESSION_STORAGE_KEY,
   TEST_PILOT_STARTED_STORAGE_KEY,
 } from '@/lib/testing/testPilotAccess';
+import { sendTestPilotActivityEvent } from '@/lib/testing/testPilotEventClient';
 
 interface TestPilotTrackerProps {
   source: string;
@@ -28,9 +30,13 @@ export default function TestPilotTracker({
     if (!hasStartedSession()) {
       markStartedSession();
       track('test_pilot_started', eventProperties);
+      sendTestPilotActivityEvent('test_pilot_started', eventProperties);
     }
 
-    track('test_pilot_opened', eventProperties);
+    if (shouldTrackOpenedEvent({ source, pilotCode, sessionId })) {
+      track('test_pilot_opened', eventProperties);
+      sendTestPilotActivityEvent('test_pilot_opened', eventProperties);
+    }
   }, [pilotCode, source]);
 
   return null;
@@ -62,5 +68,26 @@ function markStartedSession() {
     window.localStorage.setItem(TEST_PILOT_STARTED_STORAGE_KEY, '1');
   } catch {
     // Analytics should not block the planner when browser storage is unavailable.
+  }
+}
+
+function shouldTrackOpenedEvent({
+  source,
+  pilotCode,
+  sessionId,
+}: {
+  source: string;
+  pilotCode: string;
+  sessionId: string;
+}): boolean {
+  try {
+    return shouldTrackTestPilotOpened({
+      storage: window.localStorage,
+      source,
+      pilotCode,
+      sessionId,
+    });
+  } catch {
+    return true;
   }
 }
