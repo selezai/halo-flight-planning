@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { Show, UserButton, useSignIn, useSignUp } from '@clerk/nextjs';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogIn, MailCheck, UserPlus } from 'lucide-react';
+import { LogIn, MailCheck, PlaneTakeoff, UserPlus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { TEST_PILOT_CONTINUE_HREF } from '@/lib/testing/testPilotAccess';
 import { cn } from '@/lib/utils';
 
 type AuthMode = 'sign-in' | 'sign-up';
@@ -75,6 +77,15 @@ export default function HaloAuthNav({
             <UserPlus className="h-4 w-4" />
             Sign up
           </button>
+          {gate ? (
+            <Link
+              href={TEST_PILOT_CONTINUE_HREF}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-950 transition hover:bg-cyan-100 sm:col-span-2"
+            >
+              <PlaneTakeoff className="h-4 w-4" />
+              Continue as test pilot
+            </Link>
+          ) : null}
         </Show>
         <Show when="signed-in">
           <UserButton appearance={USER_BUTTON_APPEARANCE} />

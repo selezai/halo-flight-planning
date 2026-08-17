@@ -1,5 +1,26 @@
 # Halo Session Log
 
+## 2026-08-10 Mission Library Production Promotion
+
+Problem / requested check:
+
+- User noticed the Mission Library responsive layout deployment appeared as Preview only in Vercel, so production was still showing the old broken layout.
+
+Finding:
+
+- `origin/main` and the working branch both pointed at `b0c78b0`.
+- Vercel had created the `b0c78b0` deployment as Preview (`halo-flight-planning-pkedokn7g...`), but the production alias still pointed at the older `dpl_FeY7a4tL9XARpcBiUTwncAkAouy1` deployment.
+
+Action:
+
+- Promoted the ready `b0c78b0` preview deployment to production with Vercel CLI.
+- Vercel created production deployment `dpl_AbWeQZbXZrvYonoymmsMfXEGW5ij`.
+
+Verification:
+
+- `vercel inspect halo-flight-planning-kluqlprgu-pilotmerch-gmailcoms-projects.vercel.app`: status `Ready`, target `production`.
+- The production deployment aliases include `https://halo-flight-planning.vercel.app`.
+
 ## 2026-08-10 Mission Library Responsive Reconstruction
 
 Problem / requested fix:
@@ -3558,6 +3579,73 @@ Verification:
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
 
+## 2026-08-10 Test Pilot Access
+
+Problem / requested change:
+
+- The first real-pilot testing day showed interest but signup was acting as an activation barrier.
+- Add a "Continue as test pilot" path so invited pilots can open Halo before creating a Clerk account.
+- Track coded links without putting personal names, emails, or phone numbers in URLs.
+
+Root cause:
+
+- The existing dashboard page required a Clerk user whenever Clerk was configured, so unsigned invitees could not experience the planner before account creation.
+- The lightest viable tracking path already existed through mounted Vercel Analytics, so a database migration was unnecessary for the first testing round.
+- During verification, the first typecheck failed because the dashboard page used a default props parameter. Next 15 generated types require the page first argument to match `PageProps`; allowing `undefined` in that function argument violated the generated contract.
+- Follow-up finding: `Continue as test pilot` originally used the same browser-local `halo-map-store` key as the normal planner. On a browser that had stale data from a deleted account, test-pilot mode could hydrate that stale local planner state. This does not expose data across devices, but it can confuse same-browser testing.
+- First storage-reset fix failed in browser because clearing `localStorage` alone did not reset an already-hydrated Zustand store during client navigation. The live map store also had to be reset before rendering the app shell.
+
+Solution:
+
+- Added coded-link parsing for `?testPilot=1&source=...&pilot=...`, with unsafe values falling back to non-identifying defaults.
+- Added a gate-only "Continue as test pilot" link pointing to `/?testPilot=1&source=access-gate`.
+- Let unsigned `testPilot=1` visitors open the existing local-only `HaloAppShell` without mounting account auto-sync.
+- Added `TestPilotTracker` to create a browser-local anonymous session id and emit `test_pilot_started` once plus `test_pilot_opened` on each test-pilot open.
+- Fixed the Next page prop typing by using `searchParams?: Promise<TestPilotSearchParams>` and removing the default page props argument.
+- Added `TestPilotPlanner` as a client wrapper that prepares test-pilot storage before lazy-loading `HaloAppShell`.
+- Test-pilot entry now backs up any previous `halo-map-store` / owner values, writes a clean test-pilot planner store, marks the browser owner as `test-pilot`, and resets the live map store when stale data was already hydrated.
+- Reloads after the browser is already marked as `test-pilot` preserve the pilot's own test data.
+
+Files modified:
+
+- `app/(dashboard)/page.tsx`
+- `components/auth/HaloAuthNav.tsx`
+- `components/testing/TestPilotPlanner.tsx`
+- `components/testing/TestPilotTracker.tsx`
+- `lib/testing/testPilotAccess.ts`
+- `tests/testing/testPilotAccess.test.ts`
+- `docs/superpowers/plans/2026-08-10-test-pilot-access-design.md`
+- `docs/superpowers/plans/2026-08-10-test-pilot-access.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test -- tests/testing/testPilotAccess.test.ts`: passed, 39 files / 196 tests.
+- First `pnpm typecheck`: failed with `.next/types/app/(dashboard)/page.ts(34,29)` because the page function props type included `undefined`.
+- Follow-up `pnpm typecheck`: passed after correcting the page prop type.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test`: passed, 39 files / 196 tests.
+- `pnpm build`: passed on Next.js `15.5.18`.
+- Local production server: `pnpm start` served `http://localhost:3000`.
+- Browser verification against `http://localhost:3000/?testPilot=1&source=whatsapp-dm&pilot=p01`: rendered planner content, no Next/framework overlay, no captured console errors, and stored `halo-test-pilot-session` plus `halo-test-pilot-started=1`.
+- Follow-up stale-local-data reproduction:
+  - Seeded `localStorage` with `routeName="Deleted account route"`, one old waypoint, and `halo-account-sync-owner="deleted_user"`.
+  - Opened `http://localhost:3000/?testPilot=1&source=stale-local-test&pilot=p01`.
+  - Verified the planner rendered clean with `routeName="South Africa cross-country"`, `waypoints=0`, `halo-account-sync-owner="test-pilot"`, one backup key, no framework overlay, and no captured console errors.
+- Production deployment inspected as Ready:
+  - Deployment URL: https://halo-flight-planning-dplikhczf-pilotmerch-gmailcoms-projects.vercel.app
+  - Production alias: https://halo-flight-planning.vercel.app
+  - Deployment ID: `dpl_Hj5LNpSTLYfWyVZBofJeXNSJot2r`
+- Production alias HTTP smoke for `/?testPilot=1&source=smoke&pilot=p01`: returned HTTP 200 and served assets with `dpl=dpl_Hj5LNpSTLYfWyVZBofJeXNSJot2r`.
+- Production browser verification:
+  - `/` showed the signed-out account gate text and included `Sign in`, `Sign up`, and `Continue as test pilot`.
+  - `/?testPilot=1&source=smoke&pilot=p01` rendered planner content, had no Next/framework overlay, had no captured console errors, and stored the anonymous test-pilot session keys.
+
+Notes:
+
+- Local `.env.local` does not fully configure Clerk, so the normal local `/` route still uses the pre-existing local-only fallback. Production behavior with Clerk configured will show the account gate unless the visitor uses `testPilot=1`.
+- The unique deployment URL is protected by Vercel SSO in this project, so pilot links should use the production alias.
+
 ## 2026-08-08 Clerk Verification Email Branding
 
 Objective:
@@ -3818,3 +3906,66 @@ Verification:
 - `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
 - `pnpm build`: passed on Next.js `15.5.18`.
 - Playwright and visual inspection were intentionally skipped per user instruction.
+
+## 2026-08-17 Production Activity Audit
+
+Objective: check whether real users/test pilots are using the production Halo app and identify which telemetry sources currently show activity.
+
+Findings:
+
+- Production deployment is Ready at `https://halo-flight-planning.vercel.app`, backed by deployment `dpl_33bG96DXSeLLJNKvrZLd4UJWxuqy`.
+- The app mounts `@vercel/analytics` and sends test-pilot custom events in code, but the Vercel Web Analytics API returns `web_analytics_not_enabled` for this project. This means pageview and `test_pilot_started` / `test_pilot_opened` event reporting is not currently available from Vercel Analytics until Web Analytics is enabled in the project settings.
+- Vercel runtime logs were streamed for the maximum five-minute CLI window and returned no runtime log entries during that check.
+- Production Neon is configured and reachable, but Halo's `public.halo_planner_snapshots` table does not exist. Because the app creates this table on first authenticated account-sync save, there is no evidence of account-synced planner usage yet.
+- Neon Auth tables exist, but `neon_auth.user` and `neon_auth.session` both contain zero rows, so no Neon Auth users or sessions are present.
+- Pulled production env values show `DATABASE_URL` / `POSTGRES_URL` populated, but `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` are empty in the pulled environment. Account sign-up/sign-in tracking through Clerk is therefore not available from this deployment environment as checked.
+
+Conclusion:
+
+- Current observable evidence shows no account-backed user activity and no live server-side activity during the audit window.
+- Test-pilot link click/open tracking cannot be confirmed because Vercel Web Analytics is disabled at the project level, despite analytics code being present in the app.
+
+Recommended next step:
+
+- Enable Web Analytics for `halo-flight-planning` in Vercel so existing `test_pilot_started` and `test_pilot_opened` events start recording.
+- Re-check Clerk environment variables before relying on account sign-up as a test metric.
+
+## 2026-08-17 First-Party Test Pilot Activity Tracking
+
+Objective: add reliable first-party tracking for anonymous test-pilot link opens because Vercel Web Analytics is disabled for the project.
+
+Decisions:
+
+- Keep the Vercel Analytics calls in place, but do not depend on them for the first testing phase.
+- Store anonymous test-pilot activity in Neon with no names, emails, Clerk user ids, or mission data.
+- Keep the route public for no-signup test pilots, with authorization limited to a strict allowlist of event names and sanitized tracking values.
+- Dedupe repeated `test_pilot_opened` events inside a short same-session window after browser verification showed the initial effect path could send two open events on one page load.
+
+Changes:
+
+- Added `halo_test_pilot_events` migration and Drizzle schema.
+- Added `POST /api/testing/test-pilot-events`.
+- Added server validation/repository helpers in `lib/testing/testPilotEvents.ts`.
+- Added a client fire-and-forget sender and wired `TestPilotTracker` to record `test_pilot_started` and `test_pilot_opened`.
+- Updated the migration runner to apply all sorted SQL files in `db/migrations`.
+- Added focused Vitest coverage for validation, API behavior, client sending, and opened-event dedupe.
+
+Production:
+
+- Applied the additive production Neon migration: 7 idempotent statements from 2 migration files.
+- Deployed production deployment `dpl_AAn5Gv3bg8SRetTrWkB4VTXxuYvJ`.
+- Production alias: `https://halo-flight-planning.vercel.app`.
+- Browser smoke against `/?testPilot=1&source=agent-dedupe&pilot=agent` recorded exactly one `test_pilot_started` and one `test_pilot_opened` row.
+
+Current activity:
+
+- Real test-pilot events excluding `source like 'agent-%'`: 0 events, 0 sessions, 0 pilot codes as of 2026-08-17 11:27 UTC.
+- The table contains agent smoke rows from deployment verification; exclude `agent-%` sources when checking real pilot activity.
+
+Verification:
+
+- `pnpm test tests/testing/testPilotEvents.test.ts tests/testing/testPilotEventsApi.test.ts tests/testing/testPilotEventClient.test.ts`: passed, 3 files / 11 tests.
+- `pnpm test tests/testing/testPilotAccess.test.ts tests/testing/testPilotEvents.test.ts tests/testing/testPilotEventsApi.test.ts tests/testing/testPilotEventClient.test.ts`: passed, 4 files / 20 tests.
+- `pnpm test`: passed, 42 files / 212 tests.
+- `pnpm typecheck`: passed.
+- `pnpm build`: passed on Next.js `15.5.18`.
