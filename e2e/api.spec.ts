@@ -8,9 +8,14 @@ test('server APIs validate input and degrade safely without aviation credentials
     version: 8,
     metadata: {
       haloDegraded: true,
+      haloBaseMap: {
+        source: 'openstreetmap-raster',
+        style: 'openstreetmap-standard',
+        mode: 'raster-fallback',
+      },
     },
   });
-  expect(style.sources).toHaveProperty('maptiler-base');
+  expect(style.sources).toHaveProperty('halo-raster-base');
 
   const invalidMetarResponse = await request.get('/api/weather/metar/ABC');
   expect(invalidMetarResponse.status()).toBe(400);
@@ -44,9 +49,10 @@ test('server APIs validate input and degrade safely without aviation credentials
       ],
     },
   });
-  expect(notamReviewResponse.status()).toBe(503);
+  expect(notamReviewResponse.status()).toBe(200);
   await expect(notamReviewResponse.json()).resolves.toMatchObject({
-    source: 'unavailable',
-    status: 'unavailable',
+    source: 'south-africa-official',
+    status: 'manual-required',
+    locations: ['FAOR', 'FALA'],
   });
 });

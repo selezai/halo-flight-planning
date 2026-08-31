@@ -41,6 +41,11 @@ import {
   formatDuration,
   formatFuel,
 } from '@/lib/planning/navigation';
+import {
+  createRouteCoordinateWaypoint,
+  parseRouteInputItems,
+} from '@/lib/planning/routeInput';
+import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import { buildBackupPackText } from '@/lib/planning/backupPack';
 import { buildBriefingDigest, buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
@@ -73,6 +78,7 @@ import { cn } from '@/lib/utils';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   AirspaceVerticalProfile,
+  AircraftProfile,
   EmergencyLandingSite,
   EmergencyLandingSuitability,
   EmergencyPlanningReview,
@@ -104,6 +110,11 @@ interface RouteWeatherState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+}
+
+interface RouteEntryStatus {
+  tone: 'idle' | 'loading' | 'success' | 'error';
+  message: string | null;
 }
 
 export default function Sidebar({
@@ -434,28 +445,7 @@ function FeatureDisplay({
         </Section>
       )}
 
-      {feature.frequencies?.length ? (
-        <Section title="Frequencies">
-          {feature.frequencies.map((frequency, index) => (
-            <Row key={`${frequency.type}-${index}`} label={frequency.type}>
-              {frequency.value}
-            </Row>
-          ))}
-        </Section>
-      ) : null}
-
-      {feature.frequency && (
-        <Section title="Frequency / Channel">
-          <Row label="Frequency">{feature.frequency}</Row>
-          {feature.channel && <Row label="Channel">{feature.channel}</Row>}
-          {feature.alignedTrueNorth !== undefined && (
-            <Row label="True north">{feature.alignedTrueNorth ? 'Aligned' : 'Not aligned'}</Row>
-          )}
-          {feature.magneticDeclination !== undefined && (
-            <Row label="Mag var">{feature.magneticDeclination.toFixed(1)}°</Row>
-          )}
-        </Section>
-      )}
+      <FeatureFrequencySection feature={feature} />
 
       {feature.runways?.length ? (
         <Section title="Runways">
@@ -512,11 +502,50 @@ function FeatureDisplay({
   );
 }
 
+function FeatureFrequencySection({ feature }: { feature: ParsedFeature }) {
+  const frequencies = feature.frequencies ?? [];
+  const shouldShowSection =
+    frequencies.length > 0 ||
+    Boolean(feature.frequency) ||
+    isFeatureExpectedToHaveFrequencies(feature);
+
+  if (!shouldShowSection) return null;
+
+  return (
+    <Section title="Frequencies">
+      {frequencies.map((frequency, index) => (
+        <Row key={`${frequency.type}-${index}`} label={frequency.type}>
+          {frequency.value}
+        </Row>
+      ))}
+      {feature.frequency && <Row label="Frequency">{feature.frequency}</Row>}
+      {feature.channel && <Row label="Channel">{feature.channel}</Row>}
+      {feature.alignedTrueNorth !== undefined && (
+        <Row label="True north">{feature.alignedTrueNorth ? 'Aligned' : 'Not aligned'}</Row>
+      )}
+      {feature.magneticDeclination !== undefined && (
+        <Row label="Mag var">{feature.magneticDeclination.toFixed(1)}°</Row>
+      )}
+      {!frequencies.length && !feature.frequency && !feature.channel && (
+        <Row label="Status">No frequency data in the current OpenAIP record. Verify official AIP or briefing sources.</Row>
+      )}
+    </Section>
+  );
+}
+
+function isFeatureExpectedToHaveFrequencies(feature: ParsedFeature): boolean {
+  return feature.type === 'airport' ||
+    feature.type === 'navaid' ||
+    feature.type === 'rcAirfield' ||
+    feature.type === 'hangGliding';
+}
+
 function RoutePanel() {
   const {
     routeName,
     setRouteName,
     waypoints,
+    addRouteWaypoint,
     removeRouteWaypoint,
     moveRouteWaypoint,
     updateRouteWaypoint,
@@ -530,6 +559,7 @@ function RoutePanel() {
     routeName: state.routeName,
     setRouteName: state.setRouteName,
     waypoints: state.waypoints,
+    addRouteWaypoint: state.addRouteWaypoint,
     removeRouteWaypoint: state.removeRouteWaypoint,
     moveRouteWaypoint: state.moveRouteWaypoint,
     updateRouteWaypoint: state.updateRouteWaypoint,
@@ -541,6 +571,94 @@ function RoutePanel() {
     setPlanningMode: state.setPlanningMode,
   }), shallow);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const [typedRoute, setTypedRoute] = useState('');
+  const [typedRouteStatus, setTypedRouteStatus] = useState<RouteEntryStatus>({
+    tone: 'idle',
+    message: null,
+  });
+  const [typedRouteLoading, setTypedRouteLoading] = useState(false);
+
+  const loadTypedRoute = useCallback(async () => {
+    const parsedRoute = parseRouteInputItems(typedRoute);
+
+    if (parsedRoute.errors.length > 0) {
+      setTypedRouteStatus({
+        tone: 'error',
+        message: parsedRoute.errors[0],
+      });
+      return;
+    }
+
+    if (parsedRoute.items.length < 2) {
+      setTypedRouteStatus({
+        tone: 'error',
+        message: 'Enter at least two route points.',
+      });
+      return;
+    }
+
+    setTypedRouteLoading(true);
+    setTypedRouteStatus({
+      tone: 'loading',
+      message: 'Resolving typed route...',
+    });
+
+    try {
+      const resolvedWaypoints: Waypoint[] = [];
+      const unresolvedQueries: string[] = [];
+
+      for (let index = 0; index < parsedRoute.items.length; index += 1) {
+        const item = parsedRoute.items[index];
+
+        if (item.kind === 'coordinate') {
+          resolvedWaypoints.push(
+            createRouteCoordinateWaypoint(item.coordinates, index + 1, item.source)
+          );
+          continue;
+        }
+
+        const waypoint = await resolveRouteWaypointQuery(item.query);
+
+        if (waypoint) {
+          resolvedWaypoints.push(waypoint);
+          continue;
+        }
+
+        unresolvedQueries.push(item.source);
+      }
+
+      if (unresolvedQueries.length > 0) {
+        setTypedRouteStatus({
+          tone: 'error',
+          message: `Could not resolve ${unresolvedQueries.join(', ')}. Use a known airport/navaid identifier or enter coordinates.`,
+        });
+        return;
+      }
+
+      if (resolvedWaypoints.length < 2) {
+        setTypedRouteStatus({
+          tone: 'error',
+          message: 'A route needs at least two resolved points.',
+        });
+        return;
+      }
+
+      clearRoute();
+      resolvedWaypoints.forEach((waypoint) => addRouteWaypoint(waypoint));
+      setPlanningMode(false);
+      setTypedRouteStatus({
+        tone: 'success',
+        message: `Loaded ${resolvedWaypoints.length} route points.`,
+      });
+    } catch {
+      setTypedRouteStatus({
+        tone: 'error',
+        message: 'Typed route could not be loaded. Check the route text and aviation data connection.',
+      });
+    } finally {
+      setTypedRouteLoading(false);
+    }
+  }, [addRouteWaypoint, clearRoute, setPlanningMode, typedRoute]);
 
   return (
     <div className="space-y-5">
@@ -555,9 +673,47 @@ function RoutePanel() {
             className="mt-1 w-full rounded-xl border border-transparent bg-white/80 px-3 py-2 text-lg font-semibold text-slate-950 shadow-sm ring-1 ring-slate-200 transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
           />
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Use the map as the editor. This panel keeps route details, sequence, and review items quick to scan.
+            Load typed points below or use the map as the editor. Route details, sequence, and review items stay here.
           </p>
         </div>
+
+        <PanelBlock title="Typed route" icon={<Plus className="h-4 w-4" />}>
+          <Label htmlFor="typed-route">Routing</Label>
+          <textarea
+            id="typed-route"
+            value={typedRoute}
+            onChange={(event) => {
+              setTypedRoute(event.target.value);
+              if (typedRouteStatus.message) {
+                setTypedRouteStatus({ tone: 'idle', message: null });
+              }
+            }}
+            rows={3}
+            placeholder={'FAOR FALA\n-26.13370, 28.24600\nS25.93850 E027.92610'}
+            className="mt-1 w-full resize-y rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+            aria-describedby={typedRouteStatus.message ? 'typed-route-status' : undefined}
+          />
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={loadTypedRoute}
+              disabled={typedRouteLoading || !typedRoute.trim()}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Plus className="h-4 w-4" />
+              {typedRouteLoading ? 'Loading...' : 'Load route'}
+            </button>
+            {typedRouteStatus.message && (
+              <p
+                id="typed-route-status"
+                role={typedRouteStatus.tone === 'error' ? 'alert' : 'status'}
+                className={`text-xs leading-5 ${getTypedRouteStatusClassName(typedRouteStatus.tone)}`}
+              >
+                {typedRouteStatus.message}
+              </p>
+            )}
+          </div>
+        </PanelBlock>
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
           <div className="mb-2 px-1">
@@ -679,17 +835,21 @@ function RoutePanel() {
         items={[
           ['Distance', formatDistance(route.summary.totalDistanceNm)],
           ['ETE', formatDuration(route.summary.estimatedTimeMinutes)],
-          ['Fuel', formatFuel(route.summary.totalFuelRequiredGal)],
+          ['Est fuel', formatFuel(route.summary.totalFuelRequiredGal)],
           ['Remain', formatFuel(route.summary.fuelRemainingGal)],
         ]}
         status={route.summary.fuelStatus}
       />
+
+      <FuelEstimatePanel route={route} aircraft={activeAircraft} />
 
       <AirspaceReviewPanel
         review={routeAirspaceReview}
         route={route}
         cruiseAltitudeFt={cruiseAltitudeFt}
       />
+
+      <MapDataAvailabilityPanel />
 
       {waypoints.length > 0 && (
         <PanelBlock title="Danger zone" icon={<Trash2 className="h-4 w-4" />}>
@@ -712,6 +872,48 @@ function RoutePanel() {
         </PanelBlock>
       )}
     </div>
+  );
+}
+
+function FuelEstimatePanel({
+  route,
+  aircraft,
+}: {
+  route: ReturnType<typeof calculateRoute>;
+  aircraft: AircraftProfile;
+}) {
+  return (
+    <PanelBlock title="Fuel estimate basis" icon={<Gauge className="h-4 w-4" />}>
+      <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Trip" value={formatFuel(route.summary.tripFuelGal)} />
+        <Metric label="Reserve" value={formatFuel(route.summary.reserveFuelGal)} />
+        <Metric label="Contingency" value={formatFuel(route.summary.contingencyFuelGal)} />
+        <Metric label="Required" value={formatFuel(route.summary.totalFuelRequiredGal)} />
+        <Metric label="Usable" value={formatFuel(route.summary.usableFuelGal)} />
+        <Metric label="Remaining" value={formatFuel(route.summary.fuelRemainingGal)} />
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        Estimate uses route distance, {Math.round(aircraft.cruiseSpeedKts)} kt cruise, {aircraft.fuelBurnGph.toFixed(1)} gal/hr burn,{' '}
+        {aircraft.reserveMinutes} min reserve, and {aircraft.contingencyPercent}% contingency.
+      </p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        It does not include wind, climb, descent, taxi/run-up, holding, alternate fuel, leaning, or POH table corrections.
+      </p>
+    </PanelBlock>
+  );
+}
+
+function MapDataAvailabilityPanel() {
+  return (
+    <PanelBlock title="Chart data availability" icon={<Layers className="h-4 w-4" />}>
+      <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Frequencies" value="When supplied" />
+        <Metric label="Grid MORA" value="Not loaded" />
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        Frequencies appear in feature details when OpenAIP supplies them. Grid MORA is not available from Halo&apos;s current map data, so use official chart and briefing sources for MORA.
+      </p>
+    </PanelBlock>
   );
 }
 
@@ -996,7 +1198,13 @@ function AircraftPanel() {
 
   return (
     <div className="space-y-5">
-      <PanelBlock title="Performance profile" icon={<Plane className="h-4 w-4" />}>
+      <PanelGroupHeader
+        eyebrow="Aircraft"
+        title="Aircraft setup"
+        detail="Start with the aircraft type and performance numbers. Configure W&B separately before treating the loading review as operational."
+      />
+
+      <PanelBlock title="Aircraft performance" icon={<Plane className="h-4 w-4" />}>
         <Label htmlFor="aircraft-preset">Preset aircraft</Label>
         <select
           id="aircraft-preset"
@@ -1014,17 +1222,32 @@ function AircraftPanel() {
           ))}
         </select>
 
+        <div className="mt-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          <p className="font-semibold">
+            {activeAircraft.registration} - {activeAircraft.type}
+          </p>
+          <p className="mt-1">
+            Presets are templates. Use the POH/AFM and your operating procedure before relying on performance or fuel figures.
+          </p>
+        </div>
+
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <NumberField label="Cruise kts" value={activeAircraft.cruiseSpeedKts} onChange={(value) => updateActiveAircraft({ cruiseSpeedKts: value })} />
-          <NumberField label="Fuel gph" value={activeAircraft.fuelBurnGph} onChange={(value) => updateActiveAircraft({ fuelBurnGph: value })} step="0.1" />
-          <NumberField label="Usable gal" value={activeAircraft.usableFuelGal} onChange={(value) => updateActiveAircraft({ usableFuelGal: value })} step="0.1" />
-          <NumberField label="Reserve min" value={activeAircraft.reserveMinutes} onChange={(value) => updateActiveAircraft({ reserveMinutes: value })} />
-          <NumberField label="Contingency %" value={activeAircraft.contingencyPercent} onChange={(value) => updateActiveAircraft({ contingencyPercent: value })} />
-          <NumberField label="Mag var" value={activeAircraft.magneticVariationDeg} onChange={(value) => updateActiveAircraft({ magneticVariationDeg: value })} />
-          <NumberField label="Compass dev" value={activeAircraft.compassDeviationDeg ?? 0} onChange={(value) => updateActiveAircraft({ compassDeviationDeg: value })} />
+          <NumberField label="Cruise speed kt" value={activeAircraft.cruiseSpeedKts} onChange={(value) => updateActiveAircraft({ cruiseSpeedKts: value })} />
+          <NumberField label="Cruise fuel gal/hr" value={activeAircraft.fuelBurnGph} onChange={(value) => updateActiveAircraft({ fuelBurnGph: value })} step="0.1" />
+          <NumberField label="Usable fuel gal" value={activeAircraft.usableFuelGal} onChange={(value) => updateActiveAircraft({ usableFuelGal: value })} step="0.1" />
+          <NumberField label="Fuel reserve min" value={activeAircraft.reserveMinutes} onChange={(value) => updateActiveAircraft({ reserveMinutes: value })} />
+          <NumberField label="Fuel contingency %" value={activeAircraft.contingencyPercent} onChange={(value) => updateActiveAircraft({ contingencyPercent: value })} />
+          <NumberField label="Mag variation deg" value={activeAircraft.magneticVariationDeg} onChange={(value) => updateActiveAircraft({ magneticVariationDeg: value })} />
+          <NumberField label="Compass deviation deg" value={activeAircraft.compassDeviationDeg ?? 0} onChange={(value) => updateActiveAircraft({ compassDeviationDeg: value })} />
           <NumberField label="Glide ratio" value={activeAircraft.glideRatio ?? 9} onChange={(value) => updateActiveAircraft({ glideRatio: value })} step="0.1" />
         </div>
       </PanelBlock>
+
+      <PanelGroupHeader
+        eyebrow="Loading"
+        title="Weight & balance setup"
+        detail="Enter aircraft-specific empty weight, arms, station limits, and CG envelope before using the W&B review."
+      />
 
       <PanelBlock title="Weight & balance" icon={<Gauge className="h-4 w-4" />}>
         <div className={`rounded-md px-3 py-2 text-xs ${getWeightBalanceTone(weightBalanceResult)}`}>
@@ -1046,14 +1269,14 @@ function AircraftPanel() {
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <NumberField label="Empty lb" value={weightBalanceConfig.emptyWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyWeightLb: value })} />
-          <NumberField label="Empty arm" value={weightBalanceConfig.emptyArmIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyArmIn: value })} step="0.01" />
+          <NumberField label="Empty weight lb" value={weightBalanceConfig.emptyWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyWeightLb: value })} />
+          <NumberField label="Empty arm in" value={weightBalanceConfig.emptyArmIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ emptyArmIn: value })} step="0.01" />
           <NumberField label="Max ramp lb" value={weightBalanceConfig.maxRampWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxRampWeightLb: value })} />
-          <NumberField label="Max TO lb" value={weightBalanceConfig.maxTakeoffWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxTakeoffWeightLb: value })} />
-          <NumberField label="Max land lb" value={weightBalanceConfig.maxLandingWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxLandingWeightLb: value })} />
-          <NumberField label="Fuel arm" value={weightBalanceConfig.fuel.armIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ fuel: { ...weightBalanceConfig.fuel, armIn: value } })} step="0.01" />
-          <NumberField label="Fuel gal" value={weightBalanceLoading.fuelGal} onChange={(value) => updateWeightBalanceLoading({ fuelGal: value })} step="0.1" />
-          <NumberField label="Landing gal" value={weightBalanceLoading.landingFuelGal ?? 0} onChange={(value) => updateWeightBalanceLoading({ landingFuelGal: value })} step="0.1" />
+          <NumberField label="Max takeoff lb" value={weightBalanceConfig.maxTakeoffWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxTakeoffWeightLb: value })} />
+          <NumberField label="Max landing lb" value={weightBalanceConfig.maxLandingWeightLb ?? 0} onChange={(value) => updateWeightBalanceConfig({ maxLandingWeightLb: value })} />
+          <NumberField label="Fuel arm in" value={weightBalanceConfig.fuel.armIn ?? 0} onChange={(value) => updateWeightBalanceConfig({ fuel: { ...weightBalanceConfig.fuel, armIn: value } })} step="0.01" />
+          <NumberField label="Takeoff fuel gal" value={weightBalanceLoading.fuelGal} onChange={(value) => updateWeightBalanceLoading({ fuelGal: value })} step="0.1" />
+          <NumberField label="Landing fuel gal" value={weightBalanceLoading.landingFuelGal ?? 0} onChange={(value) => updateWeightBalanceLoading({ landingFuelGal: value })} step="0.1" />
         </div>
 
         <div className="mt-4">
@@ -1166,11 +1389,17 @@ function AircraftPanel() {
         </div>
       </PanelBlock>
 
+      <PanelGroupHeader
+        eyebrow="Minimums"
+        title="Personal minimums"
+        detail="These values drive weather and reserve warnings in the briefing."
+      />
+
       <PanelBlock title="Personal minimums" icon={<Gauge className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-3">
           <NumberField label="Ceiling ft" value={personalMinimums.minimumCeilingFt} onChange={(value) => updatePersonalMinimums({ minimumCeilingFt: value })} />
           <NumberField label="Visibility SM" value={personalMinimums.minimumVisibilitySm} onChange={(value) => updatePersonalMinimums({ minimumVisibilitySm: value })} step="0.1" />
-          <NumberField label="Reserve min" value={personalMinimums.minimumFuelReserveMinutes} onChange={(value) => {
+          <NumberField label="Minimum reserve min" value={personalMinimums.minimumFuelReserveMinutes} onChange={(value) => {
             updatePersonalMinimums({ minimumFuelReserveMinutes: value });
             updateActiveAircraft({ reserveMinutes: value });
           }} />
@@ -2556,6 +2785,62 @@ function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
   return { reports, tafs, updatedAt, loading, error, refresh };
 }
 
+async function resolveRouteWaypointQuery(query: string): Promise<Waypoint | null> {
+  const southAfricaResult = await fetchRouteWaypointQuery(query, 'ZA');
+  if (southAfricaResult) return southAfricaResult;
+  return fetchRouteWaypointQuery(query);
+}
+
+async function fetchRouteWaypointQuery(query: string, country?: string): Promise<Waypoint | null> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: '8',
+  });
+  if (country) params.set('country', country);
+
+  const response = await fetch(`/api/openaip/search?${params.toString()}`);
+  if (!response.ok) return null;
+
+  const payload: unknown = await response.json();
+  if (!isOpenAipWaypointSearchResponse(payload)) return null;
+
+  const exactMatch = payload.waypoints.find((waypoint) =>
+    waypoint.ident?.toUpperCase() === query.toUpperCase()
+  );
+
+  return exactMatch ?? payload.waypoints[0] ?? null;
+}
+
+function isOpenAipWaypointSearchResponse(value: unknown): value is OpenAipWaypointSearchResponse {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<OpenAipWaypointSearchResponse>;
+  return payload.source === 'openaip-core' &&
+    Array.isArray(payload.waypoints) &&
+    payload.waypoints.every(isWaypointResult);
+}
+
+function isWaypointResult(value: unknown): value is Waypoint {
+  if (!value || typeof value !== 'object') return false;
+  const waypoint = value as Partial<Waypoint>;
+  const coordinates = waypoint.coordinates;
+
+  return (
+    typeof waypoint.id === 'string' &&
+    typeof waypoint.name === 'string' &&
+    (waypoint.type === 'airport' || waypoint.type === 'navaid' || waypoint.type === 'user' || waypoint.type === 'reporting-point') &&
+    Array.isArray(coordinates) &&
+    coordinates.length >= 2 &&
+    typeof coordinates[0] === 'number' &&
+    typeof coordinates[1] === 'number' &&
+    Number.isFinite(coordinates[0]) &&
+    Number.isFinite(coordinates[1]) &&
+    coordinates[0] >= -180 &&
+    coordinates[0] <= 180 &&
+    coordinates[1] >= -90 &&
+    coordinates[1] <= 90
+  );
+}
+
 function getRouteStationIds(waypoints: Waypoint[]): string[] {
   return Array.from(
     new Set(
@@ -2653,6 +2938,13 @@ function updateEnvelopePoint(
     ...updates,
   };
   return next;
+}
+
+function getTypedRouteStatusClassName(tone: RouteEntryStatus['tone']): string {
+  if (tone === 'error') return 'text-rose-700';
+  if (tone === 'success') return 'text-emerald-700';
+  if (tone === 'loading') return 'text-slate-600';
+  return 'text-slate-500';
 }
 
 function getAirspaceReviewTone(review: RouteAirspaceReview): string {

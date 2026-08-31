@@ -1,5 +1,56 @@
 # Halo Session Log
 
+## 2026-08-31 Test Pilot Feedback Investigation
+
+Problem / requested check:
+
+- Investigate pilot feedback before changing behavior:
+  - aircraft information entry felt confusing;
+  - route loading appeared map-drag-only and needed typed routing/coordinates;
+  - frequencies and Grid MORA were requested;
+  - fuel calculations were not trusted.
+- Keep earlier production-readiness changes local and unpushed.
+
+Root cause:
+
+- The aircraft panel mixed aircraft performance, fuel assumptions, W&B setup, CG envelope, loading stations, and personal minimums in one dense flow; compact navigation also labeled the section only as `W&B`.
+- Route entry was map-only in the current UI even though the existing OpenAIP search API could already resolve airports/navaids.
+- Feature details already displayed OpenAIP frequency fields when present, but did not explain when the current OpenAIP record had no frequency data.
+- Grid MORA does not exist in the current map data model or OpenAIP integration path, so showing values would require a new authoritative chart data source.
+- Fuel math intentionally uses route distance, cruise speed, cruise fuel burn, reserve, and contingency only; it does not include wind, climb, descent, taxi/run-up, holding, alternate fuel, leaning, or POH table corrections.
+
+Solution:
+
+- Added typed route loading in the route panel:
+  - accepts identifiers such as `FAOR FALA` or `FAOR -> FALA`;
+  - accepts coordinate pairs such as `-26.13370, 28.24600` and `S26.13370 E028.24600`;
+  - validates all points before replacing the current route;
+  - uses existing `/api/openaip/search` for airport/navaid lookup and local parsing for coordinates.
+- Reworked aircraft panel wording and grouping so aircraft performance, W&B setup, and personal minimums are visually separated.
+- Renamed the compact aircraft nav label from `W&B` to `A/C`.
+- Added a fuel estimate basis panel beside route totals with explicit assumptions and exclusions.
+- Added frequency data availability messaging in feature details and a chart data availability panel that marks Grid MORA as not loaded from current Halo map data.
+- Updated stale e2e expectations to match the current fallback map source, South Africa manual NOTAM handoff, typed route UI, and mobile GPS readiness behavior.
+
+Files modified:
+
+- `components/sidebar/Sidebar.tsx`
+- `lib/planning/routeInput.ts`
+- `lib/ui/halo.ts`
+- `tests/planning/routeInput.test.ts`
+- `e2e/api.spec.ts`
+- `e2e/flight-planning.spec.ts`
+- `e2e/location-tracking.spec.ts`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- `pnpm test`: passed, 43 files / 217 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm test:e2e`: passed, 3 Playwright tests against production build / `next start`.
+- Earlier production-readiness changes remain local in stash `codex-prod-readiness-local-2026-08-31` and were not included in this feedback branch.
+
 ## 2026-08-10 Mission Library Production Promotion
 
 Problem / requested check:

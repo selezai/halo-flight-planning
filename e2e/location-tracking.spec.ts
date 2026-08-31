@@ -37,10 +37,13 @@ test.describe('aircraft location tracking', () => {
     });
 
     await page.goto('/');
+    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
+    await expect(page.getByText('Loading aviation map...')).toBeHidden({ timeout: 30_000 });
 
-    await page.getByRole('button', { name: 'Track aircraft position' }).click();
+    const trackingButton = page.getByRole('button', { name: 'Track aircraft position' });
+    await expect(trackingButton).toBeVisible();
+    await trackingButton.tap();
 
-    await expect(page.locator('body')).toContainText('Aircraft tracking');
     await expect(page.locator('.halo-location-aircraft-marker')).toBeVisible();
     expect(locationOverlayErrors).toEqual([]);
   });

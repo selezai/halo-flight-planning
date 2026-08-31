@@ -51,8 +51,8 @@ export const HALO_NAVIGATION_ITEMS: HaloNavigationItem[] = [
   {
     id: 'aircraft',
     label: 'Aircraft + W&B',
-    shortLabel: 'W&B',
-    description: 'Select aircraft, configure POH data, and verify loading limits.',
+    shortLabel: 'A/C',
+    description: 'Set aircraft performance, fuel assumptions, POH W&B data, and loading limits.',
   },
   {
     id: 'briefing',
