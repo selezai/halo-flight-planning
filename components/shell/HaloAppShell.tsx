@@ -56,6 +56,8 @@ import {
   sortMissionRecords,
 } from '@/lib/planning/missions';
 import { calculateRoute } from '@/lib/planning/navigation';
+import { buildFuelPlanningResult, toUsGallons } from '@/lib/planning/fuel';
+import { buildDefaultGridMoraReview, buildGridMoraRouteSignature } from '@/lib/planning/gridMora';
 import { formatLocationTrackingLabel } from '@/lib/planning/routeTracking';
 import { calculateWeightBalance } from '@/lib/planning/weightBalance';
 import { buildHaloMissionSummary, type HaloPanelId, type HaloStatusTone } from '@/lib/ui/halo';
@@ -78,6 +80,10 @@ export default function HaloAppShell() {
   const {
     waypoints,
     activeAircraft,
+    aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId,
+    fuelPlanning,
+    gridMoraReview,
     weightBalanceLoading,
     routeAirspaceReview,
     routeNotamReview,
@@ -117,6 +123,10 @@ export default function HaloAppShell() {
   } = useMapStore((state) => ({
     waypoints: state.waypoints,
     activeAircraft: state.activeAircraft,
+    aircraftPerformanceProfiles: state.aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+    fuelPlanning: state.fuelPlanning,
+    gridMoraReview: state.gridMoraReview,
     weightBalanceLoading: state.weightBalanceLoading,
     routeAirspaceReview: state.routeAirspaceReview,
     routeNotamReview: state.routeNotamReview,
@@ -159,9 +169,47 @@ export default function HaloAppShell() {
   const [missionSaveFeedback, setMissionSaveFeedback] = useState<MissionSaveFeedback | null>(null);
   const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [activeAircraft, waypoints]);
+  const selectedPerformanceProfile = useMemo(
+    () => aircraftPerformanceProfiles.find((profile) =>
+      profile.id === (selectedAircraftPerformanceProfileId || fuelPlanning.selectedPerformanceProfileId)
+    ),
+    [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
+  const fuelRemainingPercent = useMemo(
+    () => {
+      const fuelDensityLbPerUsg = selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb;
+      return calculateFuelRemainingPercent(
+        toUsGallons(fuelPlanningResult.remainingFuel, fuelDensityLbPerUsg),
+        toUsGallons(fuelPlanningResult.usableFuel, fuelDensityLbPerUsg)
+      );
+    },
+    [
+      activeAircraft.weightBalance?.fuel.weightPerGalLb,
+      fuelPlanningResult.remainingFuel,
+      fuelPlanningResult.usableFuel,
+      selectedPerformanceProfile?.fuelDensityLbPerUsg,
+    ]
+  );
+  const effectiveGridMoraReview = useMemo(() => {
+    const routeSignature = buildGridMoraRouteSignature(waypoints);
+    if (gridMoraReview.routeSignature && gridMoraReview.routeSignature === routeSignature) {
+      return gridMoraReview;
+    }
+    return buildDefaultGridMoraReview(waypoints);
+  }, [gridMoraReview, waypoints]);
   const routeFreshnessSignature = useMemo(
-    () => `${waypoints.map((waypoint) => `${waypoint.id}:${waypoint.coordinates.join(',')}`).join('|')}@${activeAircraft.id}:${activeAircraft.cruiseSpeedKts}:${activeAircraft.fuelBurnGph}`,
-    [activeAircraft.cruiseSpeedKts, activeAircraft.fuelBurnGph, activeAircraft.id, waypoints]
+    () => `${waypoints.map((waypoint) => `${waypoint.id}:${waypoint.coordinates.join(',')}`).join('|')}@${activeAircraft.id}:${activeAircraft.cruiseSpeedKts}:${activeAircraft.fuelBurnGph}:${fuelPlanningResult.calculatedAt}`,
+    [activeAircraft.cruiseSpeedKts, activeAircraft.fuelBurnGph, activeAircraft.id, fuelPlanningResult.calculatedAt, waypoints]
   );
   const routeCalculatedAt = useMemo(
     () => routeFreshnessSignature ? new Date().toISOString() : undefined,
@@ -171,9 +219,12 @@ export default function HaloAppShell() {
     () => calculateWeightBalance({
       aircraft: activeAircraft,
       loading: weightBalanceLoading,
-      tripFuelGal: route.summary.tripFuelGal,
+      tripFuelGal: toUsGallons(
+        fuelPlanningResult.tripFuel,
+        selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb
+      ),
     }),
-    [activeAircraft, route.summary.tripFuelGal, weightBalanceLoading]
+    [activeAircraft, fuelPlanningResult.tripFuel, selectedPerformanceProfile?.fuelDensityLbPerUsg, weightBalanceLoading]
   );
   const filingReview = useMemo(
     () => buildFilingWorkflowReview({
@@ -231,8 +282,20 @@ export default function HaloAppShell() {
         updatedAt: weightBalanceResult.calculatedAt,
         maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.weightBalance,
       }),
+      assessDataFreshness({
+        source: 'Fuel',
+        updatedAt: fuelPlanningResult.calculatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.route,
+      }),
+      assessDataFreshness({
+        source: 'Grid MORA',
+        updatedAt: effectiveGridMoraReview.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
+      }),
     ],
     [
+      effectiveGridMoraReview.updatedAt,
+      fuelPlanningResult.calculatedAt,
       routeAirspaceReview.updatedAt,
       routeCalculatedAt,
       routeNotamReview.updatedAt,
@@ -249,10 +312,14 @@ export default function HaloAppShell() {
       weightBalanceResult,
       dataFreshness,
       flightAdminReview,
+      fuelPlanningResult,
+      gridMoraReview: effectiveGridMoraReview,
     }),
     [
       dataFreshness,
+      effectiveGridMoraReview,
       flightAdminReview,
+      fuelPlanningResult,
       route,
       routeAirspaceReview,
       routeName,
@@ -439,13 +506,13 @@ export default function HaloAppShell() {
         <div className="absolute bottom-5 right-5 top-24 z-30 w-[min(440px,calc(100vw-2.5rem))]">
           <Sidebar
             plannerHeader={(
-              <PlannerSummaryHeader
-                compact
-                mission={mission}
-                fuelRemainingPercent={calculateFuelRemainingPercent(route.summary.fuelRemainingGal, route.summary.usableFuelGal)}
-                savedMissionCount={activeSavedMissionCount}
-                saveFeedback={missionSaveFeedback}
-                onOpenMissionLibrary={() => setMissionLibraryOpen(true)}
+                <PlannerSummaryHeader
+                  compact
+                  mission={mission}
+                  fuelRemainingPercent={fuelRemainingPercent}
+                  savedMissionCount={activeSavedMissionCount}
+                  saveFeedback={missionSaveFeedback}
+                  onOpenMissionLibrary={() => setMissionLibraryOpen(true)}
                 onSaveMission={saveMissionFromCurrentStatus}
               />
             )}
@@ -475,7 +542,7 @@ export default function HaloAppShell() {
                 plannerHeader={(
                   <PlannerSummaryHeader
                     mission={mission}
-                    fuelRemainingPercent={calculateFuelRemainingPercent(route.summary.fuelRemainingGal, route.summary.usableFuelGal)}
+                    fuelRemainingPercent={fuelRemainingPercent}
                     savedMissionCount={activeSavedMissionCount}
                     saveFeedback={missionSaveFeedback}
                     onOpenMissionLibrary={() => setMissionLibraryOpen(true)}
@@ -563,6 +630,7 @@ function PlannerSummaryHeader({
         <div className="grid grid-cols-1 gap-1.5 text-xs min-[430px]:grid-cols-2">
           <MissionMetric label="Route" value={mission.routeLabel} icon={<Route className="h-3.5 w-3.5" />} />
           <MissionMetric label="Fuel" value={mission.fuelLabel} icon={<Plane className="h-3.5 w-3.5" />} />
+          <MissionMetric label="Grid MORA" value={mission.gridMoraLabel} icon={<Layers className="h-3.5 w-3.5" />} />
           <MissionMetric label="W&B" value={mission.weightBalanceLabel} icon={<Navigation className="h-3.5 w-3.5" />} />
           <MissionMetric label="Admin" value={mission.adminLabel} icon={<RadioTower className="h-3.5 w-3.5" />} />
         </div>

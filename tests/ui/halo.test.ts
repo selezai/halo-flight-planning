@@ -5,6 +5,8 @@ import {
 } from '@/lib/ui/halo';
 import type {
   DataFreshness,
+  FuelPlanningResult,
+  GridMoraReview,
   RouteAirspaceReview,
   RouteAnalysis,
   RouteNotamReview,
@@ -78,7 +80,45 @@ const currentFreshness: DataFreshness[] = [
   { source: 'Airspace', status: 'current', label: 'Airspace current' },
   { source: 'NOTAM', status: 'current', label: 'NOTAM current' },
   { source: 'W&B', status: 'current', label: 'W&B current' },
+  { source: 'Fuel', status: 'current', label: 'Fuel current' },
+  { source: 'Grid MORA', status: 'current', label: 'Grid MORA current' },
 ];
+
+const trustedFuel: FuelPlanningResult = {
+  status: 'ready',
+  ruleSet: 'sacaa-atns-ga',
+  profileId: 'profile-zs-hlo',
+  profileStatus: 'approved',
+  trusted: true,
+  message: 'VFR fuel calculated from approved POH/AFM performance tables.',
+  issues: [],
+  breakdown: [],
+  legs: [],
+  tripFuel: { value: 2.3, unit: 'usg' },
+  totalRequiredFuel: { value: 7.5, unit: 'usg' },
+  usableFuel: { value: 40, unit: 'usg' },
+  remainingFuel: { value: 32.5, unit: 'usg' },
+  expectedLandingFuel: { value: 37.7, unit: 'usg' },
+  calculatedAt: '2026-07-21T08:00:00.000Z',
+};
+
+const completeGridMora: GridMoraReview = {
+  source: 'south-africa-official',
+  status: 'complete',
+  message: 'Provider-backed Grid MORA cells loaded.',
+  cells: [
+    {
+      id: 'grid-2628',
+      label: '2628S',
+      bounds: [[28, -26], [29, -27]],
+      moraFt: 7600,
+      accuracy: 'normal',
+      source: 'south-africa-official',
+    },
+  ],
+  sourceUrl: 'https://example.test/grid-mora',
+  updatedAt: '2026-07-21T08:00:00.000Z',
+};
 
 describe('Halo UI state helpers', () => {
   it('migrates removed or legacy panel ids to supported production panels', () => {
@@ -117,6 +157,8 @@ describe('Halo UI state helpers', () => {
       notamReview: southAfricaNotam,
       weightBalanceResult: withinLimitsWb,
       dataFreshness: currentFreshness,
+      fuelPlanningResult: trustedFuel,
+      gridMoraReview: completeGridMora,
     });
 
     expect(summary.status).toBe('ready');

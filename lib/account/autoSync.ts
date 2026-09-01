@@ -18,6 +18,8 @@ import {
   DEFAULT_FLIGHT_PLAN_FILING_RECORD,
   DEFAULT_NOTAM_BRIEFING_RECORD,
 } from '@/lib/planning/flightAdmin';
+import { DEFAULT_FUEL_PLANNING_STATE } from '@/lib/planning/fuel';
+import { buildDefaultGridMoraReview } from '@/lib/planning/gridMora';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
 import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
 
@@ -45,6 +47,9 @@ export const DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE: PlannerSnapshotState = planner
   missionLibrary: [],
   waypoints: [],
   activeAircraft: DEFAULT_AIRCRAFT,
+  selectedAircraftPerformanceProfileId: undefined,
+  fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
+  gridMoraReview: buildDefaultGridMoraReview(),
   weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
   trainingWind: DEFAULT_TRAINING_WIND,
   filingChecklist: DEFAULT_FILING_CHECKLIST,

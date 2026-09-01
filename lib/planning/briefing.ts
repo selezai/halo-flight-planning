@@ -9,6 +9,8 @@ import type {
   EmergencyPlanningReview,
   FlightAdminReview,
   FilingWorkflowReview,
+  FuelPlanningResult,
+  GridMoraReview,
   PersonalMinimums,
   RouteAirspaceAlert,
   RouteAnalysis,
@@ -26,6 +28,8 @@ import { isBelowPersonalMinimums } from './weather';
 import { formatEmergencyPlanningLines } from './emergencyPlanning';
 import { formatFilingWorkflowLines } from './filingReminder';
 import { formatFlightAdminLines } from './flightAdmin';
+import { formatFuelQuantity } from './fuel';
+import { formatGridMoraReviewLines } from './gridMora';
 import { getWeightBalanceStatusLabel } from './weightBalance';
 
 export function buildRiskAssessment(
@@ -37,7 +41,9 @@ export function buildRiskAssessment(
   weightBalanceResult?: WeightBalanceResult,
   filingReview?: FilingWorkflowReview,
   emergencyReview?: EmergencyPlanningReview,
-  flightAdminReview?: FlightAdminReview
+  flightAdminReview?: FlightAdminReview,
+  fuelPlanningResult?: FuelPlanningResult,
+  gridMoraReview?: GridMoraReview
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -50,21 +56,7 @@ export function buildRiskAssessment(
     });
   }
 
-  if (route.summary.fuelStatus === 'critical') {
-    risks.push({
-      id: 'fuel-critical',
-      level: 'critical',
-      title: 'Fuel exceeds usable capacity',
-      detail: 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
-    });
-  } else if (route.summary.fuelStatus === 'caution') {
-    risks.push({
-      id: 'fuel-caution',
-      level: 'caution',
-      title: 'Fuel margin is tight',
-      detail: 'Fuel remaining after reserves is less than half of the reserve fuel quantity.',
-    });
-  }
+  addFuelPlanningRisks(risks, route, fuelPlanningResult);
 
   const belowMinimums = weather.filter((report) => isBelowPersonalMinimums(report, minimums));
   if (belowMinimums.length > 0) {
@@ -114,6 +106,7 @@ export function buildRiskAssessment(
   addFilingWorkflowRisks(risks, filingReview);
   addFlightAdminRisks(risks, flightAdminReview);
   addEmergencyRisks(risks, emergencyReview);
+  addGridMoraRisks(risks, gridMoraReview);
 
   if (risks.length === 0) {
     risks.push({
@@ -140,6 +133,8 @@ export function buildBriefingText(params: {
   weightBalanceResult?: WeightBalanceResult;
   dataFreshness?: DataFreshness[];
   trainingNavLog?: TrainingNavLog;
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
@@ -160,6 +155,8 @@ export function buildBriefingText(params: {
     weightBalanceResult,
     dataFreshness = [],
     trainingNavLog,
+    fuelPlanningResult,
+    gridMoraReview,
     filingReview,
     flightAdminReview,
     emergencyReview,
@@ -182,6 +179,8 @@ export function buildBriefingText(params: {
       weightBalanceResult,
       weather,
       dataFreshness,
+      fuelPlanningResult,
+      gridMoraReview,
       filingReview,
       flightAdminReview,
       emergencyReview,
@@ -194,8 +193,9 @@ export function buildBriefingText(params: {
     `Cruise altitude: ${cruiseAltitudeFt ? `${cruiseAltitudeFt} ft` : 'Not set'}`,
     `Distance: ${formatDistance(route.summary.totalDistanceNm)}`,
     `ETE: ${formatDuration(route.summary.estimatedTimeMinutes)}`,
-    `Fuel required: ${formatFuel(route.summary.totalFuelRequiredGal)}`,
-    `Fuel remaining: ${formatFuel(route.summary.fuelRemainingGal)}`,
+    `Fuel required: ${fuelPlanningResult ? formatFuelQuantity(fuelPlanningResult.totalRequiredFuel) : formatFuel(route.summary.totalFuelRequiredGal)}`,
+    `Fuel remaining: ${fuelPlanningResult ? formatFuelQuantity(fuelPlanningResult.remainingFuel) : formatFuel(route.summary.fuelRemainingGal)}`,
+    `Fuel trust: ${fuelPlanningResult?.trusted ? 'Approved POH/AFM profile' : 'Legacy/untrusted estimate'}`,
     '',
     'NAVIGATION LOG',
     ...route.legs.map((leg, index) => {
@@ -209,6 +209,9 @@ export function buildBriefingText(params: {
     'TRAINING / CHECKRIDE NAVLOG',
     ...formatTrainingNavLog(trainingNavLog),
     '',
+    'FUEL PLANNING',
+    ...formatFuelPlanningResultLines(fuelPlanningResult),
+    '',
     'WEATHER',
     ...(weather.length
       ? weather.map((report) => `${report.icao}: ${report.flightCategory} ${report.raw}`)
@@ -221,6 +224,9 @@ export function buildBriefingText(params: {
     '',
     'AIRSPACE VERTICAL PROFILE',
     ...formatAirspaceVerticalProfile(airspaceVerticalProfile),
+    '',
+    'GRID MORA',
+    ...formatGridMoraReviewLines(gridMoraReview),
     '',
     'WEIGHT & BALANCE',
     ...formatBriefingWeightBalance(weightBalanceResult),
@@ -259,6 +265,8 @@ export function buildBriefingDigest(params: {
   routeNotamReview?: RouteNotamReview;
   weightBalanceResult?: WeightBalanceResult;
   dataFreshness?: DataFreshness[];
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
@@ -276,12 +284,21 @@ export function buildBriefingDigest(params: {
     });
   }
 
-  if (params.route.summary.legCount > 0 && params.route.summary.fuelStatus === 'ok') {
+  const hasFuelDigestItem = items.some((item) => item.id.startsWith('fuel-'));
+  if (params.fuelPlanningResult?.trusted && params.route.summary.legCount > 0 && !hasFuelDigestItem) {
     items.push({
       id: 'fuel-ready',
       level: 'info',
       title: 'Fuel margin calculated',
-      action: `${formatFuel(params.route.summary.totalFuelRequiredGal)} required with ${formatFuel(params.route.summary.fuelRemainingGal)} remaining after planned reserve/contingency.`,
+      action: `${formatFuelQuantity(params.fuelPlanningResult.totalRequiredFuel)} required with ${formatFuelQuantity(params.fuelPlanningResult.remainingFuel)} remaining after final reserve.`,
+      source: 'Fuel',
+    });
+  } else if (!params.fuelPlanningResult && params.route.summary.legCount > 0 && params.route.summary.fuelStatus === 'ok' && !hasFuelDigestItem) {
+    items.push({
+      id: 'fuel-legacy',
+      level: 'caution',
+      title: 'Fuel uses legacy estimate',
+      action: `${formatFuel(params.route.summary.totalFuelRequiredGal)} required by basic distance/cruise-burn estimate. Configure and approve a POH/AFM profile for trusted fuel.`,
       source: 'Fuel',
     });
   }
@@ -320,6 +337,7 @@ export function buildBriefingDigest(params: {
   addFilingDigestItems(items, params.filingReview);
   addFlightAdminDigestItems(items, params.flightAdminReview);
   addEmergencyDigestItems(items, params.emergencyReview);
+  addGridMoraDigestItems(items, params.gridMoraReview);
 
   for (const freshness of params.dataFreshness ?? []) {
     if (freshness.status === 'current') continue;
@@ -350,6 +368,80 @@ export function buildBriefingDigest(params: {
     }],
     generatedAt: new Date().toISOString(),
   };
+}
+
+function addFuelPlanningRisks(
+  risks: BriefingRisk[],
+  route: RouteAnalysis,
+  fuelPlanningResult?: FuelPlanningResult
+) {
+  if (!fuelPlanningResult) {
+    if (route.summary.fuelStatus === 'critical') {
+      risks.push({
+        id: 'fuel-critical',
+        level: 'critical',
+        title: 'Fuel exceeds usable capacity',
+        detail: 'Trip, reserve, and contingency fuel are greater than the selected aircraft usable fuel.',
+      });
+    } else if (route.summary.fuelStatus === 'caution') {
+      risks.push({
+        id: 'fuel-caution',
+        level: 'caution',
+        title: 'Fuel margin is tight',
+        detail: 'Fuel remaining after reserves is less than half of the reserve fuel quantity.',
+      });
+    } else if (route.summary.legCount > 0) {
+      risks.push({
+        id: 'fuel-legacy-estimate',
+        level: 'caution',
+        title: 'Fuel uses legacy estimate',
+        detail: 'Configure and approve a POH/AFM performance profile before trusting Halo fuel numbers.',
+      });
+    }
+    return;
+  }
+
+  if (fuelPlanningResult.status === 'needs-route') return;
+
+  if (fuelPlanningResult.status === 'critical') {
+    risks.push({
+      id: 'fuel-critical',
+      level: 'critical',
+      title: 'Fuel exceeds usable capacity',
+      detail: fuelPlanningResult.message,
+    });
+    return;
+  }
+
+  if (!fuelPlanningResult.trusted) {
+    risks.push({
+      id: `fuel-${fuelPlanningResult.status}`,
+      level: 'caution',
+      title: 'Fuel result is not trusted',
+      detail: fuelPlanningResult.message,
+    });
+    return;
+  }
+
+  if (fuelPlanningResult.status === 'caution') {
+    risks.push({
+      id: 'fuel-caution',
+      level: 'caution',
+      title: 'Fuel margin is tight',
+      detail: fuelPlanningResult.message,
+    });
+  }
+}
+
+function addGridMoraRisks(risks: BriefingRisk[], review?: GridMoraReview) {
+  if (!review || review.status === 'needs-route' || review.status === 'complete') return;
+
+  risks.push({
+    id: `grid-mora-${review.status}`,
+    level: 'caution',
+    title: 'Grid MORA not confirmed in Halo',
+    detail: review.message,
+  });
 }
 
 function addWeightBalanceRisks(risks: BriefingRisk[], result?: WeightBalanceResult) {
@@ -588,6 +680,29 @@ function addEmergencyDigestItems(items: BriefingDigestItem[], review?: Emergency
   }
 }
 
+function addGridMoraDigestItems(items: BriefingDigestItem[], review?: GridMoraReview) {
+  if (!review || review.status === 'needs-route') return;
+
+  if (review.status === 'complete') {
+    items.push({
+      id: 'grid-mora-ready',
+      level: 'info',
+      title: 'Grid MORA provider data loaded',
+      action: `${review.cells.length} route Grid MORA cell${review.cells.length === 1 ? '' : 's'} loaded from ${review.source}.`,
+      source: 'Grid MORA',
+    });
+    return;
+  }
+
+  items.push({
+    id: `grid-mora-${review.status}`,
+    level: 'caution',
+    title: 'Grid MORA requires official source',
+    action: review.message,
+    source: 'Grid MORA',
+  });
+}
+
 function routeLabel(waypoints: Waypoint[]): string {
   if (waypoints.length === 0) return 'Untitled route';
   return waypoints.map((waypoint) => waypoint.ident ?? waypoint.name).join(' -> ');
@@ -643,6 +758,7 @@ function sourceForRisk(riskId: string): string {
   if (riskId.startsWith('flight-admin')) return 'Flight Admin';
   if (riskId.startsWith('emergency')) return 'Emergency';
   if (riskId.startsWith('fuel')) return 'Fuel';
+  if (riskId.startsWith('grid-mora')) return 'Grid MORA';
   if (riskId.startsWith('route')) return 'Route';
   return 'Risk';
 }
@@ -809,6 +925,22 @@ function formatAirspaceVerticalProfile(profile?: AirspaceVerticalProfile): strin
     `Route distance: ${formatDistance(profile.routeDistanceNm)}, cruise altitude: ${Math.round(profile.cruiseAltitudeFt)} ft, status: ${profile.status.toUpperCase()}`,
     ...profile.items.slice(0, 12).map(formatAirspaceProfileItem),
     ...(profile.items.length > 12 ? [`+${profile.items.length - 12} more profile bands hidden in exported summary.`] : []),
+  ];
+}
+
+function formatFuelPlanningResultLines(result?: FuelPlanningResult): string[] {
+  if (!result) {
+    return ['Fuel planning result unavailable. Configure an approved POH/AFM performance profile before trusting fuel numbers.'];
+  }
+
+  return [
+    `Status: ${result.status.toUpperCase()} - ${result.message}`,
+    `Rule set: ${result.ruleSet}, trusted: ${result.trusted ? 'yes' : 'no'}`,
+    `Total required: ${formatFuelQuantity(result.totalRequiredFuel)}, remaining after final reserve: ${formatFuelQuantity(result.remainingFuel)}, expected landing: ${formatFuelQuantity(result.expectedLandingFuel)}`,
+    ...result.breakdown.map((item) =>
+      `${item.label}: ${formatFuelQuantity(item.quantity)}${item.trusted ? '' : ' untrusted'} - ${item.detail}`
+    ),
+    ...result.issues.map((issue) => `ISSUE: ${issue}`),
   ];
 }
 

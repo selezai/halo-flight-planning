@@ -167,6 +167,9 @@ export const DEFAULT_AIRCRAFT = PRESET_AIRCRAFT[0];
 export function clampAircraftProfile(profile: AircraftProfile): AircraftProfile {
   return {
     ...profile,
+    performanceProfileId: typeof profile.performanceProfileId === 'string'
+      ? profile.performanceProfileId.slice(0, 120)
+      : undefined,
     cruiseSpeedKts: clampNumber(profile.cruiseSpeedKts, 40, 450),
     fuelBurnGph: clampNumber(profile.fuelBurnGph, 1, 200),
     usableFuelGal: clampNumber(profile.usableFuelGal, 1, 600),

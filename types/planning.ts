@@ -18,6 +18,7 @@ export interface AircraftProfile {
   registration: string;
   type: string;
   name: string;
+  performanceProfileId?: string;
   cruiseSpeedKts: number;
   fuelBurnGph: number;
   usableFuelGal: number;
@@ -27,6 +28,91 @@ export interface AircraftProfile {
   compassDeviationDeg?: number;
   glideRatio?: number;
   weightBalance?: WeightBalanceConfig;
+}
+
+export type FuelQuantityUnit = 'usg' | 'litre' | 'kg' | 'lb';
+
+export interface FuelQuantity {
+  value: number;
+  unit: FuelQuantityUnit;
+}
+
+export type FixedWingAircraftClass = 'piston' | 'turboprop' | 'jet';
+
+export type AircraftPerformanceProfileStatus = 'draft' | 'approved' | 'archived';
+
+export interface AircraftPerformanceSource {
+  title: string;
+  revision?: string;
+  page?: string;
+  effectiveDate?: string;
+  notes?: string;
+}
+
+export type PerformancePhase = 'taxi' | 'climb' | 'cruise' | 'descent' | 'holding';
+
+export type PerformanceInputKey =
+  | 'weightLb'
+  | 'altitudeFt'
+  | 'temperatureC'
+  | 'isaDeviationC'
+  | 'powerPercent'
+  | 'rpm'
+  | 'torquePercent'
+  | 'manifoldPressureInHg'
+  | 'timeMinutes';
+
+export interface PerformanceConditions extends Partial<Record<PerformanceInputKey, number>> {
+  powerSetting?: string;
+  mixtureSetting?: string;
+}
+
+export interface PerformanceTableOutput {
+  fuel?: FuelQuantity;
+  fuelFlowPerHour?: FuelQuantity;
+  timeMinutes?: number;
+  distanceNm?: number;
+  trueAirspeedKts?: number;
+}
+
+export interface PerformanceTableRow {
+  id?: string;
+  conditions: PerformanceConditions;
+  output: PerformanceTableOutput;
+  notes?: string;
+}
+
+export interface PerformanceTable {
+  id: string;
+  phase: PerformancePhase;
+  title: string;
+  interpolationKeys: PerformanceInputKey[];
+  rows: PerformanceTableRow[];
+  sourceRef?: string;
+}
+
+export interface AircraftPerformanceProfile {
+  id: string;
+  ownerId?: string;
+  registration: string;
+  aircraftType: string;
+  displayName: string;
+  aircraftClass: FixedWingAircraftClass;
+  status: AircraftPerformanceProfileStatus;
+  source: AircraftPerformanceSource;
+  fuelUnit: FuelQuantityUnit;
+  displayFuelUnit: FuelQuantityUnit;
+  fuelDensityLbPerUsg: number;
+  usableFuel: FuelQuantity;
+  defaultTaxiFuel?: FuelQuantity;
+  contingencyPercent: number;
+  finalReserveMinutes: number;
+  defaultHoldingMinutes: number;
+  tables: PerformanceTable[];
+  approvalNotes?: string;
+  approvedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type WeightBalanceStatus =
@@ -204,6 +290,139 @@ export interface TrainingNavLog {
   totalFuelGal: number;
 }
 
+export type FlightRules = 'vfr' | 'ifr';
+
+export type FuelPlanningRuleSet = 'sacaa-atns-ga';
+
+export interface RouteWindInput {
+  source: 'manual' | 'provider';
+  directionDeg: number;
+  speedKts: number;
+  label?: string;
+  updatedAt?: string;
+}
+
+export interface AlternateFuelInput {
+  name: string;
+  distanceNm: number;
+  cruiseAltitudeFt?: number;
+  wind?: RouteWindInput;
+}
+
+export interface FuelPlanningState {
+  flightRules: FlightRules;
+  ruleSet: FuelPlanningRuleSet;
+  selectedPerformanceProfileId?: string;
+  wind: RouteWindInput;
+  temperatureC: number;
+  takeoffWeightLb: number;
+  cruisePowerSetting?: string;
+  mixtureSetting?: string;
+  holdingMinutes: number;
+  finalReserveMinutes: number;
+  contingencyPercent: number;
+  alternate?: AlternateFuelInput;
+  additionalFuel: FuelQuantity;
+  discretionaryFuel: FuelQuantity;
+}
+
+export type FuelPlanningResultStatus =
+  | 'needs-route'
+  | 'untrusted-profile'
+  | 'incomplete-profile'
+  | 'ready'
+  | 'caution'
+  | 'critical';
+
+export type FuelBreakdownKind =
+  | 'taxi'
+  | 'climb'
+  | 'cruise'
+  | 'descent'
+  | 'trip'
+  | 'contingency'
+  | 'alternate'
+  | 'holding'
+  | 'final-reserve'
+  | 'additional'
+  | 'discretionary'
+  | 'total-required'
+  | 'remaining'
+  | 'expected-landing';
+
+export interface FuelBreakdownItem {
+  kind: FuelBreakdownKind;
+  label: string;
+  quantity: FuelQuantity;
+  trusted: boolean;
+  detail: string;
+}
+
+export interface FuelPlanLeg {
+  id: string;
+  from: string;
+  to: string;
+  distanceNm: number;
+  trueCourseDeg: number;
+  windCorrectionAngleDeg: number;
+  groundSpeedKts: number;
+  estimatedTimeMinutes: number;
+  fuel: FuelQuantity;
+}
+
+export interface FuelPlanningResult {
+  status: FuelPlanningResultStatus;
+  ruleSet: FuelPlanningRuleSet;
+  profileId?: string;
+  profileStatus?: AircraftPerformanceProfileStatus;
+  trusted: boolean;
+  message: string;
+  issues: string[];
+  breakdown: FuelBreakdownItem[];
+  legs: FuelPlanLeg[];
+  tripFuel: FuelQuantity;
+  totalRequiredFuel: FuelQuantity;
+  usableFuel: FuelQuantity;
+  remainingFuel: FuelQuantity;
+  expectedLandingFuel: FuelQuantity;
+  calculatedAt: string;
+}
+
+export type GridMoraReviewSource =
+  | 'south-africa-official'
+  | 'jeppesen'
+  | 'lido'
+  | 'navblue'
+  | 'unavailable';
+
+export type GridMoraReviewStatus =
+  | 'needs-route'
+  | 'provider-not-configured'
+  | 'checking'
+  | 'unavailable'
+  | 'stale'
+  | 'partial'
+  | 'complete';
+
+export interface GridMoraCell {
+  id: string;
+  label: string;
+  bounds: [Coordinates, Coordinates];
+  moraFt: number;
+  accuracy: 'normal' | 'doubtful';
+  source: GridMoraReviewSource;
+}
+
+export interface GridMoraReview {
+  source: GridMoraReviewSource;
+  status: GridMoraReviewStatus;
+  message: string;
+  cells: GridMoraCell[];
+  routeSignature?: string;
+  sourceUrl?: string;
+  updatedAt?: string;
+}
+
 export type FlightCategory = 'VFR' | 'MVFR' | 'IFR' | 'LIFR' | 'UNKNOWN';
 
 export interface DecodedWind {
@@ -378,6 +597,9 @@ export interface HaloMissionPlannerState {
   cruiseAltitudeFt: number;
   waypoints: Waypoint[];
   activeAircraft: AircraftProfile;
+  selectedAircraftPerformanceProfileId?: string;
+  fuelPlanning: FuelPlanningState;
+  gridMoraReview: GridMoraReview;
   weightBalanceLoading: WeightBalanceLoading;
   trainingWind: TrainingWind;
   filingChecklist: FilingChecklistState;

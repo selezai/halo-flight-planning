@@ -8,6 +8,8 @@ import type {
   EmergencyPlanningReview,
   FlightAdminReview,
   FilingWorkflowReview,
+  FuelPlanningResult,
+  GridMoraReview,
   RouteAirspaceAlert,
   RouteAnalysis,
   RouteNotamReview,
@@ -21,6 +23,8 @@ import { formatCoordinates, formatCourse, formatDistance, formatDuration, format
 import { formatEmergencyPlanningLines } from './emergencyPlanning';
 import { formatFilingWorkflowLines } from './filingReminder';
 import { formatFlightAdminLines } from './flightAdmin';
+import { formatFuelQuantity } from './fuel';
+import { formatGridMoraReviewLines } from './gridMora';
 import { getWeightBalanceStatusLabel } from './weightBalance';
 
 export interface BackupPackParams {
@@ -37,6 +41,8 @@ export interface BackupPackParams {
   weightBalanceResult?: WeightBalanceResult;
   dataFreshness?: DataFreshness[];
   trainingNavLog?: TrainingNavLog;
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
@@ -60,6 +66,8 @@ export function buildBackupPackText(params: BackupPackParams): string {
     weightBalanceResult,
     dataFreshness = [],
     trainingNavLog,
+    fuelPlanningResult,
+    gridMoraReview,
     filingReview,
     flightAdminReview,
     emergencyReview,
@@ -100,13 +108,7 @@ export function buildBackupPackText(params: BackupPackParams): string {
     ...formatTrainingNavLog(trainingNavLog),
     '',
     'FUEL',
-    `Trip fuel: ${formatFuel(route.summary.tripFuelGal)}`,
-    `Reserve fuel: ${formatFuel(route.summary.reserveFuelGal)}`,
-    `Contingency fuel: ${formatFuel(route.summary.contingencyFuelGal)}`,
-    `Total required: ${formatFuel(route.summary.totalFuelRequiredGal)}`,
-    `Usable fuel: ${formatFuel(route.summary.usableFuelGal)}`,
-    `Remaining after planned reserve/contingency: ${formatFuel(route.summary.fuelRemainingGal)}`,
-    `Fuel status: ${route.summary.fuelStatus.toUpperCase()}`,
+    ...formatFuelPlanning(fuelPlanningResult, route),
     '',
     'WEIGHT & BALANCE',
     ...formatWeightBalance(weightBalanceResult),
@@ -119,6 +121,9 @@ export function buildBackupPackText(params: BackupPackParams): string {
     '',
     'AIRSPACE VERTICAL PROFILE',
     ...formatAirspaceVerticalProfile(airspaceVerticalProfile),
+    '',
+    'GRID MORA',
+    ...formatGridMoraReviewLines(gridMoraReview),
     '',
     'NOTAM',
     ...formatNotam(routeNotamReview),
@@ -145,6 +150,7 @@ export function buildBackupPackText(params: BackupPackParams): string {
     '',
     'OFFICIAL SOURCE LINKS',
     `NOTAM source: ${routeNotamReview?.sourceUrl ?? 'Official source not configured in Halo'}`,
+    `Grid MORA source: ${gridMoraReview?.sourceUrl ?? 'Licensed provider not configured in Halo'}`,
     'Weather source: https://aviationweather.gov/',
     'South Africa official filing/briefing: https://file2fly.atns.co.za/aes/login.jsp',
     'OpenAIP aviation data: https://www.openaip.net/',
@@ -205,6 +211,53 @@ function formatTrainingNavLog(navLog?: TrainingNavLog): string[] {
       `GS ${Math.round(leg.groundSpeedKts)} kt, ETE ${formatDuration(leg.estimatedTimeMinutes)}, fuel ${formatFuel(leg.fuelRequiredGal)}`
     ),
   ];
+}
+
+function formatFuelPlanning(result: FuelPlanningResult | undefined, route: RouteAnalysis): string[] {
+  if (!result) {
+    return [
+      `Trip fuel: ${formatFuel(route.summary.tripFuelGal)}`,
+      `Reserve fuel: ${formatFuel(route.summary.reserveFuelGal)}`,
+      `Contingency fuel: ${formatFuel(route.summary.contingencyFuelGal)}`,
+      `Total required: ${formatFuel(route.summary.totalFuelRequiredGal)}`,
+      `Usable fuel: ${formatFuel(route.summary.usableFuelGal)}`,
+      `Remaining after planned reserve/contingency: ${formatFuel(route.summary.fuelRemainingGal)}`,
+      `Fuel status: ${route.summary.fuelStatus.toUpperCase()}`,
+      'Trust: Not trusted. This is the legacy still-air estimate.',
+    ];
+  }
+
+  const lines = [
+    `Status: ${result.status.toUpperCase()} - ${result.message}`,
+    `Trust: ${result.trusted ? 'Trusted approved-profile calculation' : 'Not trusted for dispatch'}`,
+    `Trip fuel: ${formatFuelQuantity(result.tripFuel)}`,
+    `Total required: ${formatFuelQuantity(result.totalRequiredFuel)}`,
+    `Usable fuel: ${formatFuelQuantity(result.usableFuel)}`,
+    `Expected landing fuel: ${formatFuelQuantity(result.expectedLandingFuel)}`,
+    `Reserve margin: ${formatFuelQuantity(result.remainingFuel)}`,
+  ];
+
+  if (result.legs.length > 0) {
+    lines.push('Route legs:');
+    lines.push(...result.legs.map((leg, index) =>
+      `${index + 1}. ${leg.from} to ${leg.to}: ${formatDistance(leg.distanceNm)}, ` +
+      `TC ${formatCourse(leg.trueCourseDeg)}, GS ${Math.round(leg.groundSpeedKts)} kt, ` +
+      `ETE ${formatDuration(leg.estimatedTimeMinutes)}, fuel ${formatFuelQuantity(leg.fuel)}`
+    ));
+  }
+
+  if (result.breakdown.length > 0) {
+    lines.push('Breakdown:');
+    lines.push(...result.breakdown.map((item) =>
+      `${item.label}: ${formatFuelQuantity(item.quantity)} - ${item.detail}`
+    ));
+  }
+
+  if (result.issues.length > 0) {
+    lines.push(...result.issues.map((issue) => `WARNING: ${issue}`));
+  }
+
+  return lines;
 }
 
 function formatWeightBalance(result?: WeightBalanceResult): string[] {

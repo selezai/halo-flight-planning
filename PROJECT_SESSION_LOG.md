@@ -1,5 +1,72 @@
 # Halo Session Log
 
+## 2026-08-31 Grid MORA And Advanced Fuel Planning
+
+Problem / requested implementation:
+
+- Build South Africa-first, SACAA/ATNS-style planning for Grid MORA and advanced fuel.
+- Do not reuse or push the earlier production-readiness stash.
+- Keep Grid MORA provider-backed only, with no derived or official-looking values unless licensed data is configured.
+- Replace the legacy gallons-per-hour fuel estimate with approved aircraft performance profiles, POH/AFM table validation, wind-aware routing, alternates, holding, reserves, taxi, additional/discretionary fuel, and trust status.
+
+Root cause:
+
+- The old route fuel summary was intentionally simple and could not account for wind, climb, descent, taxi/run-up, holding, alternate fuel, leaning/power settings, or POH/AFM table bounds.
+- Aircraft data was stored as a simple aircraft preset/profile, not an account-scoped approved performance profile.
+- Grid MORA was not represented in the planning state or data provider model; showing values without a licensed provider would create false authority.
+
+Solution:
+
+- Added fixed-wing aircraft performance profile types for piston, turboprop, and jet aircraft, including source metadata, approval status, fuel units, usable/taxi fuel, and performance tables.
+- Added account-scoped aircraft profile APIs:
+  - `GET/POST /api/aircraft-profiles`
+  - `GET/PATCH /api/aircraft-profiles/[id]`
+  - `POST /api/aircraft-profiles/[id]/approve`
+  - `GET/POST /api/aircraft-profiles/[id]/tables.csv`
+- Added a prepared migration for `halo_aircraft_profiles`; it was not applied to production, and runtime profile writes do not auto-create the table.
+- Added CSV import/export and validation for POH/AFM tables, with bounded interpolation and no extrapolation outside available table data.
+- Added advanced fuel planning with taxi, climb, cruise, descent, trip, contingency, alternate, holding, final reserve, additional, discretionary, total required, expected landing fuel, remaining fuel, wind-aware groundspeed, and unit conversion.
+- Added profile trust rules: draft/incomplete profiles produce untrusted fallback results; only the approval endpoint can make a profile trusted; editing an approved profile returns it to draft.
+- Added Grid MORA provider interfaces and UI/report states for route-needed, provider-not-configured, unavailable, stale, partial, and complete data.
+- Wired fuel and Grid MORA status into the sidebar, route status bar, mission summary, pilot briefing, and backup/print pack.
+- Kept the account planner snapshot lightweight by storing selected profile ids and per-mission fuel/Grid MORA state, not full POH tables.
+- Updated the test-pilot local-store reset version to match the new persisted planner schema.
+
+Files modified:
+
+- `types/planning.ts`
+- `stores/mapStore.ts`
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `components/planning/RouteStatusBar.tsx`
+- `lib/planning/aircraftPerformance.ts`
+- `lib/planning/fuel.ts`
+- `lib/planning/gridMora.ts`
+- `lib/planning/aircraft.ts`
+- `lib/planning/briefing.ts`
+- `lib/planning/backupPack.ts`
+- `lib/ui/halo.ts`
+- `lib/account/aircraftProfileRepository.ts`
+- `lib/account/plannerSnapshot.ts`
+- `lib/account/autoSync.ts`
+- `lib/db/schema.ts`
+- `app/api/aircraft-profiles/**`
+- `db/migrations/0003_aircraft_performance_profiles.sql`
+- `tests/account/aircraftProfilesApi.test.ts`
+- `tests/planning/aircraftPerformance.test.ts`
+- `tests/planning/fuel.test.ts`
+- `tests/planning/gridMora.test.ts`
+- updated related existing tests and e2e expectations.
+
+Verification:
+
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed, 47 files / 236 tests.
+- `pnpm build`: passed on Next.js `15.5.24`.
+- `pnpm test:e2e`: passed, 3 Playwright tests against production build / `next start`.
+- Earlier production-readiness changes remain local in stash `codex-prod-readiness-local-2026-08-31` and were not included in this work.
+
 ## 2026-08-31 Test Pilot Feedback Investigation
 
 Problem / requested check:

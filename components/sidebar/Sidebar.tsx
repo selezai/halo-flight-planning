@@ -34,6 +34,25 @@ import {
   DEFAULT_PERSONAL_MINIMUMS,
 } from '@/lib/planning/aircraft';
 import {
+  applyProfileEdit,
+  approveAircraftPerformanceProfile,
+  createDraftPerformanceProfileFromAircraft,
+  exportPerformanceTablesCsv,
+  parsePerformanceTablesCsv,
+  statusLabel as formatPerformanceProfileStatus,
+  validateAircraftPerformanceProfile,
+} from '@/lib/planning/aircraftPerformance';
+import {
+  buildFuelPlanningResult,
+  formatFuelQuantity,
+  normalizeFuelQuantity,
+} from '@/lib/planning/fuel';
+import {
+  buildDefaultGridMoraReview,
+  buildGridMoraRouteSignature,
+  formatGridMoraSource,
+} from '@/lib/planning/gridMora';
+import {
   calculateRoute,
   formatCoordinates,
   formatCourse,
@@ -78,6 +97,7 @@ import { cn } from '@/lib/utils';
 import type { ParsedFeature } from '@/types/openaip';
 import type {
   AirspaceVerticalProfile,
+  AircraftPerformanceProfile,
   AircraftProfile,
   EmergencyLandingSite,
   EmergencyLandingSuitability,
@@ -88,6 +108,10 @@ import type {
   FilingChecklistState,
   FilingWorkflowReview,
   FlightCloseReminder,
+  FuelPlanningResult,
+  FuelPlanningState,
+  FuelQuantityUnit,
+  GridMoraReview,
   NotamBriefingRecord,
   RouteAirspaceAlert,
   RouteAirspaceReview,
@@ -555,6 +579,11 @@ function RoutePanel() {
     routeAirspaceReview,
     planningMode,
     setPlanningMode,
+    aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId,
+    fuelPlanning,
+    updateFuelPlanning,
+    gridMoraReview,
   } = useMapStore((state) => ({
     routeName: state.routeName,
     setRouteName: state.setRouteName,
@@ -569,8 +598,36 @@ function RoutePanel() {
     routeAirspaceReview: state.routeAirspaceReview,
     planningMode: state.planningMode,
     setPlanningMode: state.setPlanningMode,
+    aircraftPerformanceProfiles: state.aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+    fuelPlanning: state.fuelPlanning,
+    updateFuelPlanning: state.updateFuelPlanning,
+    gridMoraReview: state.gridMoraReview,
   }), shallow);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const selectedPerformanceProfile = useMemo(
+    () => aircraftPerformanceProfiles.find((profile) =>
+      profile.id === (selectedAircraftPerformanceProfileId || fuelPlanning.selectedPerformanceProfileId)
+    ),
+    [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
+  const effectiveGridMoraReview = useMemo(() => {
+    const routeSignature = buildGridMoraRouteSignature(waypoints);
+    if (gridMoraReview.routeSignature && gridMoraReview.routeSignature === routeSignature) {
+      return gridMoraReview;
+    }
+    return buildDefaultGridMoraReview(waypoints);
+  }, [gridMoraReview, waypoints]);
   const [typedRoute, setTypedRoute] = useState('');
   const [typedRouteStatus, setTypedRouteStatus] = useState<RouteEntryStatus>({
     tone: 'idle',
@@ -835,13 +892,20 @@ function RoutePanel() {
         items={[
           ['Distance', formatDistance(route.summary.totalDistanceNm)],
           ['ETE', formatDuration(route.summary.estimatedTimeMinutes)],
-          ['Est fuel', formatFuel(route.summary.totalFuelRequiredGal)],
-          ['Remain', formatFuel(route.summary.fuelRemainingGal)],
+          ['Fuel req', formatFuelQuantity(fuelPlanningResult.totalRequiredFuel)],
+          ['Remain', formatFuelQuantity(fuelPlanningResult.remainingFuel)],
         ]}
-        status={route.summary.fuelStatus}
+        status={fuelPlanningResult.status === 'critical' ? 'critical' : fuelPlanningResult.status === 'caution' || !fuelPlanningResult.trusted ? 'caution' : 'ok'}
       />
 
-      <FuelEstimatePanel route={route} aircraft={activeAircraft} />
+      <FuelEstimatePanel
+        route={route}
+        aircraft={activeAircraft}
+        profile={selectedPerformanceProfile}
+        fuelPlanning={fuelPlanning}
+        fuelPlanningResult={fuelPlanningResult}
+        onFuelPlanningChange={updateFuelPlanning}
+      />
 
       <AirspaceReviewPanel
         review={routeAirspaceReview}
@@ -849,7 +913,7 @@ function RoutePanel() {
         cruiseAltitudeFt={cruiseAltitudeFt}
       />
 
-      <MapDataAvailabilityPanel />
+      <MapDataAvailabilityPanel review={effectiveGridMoraReview} />
 
       {waypoints.length > 0 && (
         <PanelBlock title="Danger zone" icon={<Trash2 className="h-4 w-4" />}>
@@ -878,41 +942,160 @@ function RoutePanel() {
 function FuelEstimatePanel({
   route,
   aircraft,
+  profile,
+  fuelPlanning,
+  fuelPlanningResult,
+  onFuelPlanningChange,
 }: {
   route: ReturnType<typeof calculateRoute>;
   aircraft: AircraftProfile;
+  profile?: AircraftPerformanceProfile;
+  fuelPlanning: FuelPlanningState;
+  fuelPlanningResult: FuelPlanningResult;
+  onFuelPlanningChange: (updates: Partial<FuelPlanningState>) => void;
 }) {
+  const profileLabel = profile
+    ? `${profile.registration} ${profile.aircraftType} · ${formatPerformanceProfileStatus(profile.status)}`
+    : `${aircraft.registration} ${aircraft.type} · no POH profile selected`;
+
   return (
-    <PanelBlock title="Fuel estimate basis" icon={<Gauge className="h-4 w-4" />}>
-      <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
-        <Metric label="Trip" value={formatFuel(route.summary.tripFuelGal)} />
-        <Metric label="Reserve" value={formatFuel(route.summary.reserveFuelGal)} />
-        <Metric label="Contingency" value={formatFuel(route.summary.contingencyFuelGal)} />
-        <Metric label="Required" value={formatFuel(route.summary.totalFuelRequiredGal)} />
-        <Metric label="Usable" value={formatFuel(route.summary.usableFuelGal)} />
-        <Metric label="Remaining" value={formatFuel(route.summary.fuelRemainingGal)} />
+    <PanelBlock title="Fuel planning" icon={<Gauge className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getFuelPlanningTone(fuelPlanningResult)}`}>
+        <p className="font-semibold">{fuelPlanningResult.message}</p>
+        <p className="mt-1">{profileLabel}</p>
       </div>
-      <p className="mt-2 text-xs leading-5 text-slate-600">
-        Estimate uses route distance, {Math.round(aircraft.cruiseSpeedKts)} kt cruise, {aircraft.fuelBurnGph.toFixed(1)} gal/hr burn,{' '}
-        {aircraft.reserveMinutes} min reserve, and {aircraft.contingencyPercent}% contingency.
-      </p>
-      <p className="mt-1 text-xs leading-5 text-slate-500">
-        It does not include wind, climb, descent, taxi/run-up, holding, alternate fuel, leaning, or POH table corrections.
+
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Trip" value={formatFuelQuantity(fuelPlanningResult.tripFuel, profile?.displayFuelUnit)} />
+        <Metric label="Required" value={formatFuelQuantity(fuelPlanningResult.totalRequiredFuel, profile?.displayFuelUnit)} />
+        <Metric label="Landing" value={formatFuelQuantity(fuelPlanningResult.expectedLandingFuel, profile?.displayFuelUnit)} />
+        <Metric label="Reserve margin" value={formatFuelQuantity(fuelPlanningResult.remainingFuel, profile?.displayFuelUnit)} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <SelectField
+          label="Flight rules"
+          value={fuelPlanning.flightRules}
+          options={[
+            ['vfr', 'VFR GA'],
+            ['ifr', 'IFR GA'],
+          ]}
+          onChange={(value) => onFuelPlanningChange({ flightRules: value })}
+        />
+        <NumberField
+          label="Temp C"
+          value={fuelPlanning.temperatureC}
+          onChange={(value) => onFuelPlanningChange({ temperatureC: value })}
+        />
+        <NumberField
+          label="Takeoff weight lb"
+          value={fuelPlanning.takeoffWeightLb}
+          onChange={(value) => onFuelPlanningChange({ takeoffWeightLb: value })}
+        />
+        <NumberField
+          label="Wind from deg"
+          value={fuelPlanning.wind.directionDeg}
+          onChange={(value) => onFuelPlanningChange({ wind: { ...fuelPlanning.wind, directionDeg: value } })}
+        />
+        <NumberField
+          label="Wind kt"
+          value={fuelPlanning.wind.speedKts}
+          onChange={(value) => onFuelPlanningChange({ wind: { ...fuelPlanning.wind, speedKts: value } })}
+        />
+        <NumberField
+          label="Holding min"
+          value={fuelPlanning.holdingMinutes}
+          onChange={(value) => onFuelPlanningChange({ holdingMinutes: value })}
+        />
+        <NumberField
+          label="Final reserve min"
+          value={fuelPlanning.finalReserveMinutes}
+          onChange={(value) => onFuelPlanningChange({ finalReserveMinutes: value })}
+        />
+        <NumberField
+          label="Contingency %"
+          value={fuelPlanning.contingencyPercent}
+          onChange={(value) => onFuelPlanningChange({ contingencyPercent: value })}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <TextField
+          label="Alternate"
+          value={fuelPlanning.alternate?.name ?? ''}
+          onChange={(value) => onFuelPlanningChange({
+            alternate: {
+              name: value,
+              distanceNm: fuelPlanning.alternate?.distanceNm ?? 0,
+            },
+          })}
+        />
+        <NumberField
+          label="Alternate nm"
+          value={fuelPlanning.alternate?.distanceNm ?? 0}
+          onChange={(value) => onFuelPlanningChange({
+            alternate: {
+              name: fuelPlanning.alternate?.name ?? 'Alternate',
+              distanceNm: value,
+            },
+          })}
+          step="0.1"
+        />
+        <FuelQuantityField
+          label="Additional fuel"
+          quantity={fuelPlanning.additionalFuel}
+          onChange={(quantity) => onFuelPlanningChange({ additionalFuel: quantity })}
+        />
+        <FuelQuantityField
+          label="Discretionary fuel"
+          quantity={fuelPlanning.discretionaryFuel}
+          onChange={(quantity) => onFuelPlanningChange({ discretionaryFuel: quantity })}
+        />
+      </div>
+
+      {fuelPlanningResult.issues.length > 0 && (
+        <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-slate-600">
+          {fuelPlanningResult.issues.slice(0, 4).map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+      )}
+
+      <details className="mt-3 rounded-md border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+          Fuel breakdown
+        </summary>
+        <div className="grid grid-cols-2 gap-2 p-3 text-xs">
+          {fuelPlanningResult.breakdown.map((item) => (
+            <Metric
+              key={item.kind}
+              label={item.label}
+              value={formatFuelQuantity(item.quantity, profile?.displayFuelUnit)}
+            />
+          ))}
+        </div>
+      </details>
+
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        Operational fuel is trusted only when the selected aircraft profile is approved and POH/AFM table lookups stay within available bounds. Legacy figures remain visible only as untrusted fallback.
       </p>
     </PanelBlock>
   );
 }
 
-function MapDataAvailabilityPanel() {
+function MapDataAvailabilityPanel({ review }: { review: GridMoraReview }) {
   return (
     <PanelBlock title="Chart data availability" icon={<Layers className="h-4 w-4" />}>
       <div className="grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
         <Metric label="Frequencies" value="When supplied" />
-        <Metric label="Grid MORA" value="Not loaded" />
+        <Metric label="Grid MORA" value={review.status.replace(/-/g, ' ')} />
       </div>
       <p className="mt-2 text-xs leading-5 text-slate-500">
-        Frequencies appear in feature details when OpenAIP supplies them. Grid MORA is not available from Halo&apos;s current map data, so use official chart and briefing sources for MORA.
+        Frequencies appear in feature details when OpenAIP supplies them. Grid MORA uses provider-backed data only; current source is {formatGridMoraSource(review.source)}.
       </p>
+      {review.status !== 'complete' && (
+        <WarningLine text={review.message} />
+      )}
     </PanelBlock>
   );
 }
@@ -1161,6 +1344,10 @@ function AircraftPanel() {
     activeAircraft,
     setActiveAircraft,
     updateActiveAircraft,
+    aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId,
+    upsertAircraftPerformanceProfile,
+    selectAircraftPerformanceProfile,
     weightBalanceLoading,
     updateWeightBalanceLoading,
     updateWeightBalanceStationWeight,
@@ -1170,12 +1357,17 @@ function AircraftPanel() {
     activeAircraft: state.activeAircraft,
     setActiveAircraft: state.setActiveAircraft,
     updateActiveAircraft: state.updateActiveAircraft,
+    aircraftPerformanceProfiles: state.aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+    upsertAircraftPerformanceProfile: state.upsertAircraftPerformanceProfile,
+    selectAircraftPerformanceProfile: state.selectAircraftPerformanceProfile,
     weightBalanceLoading: state.weightBalanceLoading,
     updateWeightBalanceLoading: state.updateWeightBalanceLoading,
     updateWeightBalanceStationWeight: state.updateWeightBalanceStationWeight,
     personalMinimums: state.personalMinimums,
     updatePersonalMinimums: state.updatePersonalMinimums,
   }), shallow);
+  const selectedPerformanceProfile = aircraftPerformanceProfiles.find((profile) => profile.id === selectedAircraftPerformanceProfileId);
   const weightBalanceConfig = activeAircraft.weightBalance ?? createDefaultWeightBalanceConfig();
   const weightBalanceResult = useMemo(
     () => calculateWeightBalance({ aircraft: activeAircraft, loading: weightBalanceLoading }),
@@ -1202,6 +1394,22 @@ function AircraftPanel() {
         eyebrow="Aircraft"
         title="Aircraft setup"
         detail="Start with the aircraft type and performance numbers. Configure W&B separately before treating the loading review as operational."
+      />
+
+      <AircraftPerformanceLibraryPanel
+        activeAircraft={activeAircraft}
+        profiles={aircraftPerformanceProfiles}
+        selectedProfile={selectedPerformanceProfile}
+        onCreateProfile={() => {
+          const profile = createDraftPerformanceProfileFromAircraft(activeAircraft);
+          upsertAircraftPerformanceProfile(profile);
+          selectAircraftPerformanceProfile(profile.id);
+        }}
+        onSelectProfile={selectAircraftPerformanceProfile}
+        onProfileChange={(profile) => {
+          upsertAircraftPerformanceProfile(profile);
+          selectAircraftPerformanceProfile(profile.id);
+        }}
       />
 
       <PanelBlock title="Aircraft performance" icon={<Plane className="h-4 w-4" />}>
@@ -1421,6 +1629,375 @@ function AircraftPanel() {
   );
 }
 
+function AircraftPerformanceLibraryPanel({
+  activeAircraft,
+  profiles,
+  selectedProfile,
+  onCreateProfile,
+  onSelectProfile,
+  onProfileChange,
+}: {
+  activeAircraft: AircraftProfile;
+  profiles: AircraftPerformanceProfile[];
+  selectedProfile?: AircraftPerformanceProfile;
+  onCreateProfile: () => void;
+  onSelectProfile: (id: string | undefined) => void;
+  onProfileChange: (profile: AircraftPerformanceProfile) => void;
+}) {
+  const [csvText, setCsvText] = useState('');
+  const [message, setMessage] = useState<RouteEntryStatus>({ tone: 'idle', message: null });
+  const [busy, setBusy] = useState(false);
+  const selectedProfileId = selectedProfile?.id;
+  const selectedProfileTables = selectedProfile?.tables;
+
+  useEffect(() => {
+    setCsvText(selectedProfileTables ? exportPerformanceTablesCsv(selectedProfileTables) : '');
+    setMessage({ tone: 'idle', message: null });
+  }, [selectedProfileId, selectedProfileTables]);
+
+  const validation = selectedProfile
+    ? validateAircraftPerformanceProfile(selectedProfile)
+    : { canApprove: false, issues: ['Create or select a POH/AFM performance profile.'] };
+
+  const updateSelectedProfile = useCallback((updates: Partial<AircraftPerformanceProfile>) => {
+    if (!selectedProfile) return;
+    onProfileChange(applyProfileEdit(selectedProfile, updates));
+  }, [onProfileChange, selectedProfile]);
+
+  const importCsv = useCallback(() => {
+    if (!selectedProfile) return;
+
+    try {
+      const imported = parsePerformanceTablesCsv(csvText, selectedProfile.fuelUnit);
+      updateSelectedProfile({ tables: imported.tables });
+      setMessage({ tone: 'success', message: `Imported ${imported.rowCount} POH table row${imported.rowCount === 1 ? '' : 's'}.` });
+    } catch (error) {
+      setMessage({ tone: 'error', message: error instanceof Error ? error.message : 'CSV import failed.' });
+    }
+  }, [csvText, selectedProfile, updateSelectedProfile]);
+
+  const approveProfile = useCallback(() => {
+    if (!selectedProfile) return;
+
+    try {
+      onProfileChange(approveAircraftPerformanceProfile(selectedProfile, 'Account owner approved POH/AFM profile.'));
+      setMessage({ tone: 'success', message: 'Profile approved for trusted fuel planning.' });
+    } catch (error) {
+      setMessage({ tone: 'error', message: error instanceof Error ? error.message : 'Profile cannot be approved.' });
+    }
+  }, [onProfileChange, selectedProfile]);
+
+  const loadAccountProfiles = useCallback(async () => {
+    setBusy(true);
+    setMessage({ tone: 'loading', message: 'Loading account aircraft profiles...' });
+
+    try {
+      const response = await fetch('/api/aircraft-profiles', { cache: 'no-store' });
+      const payload = await response.json() as { profiles?: AircraftPerformanceProfile[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.profiles)) {
+        throw new Error(payload.error || 'Could not load account profiles.');
+      }
+      payload.profiles.forEach(onProfileChange);
+      if (payload.profiles[0]) onSelectProfile(payload.profiles[0].id);
+      setMessage({ tone: 'success', message: `Loaded ${payload.profiles.length} account profile${payload.profiles.length === 1 ? '' : 's'}.` });
+    } catch (error) {
+      setMessage({ tone: 'error', message: error instanceof Error ? error.message : 'Could not load account profiles.' });
+    } finally {
+      setBusy(false);
+    }
+  }, [onProfileChange, onSelectProfile]);
+
+  const saveAccountProfile = useCallback(async () => {
+    if (!selectedProfile) return;
+
+    setBusy(true);
+    setMessage({ tone: 'loading', message: 'Saving aircraft profile to account...' });
+
+    try {
+      const shouldApproveAfterSave = selectedProfile.status === 'approved';
+      const profileForSave: AircraftPerformanceProfile = shouldApproveAfterSave
+        ? { ...selectedProfile, status: 'draft', approvedAt: undefined }
+        : selectedProfile;
+      const patchResponse = await fetch(`/api/aircraft-profiles/${encodeURIComponent(selectedProfile.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileForSave),
+      });
+      const response = patchResponse.status === 404
+        ? await fetch('/api/aircraft-profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profileForSave),
+          })
+        : patchResponse;
+      const payload = await response.json() as { profile?: AircraftPerformanceProfile; error?: string };
+      if (!response.ok || !payload.profile) {
+        throw new Error(payload.error || 'Could not save account profile.');
+      }
+
+      let savedProfile = payload.profile;
+      if (shouldApproveAfterSave) {
+        const approveResponse = await fetch(`/api/aircraft-profiles/${encodeURIComponent(savedProfile.id)}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notes: selectedProfile.approvalNotes ?? 'Account owner approved POH/AFM profile.',
+          }),
+        });
+        const approvePayload = await approveResponse.json() as { profile?: AircraftPerformanceProfile; error?: string };
+        if (!approveResponse.ok || !approvePayload.profile) {
+          throw new Error(approvePayload.error || 'Profile saved as draft, but account approval failed.');
+        }
+        savedProfile = approvePayload.profile;
+      }
+
+      onProfileChange(savedProfile);
+      setMessage({
+        tone: 'success',
+        message: savedProfile.status === 'approved'
+          ? 'Saved and approved aircraft profile to account.'
+          : 'Saved aircraft profile to account.',
+      });
+    } catch (error) {
+      setMessage({ tone: 'error', message: error instanceof Error ? error.message : 'Could not save account profile.' });
+    } finally {
+      setBusy(false);
+    }
+  }, [onProfileChange, selectedProfile]);
+
+  return (
+    <PanelBlock title="POH fuel profile library" icon={<ClipboardCheck className="h-4 w-4" />}>
+      <div className="grid grid-cols-1 gap-3">
+        <div>
+          <Label htmlFor="performance-profile">Approved fuel profile</Label>
+          <select
+            id="performance-profile"
+            value={selectedProfile?.id ?? ''}
+            onChange={(event) => onSelectProfile(event.target.value || undefined)}
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+          >
+            <option value="">No POH profile selected</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.registration} - {profile.aircraftType} ({formatPerformanceProfileStatus(profile.status)})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={onCreateProfile}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </button>
+          <button
+            type="button"
+            onClick={loadAccountProfiles}
+            disabled={busy}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+            Load
+          </button>
+          <button
+            type="button"
+            onClick={saveAccountProfile}
+            disabled={busy || !selectedProfile}
+            className="inline-flex items-center justify-center gap-1 rounded-md bg-slate-950 px-2 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            Save
+          </button>
+        </div>
+      </div>
+
+      {!selectedProfile ? (
+        <div className="mt-3">
+          <EmptyState
+            title="No POH profile yet"
+            detail={`Create a draft from ${activeAircraft.registration} ${activeAircraft.type}, then enter POH/AFM source data and performance tables.`}
+          />
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div className={`rounded-md px-3 py-2 text-xs ${selectedProfile.status === 'approved' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+            <p className="font-semibold">{formatPerformanceProfileStatus(selectedProfile.status)}</p>
+            <p className="mt-1">
+              {validation.canApprove
+                ? 'Required POH/AFM tables are complete for owner approval.'
+                : validation.issues.slice(0, 2).join(' ')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <TextField
+              label="Registration"
+              value={selectedProfile.registration}
+              onChange={(value) => updateSelectedProfile({ registration: value || activeAircraft.registration })}
+            />
+            <TextField
+              label="Aircraft type"
+              value={selectedProfile.aircraftType}
+              onChange={(value) => updateSelectedProfile({ aircraftType: value || activeAircraft.type })}
+            />
+            <SelectField
+              label="Aircraft class"
+              value={selectedProfile.aircraftClass}
+              options={[
+                ['piston', 'Piston'],
+                ['turboprop', 'Turboprop'],
+                ['jet', 'Jet'],
+              ]}
+              onChange={(value) => updateSelectedProfile({ aircraftClass: value })}
+            />
+            <SelectField
+              label="Fuel unit"
+              value={selectedProfile.fuelUnit}
+              options={fuelUnitOptions()}
+              onChange={(value) => updateSelectedProfile({
+                fuelUnit: value,
+                usableFuel: normalizeFuelQuantity(selectedProfile.usableFuel, value, selectedProfile.fuelDensityLbPerUsg),
+                defaultTaxiFuel: selectedProfile.defaultTaxiFuel
+                  ? normalizeFuelQuantity(selectedProfile.defaultTaxiFuel, value, selectedProfile.fuelDensityLbPerUsg)
+                  : undefined,
+                tables: convertPerformanceTableFuelUnits(
+                  selectedProfile.tables,
+                  value,
+                  selectedProfile.fuelDensityLbPerUsg
+                ),
+              })}
+            />
+            <SelectField
+              label="Display unit"
+              value={selectedProfile.displayFuelUnit}
+              options={fuelUnitOptions()}
+              onChange={(value) => updateSelectedProfile({ displayFuelUnit: value })}
+            />
+            <NumberField
+              label="Fuel lb/USG"
+              value={selectedProfile.fuelDensityLbPerUsg}
+              onChange={(value) => updateSelectedProfile({ fuelDensityLbPerUsg: value })}
+              step="0.1"
+            />
+            <FuelQuantityField
+              label="Usable fuel"
+              quantity={selectedProfile.usableFuel}
+              fuelDensityLbPerUsg={selectedProfile.fuelDensityLbPerUsg}
+              onChange={(quantity) => updateSelectedProfile({ usableFuel: quantity })}
+            />
+            <FuelQuantityField
+              label="Taxi fuel"
+              quantity={selectedProfile.defaultTaxiFuel ?? { value: 0, unit: selectedProfile.fuelUnit }}
+              fuelDensityLbPerUsg={selectedProfile.fuelDensityLbPerUsg}
+              onChange={(quantity) => updateSelectedProfile({ defaultTaxiFuel: quantity })}
+            />
+            <NumberField
+              label="Default reserve min"
+              value={selectedProfile.finalReserveMinutes}
+              onChange={(value) => updateSelectedProfile({ finalReserveMinutes: value })}
+            />
+            <NumberField
+              label="Default holding min"
+              value={selectedProfile.defaultHoldingMinutes}
+              onChange={(value) => updateSelectedProfile({ defaultHoldingMinutes: value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <TextField
+              label="POH source"
+              value={selectedProfile.source.title}
+              onChange={(value) => updateSelectedProfile({
+                source: {
+                  ...selectedProfile.source,
+                  title: value || 'POH/AFM source not recorded',
+                },
+              })}
+            />
+            <TextField
+              label="Revision"
+              value={selectedProfile.source.revision ?? ''}
+              onChange={(value) => updateSelectedProfile({
+                source: {
+                  ...selectedProfile.source,
+                  revision: value || undefined,
+                },
+              })}
+            />
+            <TextareaField
+              label="Source notes"
+              value={selectedProfile.source.notes ?? ''}
+              onChange={(value) => updateSelectedProfile({
+                source: {
+                  ...selectedProfile.source,
+                  notes: value || undefined,
+                },
+              })}
+              rows={2}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="performance-csv">POH performance CSV</Label>
+            <textarea
+              id="performance-csv"
+              value={csvText}
+              onChange={(event) => setCsvText(event.target.value)}
+              rows={8}
+              className="mt-1 w-full resize-y rounded-md border border-slate-300 px-3 py-2 font-mono text-xs focus:border-slate-950 focus:outline-none"
+              spellCheck={false}
+            />
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Required phases for approval: climb, cruise, descent, holding, plus taxi fuel or taxi table. CSV headers are generated by Export.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={importCsv}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Import CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadTextFile(exportPerformanceTablesCsv(selectedProfile.tables), `${selectedProfile.registration}-performance-tables.csv`, 'text/csv;charset=utf-8')}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={approveProfile}
+              disabled={!validation.canApprove}
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-emerald-700 px-2 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Approve
+            </button>
+          </div>
+
+          {message.message && (
+            <p
+              role={message.tone === 'error' ? 'alert' : 'status'}
+              className={`text-xs leading-5 ${getTypedRouteStatusClassName(message.tone)}`}
+            >
+              {message.message}
+            </p>
+          )}
+        </div>
+      )}
+    </PanelBlock>
+  );
+}
+
 function BriefingPanel() {
   const {
     routeName,
@@ -1432,6 +2009,10 @@ function BriefingPanel() {
     setCruiseAltitudeFt,
     waypoints,
     activeAircraft,
+    aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId,
+    fuelPlanning,
+    gridMoraReview,
     weightBalanceLoading,
     personalMinimums,
     routeAirspaceReview,
@@ -1453,6 +2034,10 @@ function BriefingPanel() {
     setCruiseAltitudeFt: state.setCruiseAltitudeFt,
     waypoints: state.waypoints,
     activeAircraft: state.activeAircraft,
+    aircraftPerformanceProfiles: state.aircraftPerformanceProfiles,
+    selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+    fuelPlanning: state.fuelPlanning,
+    gridMoraReview: state.gridMoraReview,
     weightBalanceLoading: state.weightBalanceLoading,
     personalMinimums: state.personalMinimums,
     routeAirspaceReview: state.routeAirspaceReview,
@@ -1468,6 +2053,29 @@ function BriefingPanel() {
   const weather = useRouteWeather(false);
   const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const selectedPerformanceProfile = useMemo(
+    () => aircraftPerformanceProfiles.find((profile) =>
+      profile.id === (selectedAircraftPerformanceProfileId || fuelPlanning.selectedPerformanceProfileId)
+    ),
+    [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
+  const effectiveGridMoraReview = useMemo(() => {
+    const routeSignature = buildGridMoraRouteSignature(waypoints);
+    if (gridMoraReview.routeSignature && gridMoraReview.routeSignature === routeSignature) {
+      return gridMoraReview;
+    }
+    return buildDefaultGridMoraReview(waypoints);
+  }, [gridMoraReview, waypoints]);
   const trainingNavLog = useMemo(
     () => buildTrainingNavLog(route, activeAircraft, trainingWind),
     [route, activeAircraft, trainingWind]
@@ -1556,12 +2164,22 @@ function BriefingPanel() {
         updatedAt: weightBalanceResult.calculatedAt,
         maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.weightBalance,
       }),
+      assessDataFreshness({
+        source: 'Fuel',
+        updatedAt: fuelPlanningResult.calculatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.route,
+      }),
+      assessDataFreshness({
+        source: 'Grid MORA',
+        updatedAt: effectiveGridMoraReview.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
+      }),
     ],
-    [reports, routeAirspaceReview.updatedAt, routeCalculatedAt, routeNotamReview.updatedAt, weather.updatedAt, weightBalanceResult.calculatedAt]
+    [effectiveGridMoraReview.updatedAt, fuelPlanningResult.calculatedAt, reports, routeAirspaceReview.updatedAt, routeCalculatedAt, routeNotamReview.updatedAt, weather.updatedAt, weightBalanceResult.calculatedAt]
   );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview),
-    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview]
+    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview, fuelPlanningResult, effectiveGridMoraReview),
+    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview, fuelPlanningResult, effectiveGridMoraReview]
   );
   const digest = useMemo(
     () => buildBriefingDigest({
@@ -1573,11 +2191,13 @@ function BriefingPanel() {
       routeNotamReview,
       weightBalanceResult,
       dataFreshness,
+      fuelPlanningResult,
+      gridMoraReview: effectiveGridMoraReview,
       filingReview,
       flightAdminReview,
       emergencyReview,
     }),
-    [routeName, route, risks, reports, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, dataFreshness, filingReview, flightAdminReview, emergencyReview]
+    [routeName, route, risks, reports, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, dataFreshness, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -1593,6 +2213,8 @@ function BriefingPanel() {
       weightBalanceResult,
       dataFreshness,
       trainingNavLog,
+      fuelPlanningResult,
+      gridMoraReview: effectiveGridMoraReview,
       filingReview,
       flightAdminReview,
       emergencyReview,
@@ -1600,7 +2222,7 @@ function BriefingPanel() {
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
   );
   const backupPackText = useMemo(
     () => buildBackupPackText({
@@ -1617,6 +2239,8 @@ function BriefingPanel() {
       weightBalanceResult,
       dataFreshness,
       trainingNavLog,
+      fuelPlanningResult,
+      gridMoraReview: effectiveGridMoraReview,
       filingReview,
       flightAdminReview,
       emergencyReview,
@@ -1624,7 +2248,7 @@ function BriefingPanel() {
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -1685,6 +2309,8 @@ function BriefingPanel() {
 
       <FreshnessPanel freshness={dataFreshness} />
 
+      <FuelPlanningReviewPanel result={fuelPlanningResult} displayUnit={selectedPerformanceProfile?.displayFuelUnit} />
+
       <WeightBalanceReviewPanel result={weightBalanceResult} />
 
       <AirspaceReviewPanel
@@ -1694,6 +2320,8 @@ function BriefingPanel() {
       />
 
       <NotamReviewPanel review={routeNotamReview} />
+
+      <GridMoraReviewPanel review={effectiveGridMoraReview} />
 
       <PanelGroupHeader
         eyebrow="Training"
@@ -1950,6 +2578,36 @@ function FreshnessBadge({ freshness }: { freshness: DataFreshness }) {
   );
 }
 
+function FuelPlanningReviewPanel({
+  result,
+  displayUnit,
+}: {
+  result: FuelPlanningResult;
+  displayUnit?: FuelQuantityUnit;
+}) {
+  return (
+    <PanelBlock title="Fuel review" icon={<Gauge className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${getFuelPlanningTone(result)}`}>
+        <p className="font-semibold">{result.message}</p>
+        <p className="mt-1">Trusted: {result.trusted ? 'yes' : 'no'}</p>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Total required" value={formatFuelQuantity(result.totalRequiredFuel, displayUnit)} />
+        <Metric label="Remaining" value={formatFuelQuantity(result.remainingFuel, displayUnit)} />
+        <Metric label="Expected landing" value={formatFuelQuantity(result.expectedLandingFuel, displayUnit)} />
+        <Metric label="Trip" value={formatFuelQuantity(result.tripFuel, displayUnit)} />
+      </div>
+      {result.issues.length > 0 && (
+        <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-slate-600">
+          {result.issues.slice(0, 4).map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+      )}
+    </PanelBlock>
+  );
+}
+
 function WeightBalanceReviewPanel({ result }: { result: WeightBalanceResult }) {
   return (
     <PanelBlock title="Weight & balance review" icon={<Gauge className="h-4 w-4" />}>
@@ -1976,6 +2634,31 @@ function WeightBalanceReviewPanel({ result }: { result: WeightBalanceResult }) {
             <li key={issue}>{issue}</li>
           ))}
         </ul>
+      )}
+    </PanelBlock>
+  );
+}
+
+function GridMoraReviewPanel({ review }: { review: GridMoraReview }) {
+  return (
+    <PanelBlock title="Grid MORA review" icon={<Layers className="h-4 w-4" />}>
+      <div className={`rounded-md px-3 py-2 text-xs ${review.status === 'complete' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+        <p className="font-semibold">{review.status.replace(/-/g, ' ')}</p>
+        <p className="mt-1">{review.message}</p>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Source" value={formatGridMoraSource(review.source)} />
+        <Metric label="Cells" value={String(review.cells.length)} />
+      </div>
+      {review.cells.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {review.cells.slice(0, 6).map((cell) => (
+            <div key={cell.id} className="rounded-md border border-slate-200 p-2 text-xs">
+              <p className="font-semibold text-slate-900">{cell.label}</p>
+              <p className="mt-1 text-slate-500">{Math.round(cell.moraFt)} ft · {cell.accuracy}</p>
+            </div>
+          ))}
+        </div>
       )}
     </PanelBlock>
   );
@@ -3055,6 +3738,13 @@ function getWeightBalanceTone(result: WeightBalanceResult): string {
   return 'bg-emerald-50 text-emerald-800';
 }
 
+function getFuelPlanningTone(result: FuelPlanningResult): string {
+  if (result.status === 'critical') return 'bg-rose-50 text-rose-800';
+  if (result.status === 'caution' || !result.trusted) return 'bg-amber-50 text-amber-900';
+  if (result.status === 'ready') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-slate-50 text-slate-700';
+}
+
 function getDigestTone(status: BriefingDigest['status']): string {
   if (status === 'stop') return 'bg-rose-50 text-rose-800';
   if (status === 'review') return 'bg-amber-50 text-amber-900';
@@ -3300,6 +3990,53 @@ function NumberField({
   );
 }
 
+function FuelQuantityField({
+  label,
+  quantity,
+  fuelDensityLbPerUsg = 6,
+  onChange,
+}: {
+  label: string;
+  quantity: { value: number; unit: FuelQuantityUnit };
+  fuelDensityLbPerUsg?: number;
+  onChange: (quantity: { value: number; unit: FuelQuantityUnit }) => void;
+}) {
+  const id = label.toLowerCase().replace(/\W+/g, '-');
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <div className="mt-1 grid grid-cols-[1fr,5rem] gap-2">
+        <input
+          id={id}
+          type="number"
+          step="0.1"
+          value={Number.isFinite(quantity.value) ? quantity.value : 0}
+          onChange={(event) => onChange({
+            ...quantity,
+            value: Number(event.target.value),
+          })}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+        />
+        <select
+          value={quantity.unit}
+          onChange={(event) => onChange({
+            ...normalizeFuelQuantity(quantity, event.target.value as FuelQuantityUnit, fuelDensityLbPerUsg),
+          })}
+          className="rounded-md border border-slate-300 bg-white px-2 py-2 text-xs focus:border-slate-950 focus:outline-none"
+          aria-label={`${label} unit`}
+        >
+          {fuelUnitOptions().map(([value, optionLabel]) => (
+            <option key={value} value={value}>
+              {optionLabel}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function DateTimeField({
   label,
   value,
@@ -3407,6 +4144,37 @@ function SelectField<TValue extends string>({
       </select>
     </div>
   );
+}
+
+function fuelUnitOptions(): Array<[FuelQuantityUnit, string]> {
+  return [
+    ['usg', 'USG'],
+    ['litre', 'L'],
+    ['kg', 'kg'],
+    ['lb', 'lb'],
+  ];
+}
+
+function convertPerformanceTableFuelUnits(
+  tables: AircraftPerformanceProfile['tables'],
+  fuelUnit: FuelQuantityUnit,
+  fuelDensityLbPerUsg: number
+): AircraftPerformanceProfile['tables'] {
+  return tables.map((table) => ({
+    ...table,
+    rows: table.rows.map((row) => ({
+      ...row,
+      output: {
+        ...row.output,
+        fuel: row.output.fuel
+          ? normalizeFuelQuantity(row.output.fuel, fuelUnit, fuelDensityLbPerUsg)
+          : undefined,
+        fuelFlowPerHour: row.output.fuelFlowPerHour
+          ? normalizeFuelQuantity(row.output.fuelFlowPerHour, fuelUnit, fuelDensityLbPerUsg)
+          : undefined,
+      },
+    })),
+  }));
 }
 
 function ChecklistToggle({
@@ -3522,11 +4290,19 @@ function formatWind(report: WeatherReport): string {
 
 function downloadBriefing(text: string, routeName: string) {
   const safeName = (routeName || 'halo-briefing').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  downloadTextFile(text, `${safeName}.txt`);
+}
+
+function downloadTextFile(text: string, fileName: string, type = 'text/plain;charset=utf-8') {
+  const safeName = (fileName || 'halo-download.txt')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${safeName}.txt`;
+  anchor.download = safeName || 'halo-download.txt';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

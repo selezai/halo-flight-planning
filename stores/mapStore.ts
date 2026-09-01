@@ -4,11 +4,14 @@ import type { ParsedFeature } from '@/types/openaip';
 import type {
   ActiveRouteState,
   AircraftProfile,
+  AircraftPerformanceProfile,
   Coordinates,
   EmergencyLandingSite,
   FilingChecklistState,
   FlightPlanFilingRecord,
   FlightCloseReminder,
+  FuelPlanningState,
+  GridMoraReview,
   HaloMissionPlannerState,
   HaloMissionRecord,
   HaloMissionStatus,
@@ -46,6 +49,9 @@ import {
   upsertMissionRecord,
 } from '@/lib/planning/missions';
 import { insertWaypointAtRouteIndex } from '@/lib/planning/rubberBandRoute';
+import { DEFAULT_FUEL_PLANNING_STATE } from '@/lib/planning/fuel';
+import { parseAircraftPerformanceProfile } from '@/lib/planning/aircraftPerformance';
+import { buildDefaultGridMoraReview, normalizeGridMoraCell } from '@/lib/planning/gridMora';
 import {
   calculateActiveRouteProgress,
   DEFAULT_ACTIVE_ROUTE_STATE,
@@ -95,6 +101,10 @@ export interface MapState {
   missionLibrary: HaloMissionRecord[];
   waypoints: Waypoint[];
   activeAircraft: AircraftProfile;
+  aircraftPerformanceProfiles: AircraftPerformanceProfile[];
+  selectedAircraftPerformanceProfileId?: string;
+  fuelPlanning: FuelPlanningState;
+  gridMoraReview: GridMoraReview;
   weightBalanceLoading: WeightBalanceLoading;
   personalMinimums: PersonalMinimums;
   routeAirspaceReview: RouteAirspaceReview;
@@ -147,6 +157,12 @@ export interface MapState {
   clearRoute: () => void;
   setActiveAircraft: (aircraft: AircraftProfile) => void;
   updateActiveAircraft: (updates: Partial<AircraftProfile>) => void;
+  setAircraftPerformanceProfiles: (profiles: AircraftPerformanceProfile[]) => void;
+  upsertAircraftPerformanceProfile: (profile: AircraftPerformanceProfile) => void;
+  removeAircraftPerformanceProfile: (id: string) => void;
+  selectAircraftPerformanceProfile: (id: string | undefined) => void;
+  updateFuelPlanning: (updates: Partial<FuelPlanningState>) => void;
+  setGridMoraReview: (review: GridMoraReview) => void;
   updateWeightBalanceLoading: (updates: Partial<WeightBalanceLoading>) => void;
   updateWeightBalanceStationWeight: (stationId: string, weightLb: number) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
@@ -203,8 +219,10 @@ const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
   sourceUrl: SOUTH_AFRICA_ATNS_FILE2FLY_URL,
 };
 
+const DEFAULT_GRID_MORA_REVIEW = buildDefaultGridMoraReview();
+
 const DEFAULT_ACTIVE_MISSION_ID = 'mission-local-active';
-export const HALO_MAP_STORE_VERSION = 3;
+export const HALO_MAP_STORE_VERSION = 4;
 
 function createMissionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -224,6 +242,9 @@ function createBlankMissionPlannerState(): HaloMissionPlannerState {
     cruiseAltitudeFt: 6500,
     waypoints: [],
     activeAircraft: DEFAULT_AIRCRAFT,
+    selectedAircraftPerformanceProfileId: undefined,
+    fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
+    gridMoraReview: DEFAULT_GRID_MORA_REVIEW,
     weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
     trainingWind: DEFAULT_TRAINING_WIND,
     filingChecklist: DEFAULT_FILING_CHECKLIST,
@@ -245,6 +266,9 @@ function captureMissionPlannerState(state: MapState): HaloMissionPlannerState {
     cruiseAltitudeFt: state.cruiseAltitudeFt,
     waypoints: state.waypoints,
     activeAircraft: state.activeAircraft,
+    selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+    fuelPlanning: state.fuelPlanning,
+    gridMoraReview: state.gridMoraReview,
     weightBalanceLoading: state.weightBalanceLoading,
     trainingWind: state.trainingWind,
     filingChecklist: state.filingChecklist,
@@ -287,6 +311,9 @@ function getMissionActivationState(missionState: HaloMissionPlannerState): Parti
     cruiseAltitudeFt: missionState.cruiseAltitudeFt,
     waypoints: missionState.waypoints,
     activeAircraft: clampAircraftProfile(missionState.activeAircraft),
+    selectedAircraftPerformanceProfileId: missionState.selectedAircraftPerformanceProfileId,
+    fuelPlanning: normalizeFuelPlanningState(missionState.fuelPlanning),
+    gridMoraReview: normalizeGridMoraReview(missionState.gridMoraReview),
     weightBalanceLoading: {
       ...DEFAULT_WEIGHT_BALANCE_LOADING,
       ...missionState.weightBalanceLoading,
@@ -453,6 +480,131 @@ function normalizeVisibleLayers(
   };
 }
 
+function normalizeFuelPlanningState(value: unknown): FuelPlanningState {
+  if (!isRecord(value)) return DEFAULT_FUEL_PLANNING_STATE;
+
+  const additionalFuel = isRecord(value.additionalFuel)
+    ? value.additionalFuel
+    : DEFAULT_FUEL_PLANNING_STATE.additionalFuel;
+  const discretionaryFuel = isRecord(value.discretionaryFuel)
+    ? value.discretionaryFuel
+    : DEFAULT_FUEL_PLANNING_STATE.discretionaryFuel;
+  const wind = isRecord(value.wind)
+    ? value.wind
+    : DEFAULT_FUEL_PLANNING_STATE.wind;
+  const alternate = isRecord(value.alternate)
+    ? value.alternate
+    : undefined;
+
+  return {
+    flightRules: value.flightRules === 'ifr' ? 'ifr' : 'vfr',
+    ruleSet: 'sacaa-atns-ga',
+    selectedPerformanceProfileId: typeof value.selectedPerformanceProfileId === 'string'
+      ? value.selectedPerformanceProfileId
+      : undefined,
+    wind: {
+      source: wind.source === 'provider' ? 'provider' : 'manual',
+      directionDeg: normalizeNumber(wind.directionDeg, DEFAULT_FUEL_PLANNING_STATE.wind.directionDeg),
+      speedKts: Math.max(0, normalizeNumber(wind.speedKts, DEFAULT_FUEL_PLANNING_STATE.wind.speedKts)),
+      label: typeof wind.label === 'string' ? wind.label : DEFAULT_FUEL_PLANNING_STATE.wind.label,
+      updatedAt: typeof wind.updatedAt === 'string' ? wind.updatedAt : undefined,
+    },
+    temperatureC: normalizeNumber(value.temperatureC, DEFAULT_FUEL_PLANNING_STATE.temperatureC),
+    takeoffWeightLb: Math.max(0, normalizeNumber(value.takeoffWeightLb, DEFAULT_FUEL_PLANNING_STATE.takeoffWeightLb)),
+    cruisePowerSetting: typeof value.cruisePowerSetting === 'string' ? value.cruisePowerSetting : undefined,
+    mixtureSetting: typeof value.mixtureSetting === 'string' ? value.mixtureSetting : undefined,
+    holdingMinutes: Math.max(0, normalizeNumber(value.holdingMinutes, DEFAULT_FUEL_PLANNING_STATE.holdingMinutes)),
+    finalReserveMinutes: Math.max(0, normalizeNumber(value.finalReserveMinutes, DEFAULT_FUEL_PLANNING_STATE.finalReserveMinutes)),
+    contingencyPercent: Math.max(0, normalizeNumber(value.contingencyPercent, DEFAULT_FUEL_PLANNING_STATE.contingencyPercent)),
+    alternate: alternate
+      ? {
+          name: normalizeString(alternate.name, 'Alternate'),
+          distanceNm: Math.max(0, normalizeNumber(alternate.distanceNm, 0)),
+          cruiseAltitudeFt: typeof alternate.cruiseAltitudeFt === 'number'
+            ? Math.max(0, alternate.cruiseAltitudeFt)
+            : undefined,
+          wind: isRecord(alternate.wind)
+            ? {
+                source: alternate.wind.source === 'provider' ? 'provider' : 'manual',
+                directionDeg: normalizeNumber(alternate.wind.directionDeg, 0),
+                speedKts: Math.max(0, normalizeNumber(alternate.wind.speedKts, 0)),
+                label: typeof alternate.wind.label === 'string' ? alternate.wind.label : undefined,
+                updatedAt: typeof alternate.wind.updatedAt === 'string' ? alternate.wind.updatedAt : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
+    additionalFuel: {
+      value: Math.max(0, normalizeNumber(additionalFuel.value, DEFAULT_FUEL_PLANNING_STATE.additionalFuel.value)),
+      unit: normalizeFuelUnit(additionalFuel.unit, DEFAULT_FUEL_PLANNING_STATE.additionalFuel.unit),
+    },
+    discretionaryFuel: {
+      value: Math.max(0, normalizeNumber(discretionaryFuel.value, DEFAULT_FUEL_PLANNING_STATE.discretionaryFuel.value)),
+      unit: normalizeFuelUnit(discretionaryFuel.unit, DEFAULT_FUEL_PLANNING_STATE.discretionaryFuel.unit),
+    },
+  };
+}
+
+function normalizeGridMoraReview(value: unknown): GridMoraReview {
+  if (!isRecord(value)) return DEFAULT_GRID_MORA_REVIEW;
+
+  const status = value.status === 'checking' ||
+    value.status === 'unavailable' ||
+    value.status === 'stale' ||
+    value.status === 'partial' ||
+    value.status === 'complete' ||
+    value.status === 'provider-not-configured' ||
+    value.status === 'needs-route'
+    ? value.status
+    : DEFAULT_GRID_MORA_REVIEW.status;
+  const source = value.source === 'south-africa-official' ||
+    value.source === 'jeppesen' ||
+    value.source === 'lido' ||
+    value.source === 'navblue'
+    ? value.source
+    : 'unavailable';
+
+  return {
+    source,
+    status,
+    message: normalizeString(value.message, DEFAULT_GRID_MORA_REVIEW.message),
+    cells: Array.isArray(value.cells)
+      ? value.cells
+          .map((cell) => {
+            try {
+              return normalizeGridMoraCell(cell as GridMoraReview['cells'][number]);
+            } catch {
+              return null;
+            }
+          })
+          .filter((cell): cell is GridMoraReview['cells'][number] => Boolean(cell))
+      : [],
+    routeSignature: typeof value.routeSignature === 'string' ? value.routeSignature : undefined,
+    sourceUrl: typeof value.sourceUrl === 'string' ? value.sourceUrl : DEFAULT_GRID_MORA_REVIEW.sourceUrl,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : undefined,
+  };
+}
+
+function normalizeAircraftPerformanceProfiles(value: unknown): AircraftPerformanceProfile[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((profile) => {
+      try {
+        return parseAircraftPerformanceProfile(profile);
+      } catch {
+        return null;
+      }
+    })
+    .filter((profile): profile is AircraftPerformanceProfile => Boolean(profile));
+}
+
+function normalizeFuelUnit(value: unknown, fallback: FuelPlanningState['additionalFuel']['unit']) {
+  return value === 'usg' || value === 'litre' || value === 'kg' || value === 'lb'
+    ? value
+    : fallback;
+}
+
 function normalizeAircraftProfile(value: unknown, fallback: AircraftProfile = DEFAULT_AIRCRAFT): AircraftProfile {
   if (!isRecord(value)) return fallback;
 
@@ -462,6 +614,7 @@ function normalizeAircraftProfile(value: unknown, fallback: AircraftProfile = DE
     registration: normalizeString(value.registration, fallback.registration),
     type: normalizeString(value.type, fallback.type),
     name: normalizeString(value.name, fallback.name),
+    performanceProfileId: typeof value.performanceProfileId === 'string' ? value.performanceProfileId : fallback.performanceProfileId,
     cruiseSpeedKts: normalizeNumber(value.cruiseSpeedKts, fallback.cruiseSpeedKts),
     fuelBurnGph: normalizeNumber(value.fuelBurnGph, fallback.fuelBurnGph),
     usableFuelGal: normalizeNumber(value.usableFuelGal, fallback.usableFuelGal),
@@ -515,6 +668,11 @@ function normalizeMissionRecord(value: unknown): HaloMissionRecord | null {
       cruiseAltitudeFt: normalizeNumber(state.cruiseAltitudeFt, 6500),
       waypoints: normalizeWaypoints(state.waypoints),
       activeAircraft: normalizeAircraftProfile(state.activeAircraft),
+      selectedAircraftPerformanceProfileId: typeof state.selectedAircraftPerformanceProfileId === 'string'
+        ? state.selectedAircraftPerformanceProfileId
+        : undefined,
+      fuelPlanning: normalizeFuelPlanningState(state.fuelPlanning),
+      gridMoraReview: normalizeGridMoraReview(state.gridMoraReview),
       weightBalanceLoading: {
         ...DEFAULT_WEIGHT_BALANCE_LOADING,
         ...weightBalanceLoading,
@@ -595,6 +753,12 @@ function mergePersistedMapState(
     missionLibrary,
     waypoints: normalizeWaypoints(persistedState?.waypoints, current.waypoints),
     activeAircraft: normalizeAircraftProfile(persistedState?.activeAircraft, current.activeAircraft),
+    aircraftPerformanceProfiles: normalizeAircraftPerformanceProfiles(persistedState?.aircraftPerformanceProfiles),
+    selectedAircraftPerformanceProfileId: typeof persistedState?.selectedAircraftPerformanceProfileId === 'string'
+      ? persistedState.selectedAircraftPerformanceProfileId
+      : undefined,
+    fuelPlanning: normalizeFuelPlanningState(persistedState?.fuelPlanning),
+    gridMoraReview: normalizeGridMoraReview(persistedState?.gridMoraReview),
     visibleLayers: normalizeVisibleLayers(persistedState?.visibleLayers, current.visibleLayers),
     activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
     locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
@@ -679,6 +843,13 @@ export function migratePersistedMapState(persistedState: unknown, persistedVersi
     migrated.aircraftTrackingEnabled = false;
   }
 
+  if (persistedVersion < 4) {
+    migrated.selectedAircraftPerformanceProfileId = undefined;
+    migrated.fuelPlanning = DEFAULT_FUEL_PLANNING_STATE;
+    migrated.gridMoraReview = DEFAULT_GRID_MORA_REVIEW;
+    migrated.aircraftPerformanceProfiles = [];
+  }
+
   return migrated;
 }
 
@@ -714,6 +885,10 @@ export const useMapStore = createWithEqualityFn<MapState>()(
       missionLibrary: [],
       waypoints: [],
       activeAircraft: DEFAULT_AIRCRAFT,
+      aircraftPerformanceProfiles: [],
+      selectedAircraftPerformanceProfileId: undefined,
+      fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
+      gridMoraReview: DEFAULT_GRID_MORA_REVIEW,
       weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
       personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
       routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
@@ -1170,12 +1345,88 @@ export const useMapStore = createWithEqualityFn<MapState>()(
 
       setActiveAircraft: (aircraft) => set({
         activeAircraft: clampAircraftProfile(aircraft),
+        selectedAircraftPerformanceProfileId: aircraft.performanceProfileId,
+        fuelPlanning: {
+          ...get().fuelPlanning,
+          selectedPerformanceProfileId: aircraft.performanceProfileId,
+        },
         weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
       }),
 
       updateActiveAircraft: (updates) => set((state) => ({
         activeAircraft: clampAircraftProfile({ ...state.activeAircraft, ...updates }),
       })),
+
+      setAircraftPerformanceProfiles: (profiles) => set({
+        aircraftPerformanceProfiles: profiles
+          .map((profile) => {
+            try {
+              return parseAircraftPerformanceProfile(profile);
+            } catch {
+              return null;
+            }
+          })
+          .filter((profile): profile is AircraftPerformanceProfile => Boolean(profile)),
+      }),
+
+      upsertAircraftPerformanceProfile: (profile) => set((state) => {
+        const parsed = parseAircraftPerformanceProfile(profile);
+        const exists = state.aircraftPerformanceProfiles.some((item) => item.id === parsed.id);
+
+        return {
+          aircraftPerformanceProfiles: exists
+            ? state.aircraftPerformanceProfiles.map((item) => item.id === parsed.id ? parsed : item)
+            : [parsed, ...state.aircraftPerformanceProfiles],
+        };
+      }),
+
+      removeAircraftPerformanceProfile: (id) => set((state) => ({
+        aircraftPerformanceProfiles: state.aircraftPerformanceProfiles.filter((profile) => profile.id !== id),
+        selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId === id
+          ? undefined
+          : state.selectedAircraftPerformanceProfileId,
+        fuelPlanning: {
+          ...state.fuelPlanning,
+          selectedPerformanceProfileId: state.fuelPlanning.selectedPerformanceProfileId === id
+            ? undefined
+            : state.fuelPlanning.selectedPerformanceProfileId,
+        },
+      })),
+
+      selectAircraftPerformanceProfile: (id) => set((state) => ({
+        selectedAircraftPerformanceProfileId: id,
+        activeAircraft: clampAircraftProfile({
+          ...state.activeAircraft,
+          performanceProfileId: id,
+        }),
+        fuelPlanning: {
+          ...state.fuelPlanning,
+          selectedPerformanceProfileId: id,
+        },
+      })),
+
+      updateFuelPlanning: (updates) => set((state) => ({
+        fuelPlanning: normalizeFuelPlanningState({
+          ...state.fuelPlanning,
+          ...updates,
+          wind: {
+            ...state.fuelPlanning.wind,
+            ...updates.wind,
+          },
+          additionalFuel: {
+            ...state.fuelPlanning.additionalFuel,
+            ...updates.additionalFuel,
+          },
+          discretionaryFuel: {
+            ...state.fuelPlanning.discretionaryFuel,
+            ...updates.discretionaryFuel,
+          },
+        }),
+      })),
+
+      setGridMoraReview: (review) => set({
+        gridMoraReview: normalizeGridMoraReview(review),
+      }),
 
       updateWeightBalanceLoading: (updates) => set((state) => ({
         weightBalanceLoading: {
@@ -1297,6 +1548,10 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         missionLibrary: state.missionLibrary,
         waypoints: state.waypoints,
         activeAircraft: state.activeAircraft,
+        aircraftPerformanceProfiles: state.aircraftPerformanceProfiles,
+        selectedAircraftPerformanceProfileId: state.selectedAircraftPerformanceProfileId,
+        fuelPlanning: state.fuelPlanning,
+        gridMoraReview: state.gridMoraReview,
         weightBalanceLoading: state.weightBalanceLoading,
         trainingWind: state.trainingWind,
         filingChecklist: state.filingChecklist,

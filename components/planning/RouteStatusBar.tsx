@@ -8,8 +8,8 @@ import {
   calculateRoute,
   formatDistance,
   formatDuration,
-  formatFuel,
 } from '@/lib/planning/navigation';
+import { buildFuelPlanningResult, formatFuelQuantity } from '@/lib/planning/fuel';
 import { assessDataFreshness, FRESHNESS_THRESHOLDS_MINUTES, formatFreshnessStatus } from '@/lib/planning/freshness';
 import { formatLocationTrackingLabel } from '@/lib/planning/routeTracking';
 import type { DataFreshness } from '@/types/planning';
@@ -17,12 +17,31 @@ import type { DataFreshness } from '@/types/planning';
 export default function RouteStatusBar() {
   const waypoints = useMapStore((state) => state.waypoints);
   const activeAircraft = useMapStore((state) => state.activeAircraft);
+  const aircraftPerformanceProfiles = useMapStore((state) => state.aircraftPerformanceProfiles);
+  const selectedAircraftPerformanceProfileId = useMapStore((state) => state.selectedAircraftPerformanceProfileId);
+  const fuelPlanning = useMapStore((state) => state.fuelPlanning);
   const cruiseAltitudeFt = useMapStore((state) => state.cruiseAltitudeFt);
   const routeAirspaceReview = useMapStore((state) => state.routeAirspaceReview);
   const routeNotamReview = useMapStore((state) => state.routeNotamReview);
   const activeRoute = useMapStore((state) => state.activeRoute);
   const locationTracking = useMapStore((state) => state.locationTracking);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
+  const selectedPerformanceProfile = useMemo(
+    () => aircraftPerformanceProfiles.find((profile) =>
+      profile.id === (selectedAircraftPerformanceProfileId || fuelPlanning.selectedPerformanceProfileId)
+    ),
+    [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
   const airspaceSummary = useMemo(
     () => summarizeAirspaceReview(routeAirspaceReview.alerts, routeAirspaceReview.status),
     [routeAirspaceReview.alerts, routeAirspaceReview.status]
@@ -38,12 +57,12 @@ export default function RouteStatusBar() {
     maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.notam,
   }), [routeNotamReview.updatedAt]);
   const statusTone =
-    route.summary.fuelStatus === 'critical'
+    fuelPlanningResult.status === 'critical'
       ? 'text-rose-700'
-      : route.summary.fuelStatus === 'caution'
+      : fuelPlanningResult.status === 'caution' || !fuelPlanningResult.trusted
         ? 'text-amber-700'
         : 'text-emerald-700';
-  const StatusIcon = route.summary.fuelStatus === 'ok' ? CheckCircle2 : AlertTriangle;
+  const StatusIcon = fuelPlanningResult.trusted && fuelPlanningResult.status === 'ready' ? CheckCircle2 : AlertTriangle;
   const nextWaypoint = activeRoute.nextWaypointId
     ? waypoints.find((waypoint) => waypoint.id === activeRoute.nextWaypointId)
     : undefined;
@@ -70,11 +89,11 @@ export default function RouteStatusBar() {
         <span>{formatDuration(route.summary.estimatedTimeMinutes)}</span>
         <span className="inline-flex items-center gap-1">
           <Fuel className="h-3.5 w-3.5" />
-          {formatFuel(route.summary.totalFuelRequiredGal)}
+          {formatFuelQuantity(fuelPlanningResult.totalRequiredFuel)}
         </span>
         <span className={`inline-flex items-center gap-1 font-semibold ${statusTone}`}>
           <StatusIcon className="h-3.5 w-3.5" />
-          {route.summary.fuelStatus}
+          {fuelPlanningResult.trusted ? fuelPlanningResult.status : 'untrusted fuel'}
         </span>
         {(routeTrackingVisible || locationTrackingVisible) && (
           <>

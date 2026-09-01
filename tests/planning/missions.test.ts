@@ -17,6 +17,8 @@ import {
   markMissionRecordFlown,
   upsertMissionRecord,
 } from '@/lib/planning/missions';
+import { DEFAULT_FUEL_PLANNING_STATE } from '@/lib/planning/fuel';
+import { buildDefaultGridMoraReview } from '@/lib/planning/gridMora';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
 import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
 import type { HaloMissionPlannerState, Waypoint } from '@/types/planning';
@@ -47,6 +49,9 @@ function missionState(overrides: Partial<HaloMissionPlannerState> = {}): HaloMis
     cruiseAltitudeFt: 6500,
     waypoints: [],
     activeAircraft: DEFAULT_AIRCRAFT,
+    selectedAircraftPerformanceProfileId: undefined,
+    fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
+    gridMoraReview: buildDefaultGridMoraReview(),
     weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
     trainingWind: DEFAULT_TRAINING_WIND,
     filingChecklist: DEFAULT_FILING_CHECKLIST,

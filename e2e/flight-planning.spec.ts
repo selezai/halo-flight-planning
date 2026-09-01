@@ -19,8 +19,9 @@ test('loads a typed coordinate route and generates a briefing package', async ({
   await expect(page.getByText('Loaded 2 route points.')).toBeVisible();
   await expect(page.getByText('PT01 -> PT02', { exact: true })).toBeVisible();
   await expect(page.getByText('-26.13370, 28.24600').first()).toBeVisible();
-  await expect(page.getByText('Fuel estimate basis')).toBeVisible();
-  await expect(page.getByText(/does not include wind/i)).toBeVisible();
+  await expect(page.getByText('Fuel planning', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/approved POH\/AFM performance profile/i)).toBeVisible();
+  await expect(page.getByText(/untrusted fallback/i)).toBeVisible();
   await expect(page.getByText('Grid MORA', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Brief', exact: true }).click();

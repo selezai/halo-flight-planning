@@ -1,6 +1,8 @@
 import type {
   DataFreshness,
   FlightAdminReview,
+  FuelPlanningResult,
+  GridMoraReview,
   RouteAirspaceReview,
   RouteAnalysis,
   RouteNotamReview,
@@ -8,6 +10,7 @@ import type {
   WeightBalanceResult,
 } from '@/types/planning';
 import { formatDistance, formatDuration, formatFuel } from '@/lib/planning/navigation';
+import { formatFuelQuantity } from '@/lib/planning/fuel';
 import { getWeightBalanceStatusLabel } from '@/lib/planning/weightBalance';
 
 export type HaloPanelId = 'route' | 'weather' | 'aircraft' | 'briefing' | 'admin' | 'emergency';
@@ -21,6 +24,7 @@ export interface HaloMissionSummary {
   primaryAction: string;
   routeLabel: string;
   fuelLabel: string;
+  gridMoraLabel: string;
   airspaceLabel: string;
   notamLabel: string;
   weightBalanceLabel: string;
@@ -97,9 +101,12 @@ export function buildHaloMissionSummary(params: {
   weightBalanceResult?: WeightBalanceResult;
   dataFreshness?: DataFreshness[];
   flightAdminReview?: FlightAdminReview;
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
 }): HaloMissionSummary {
   const routeLabel = formatRouteLabel(params.route, params.waypoints);
-  const fuelLabel = formatFuelLabel(params.route);
+  const fuelLabel = formatFuelLabel(params.route, params.fuelPlanningResult);
+  const gridMoraLabel = formatGridMoraLabel(params.gridMoraReview);
   const airspaceLabel = formatAirspaceLabel(params.airspaceReview);
   const notamLabel = formatNotamLabel(params.notamReview, params.flightAdminReview);
   const weightBalanceLabel = formatWeightBalanceLabel(params.weightBalanceResult);
@@ -114,6 +121,7 @@ export function buildHaloMissionSummary(params: {
     primaryAction: formatMissionPrimaryAction(status, params),
     routeLabel,
     fuelLabel,
+    gridMoraLabel,
     airspaceLabel,
     notamLabel,
     weightBalanceLabel,
@@ -130,13 +138,16 @@ function deriveMissionStatus(params: {
   weightBalanceResult?: WeightBalanceResult;
   dataFreshness?: DataFreshness[];
   flightAdminReview?: FlightAdminReview;
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
 }): HaloStatusTone {
   if (params.route.summary.legCount === 0 || params.waypoints.length < 2) {
     return 'idle';
   }
 
   if (
-    params.route.summary.fuelStatus === 'critical' ||
+    params.fuelPlanningResult?.status === 'critical' ||
+    (!params.fuelPlanningResult && params.route.summary.fuelStatus === 'critical') ||
     params.weightBalanceResult?.status === 'out-of-limits' ||
     params.airspaceReview?.alerts.some((alert) => alert.level === 'critical') ||
     params.flightAdminReview?.status === 'stop'
@@ -145,9 +156,12 @@ function deriveMissionStatus(params: {
   }
 
   if (
-    params.route.summary.fuelStatus === 'caution' ||
+    !params.fuelPlanningResult?.trusted ||
+    params.fuelPlanningResult?.status === 'caution' ||
+    (!params.fuelPlanningResult && params.route.summary.fuelStatus === 'caution') ||
     isWeightBalanceReviewState(params.weightBalanceResult) ||
     isAirspaceReviewState(params.airspaceReview) ||
+    isGridMoraReviewState(params.gridMoraReview) ||
     isNotamReviewState(params.notamReview) ||
     params.dataFreshness?.some((item) => item.status !== 'current') ||
     params.flightAdminReview?.status === 'review'
@@ -172,6 +186,12 @@ function isAirspaceReviewState(review: RouteAirspaceReview | undefined): boolean
 function isNotamReviewState(review: RouteNotamReview | undefined): boolean {
   if (!review) return true;
   if (review.status === 'manual-required' || review.status === 'needs-route') return false;
+  return review.status !== 'complete';
+}
+
+function isGridMoraReviewState(review: GridMoraReview | undefined): boolean {
+  if (!review) return true;
+  if (review.status === 'needs-route') return false;
   return review.status !== 'complete';
 }
 
@@ -221,10 +241,11 @@ function formatMissionPrimaryAction(
     route: RouteAnalysis;
     weightBalanceResult?: WeightBalanceResult;
     flightAdminReview?: FlightAdminReview;
+    fuelPlanningResult?: FuelPlanningResult;
   }
 ): string {
   if (status === 'idle') return 'Start route';
-  if (params.route.summary.fuelStatus === 'critical') return 'Fix fuel plan';
+  if (params.fuelPlanningResult?.status === 'critical' || params.route.summary.fuelStatus === 'critical') return 'Fix fuel plan';
   if (params.weightBalanceResult?.status === 'out-of-limits') return 'Fix W&B';
   if (params.flightAdminReview?.status === 'stop') return 'Resolve admin';
   if (status === 'review') return 'Open briefing';
@@ -244,9 +265,21 @@ function formatRouteLabel(route: RouteAnalysis, waypoints: Waypoint[]): string {
   return `${routeName || 'Route'} · ${formatDistance(route.summary.totalDistanceNm)} · ${formatDuration(route.summary.estimatedTimeMinutes)}`;
 }
 
-function formatFuelLabel(route: RouteAnalysis): string {
+function formatFuelLabel(route: RouteAnalysis, fuelPlanningResult?: FuelPlanningResult): string {
+  if (fuelPlanningResult) {
+    const status = fuelPlanningResult.status.toUpperCase();
+    const trust = fuelPlanningResult.trusted ? 'POH' : 'UNTRUSTED';
+    return `${status} ${trust} · ${formatFuelQuantity(fuelPlanningResult.totalRequiredFuel)} required · ${formatFuelQuantity(fuelPlanningResult.remainingFuel)} remaining`;
+  }
+
   const status = route.summary.fuelStatus.toUpperCase();
   return `${status} · ${formatFuel(route.summary.totalFuelRequiredGal)} required · ${formatFuel(route.summary.fuelRemainingGal)} remaining`;
+}
+
+function formatGridMoraLabel(review: GridMoraReview | undefined): string {
+  if (!review) return 'Grid MORA provider not configured';
+  if (review.status === 'complete') return `${review.cells.length} Grid MORA cell${review.cells.length === 1 ? '' : 's'}`;
+  return `Grid MORA ${review.status.replace(/-/g, ' ')}`;
 }
 
 function formatAirspaceLabel(review: RouteAirspaceReview | undefined): string {
