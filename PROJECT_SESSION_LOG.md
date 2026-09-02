@@ -1,5 +1,33 @@
 # Halo Session Log
 
+## 2026-09-02 Commercial-Parity Production Deployment
+
+Problem / requested implementation:
+
+- Push the commercial-parity planning advisor changes and deploy them to the live Halo production link.
+- Keep the `codex-prod-readiness-local-2026-08-31` stash isolated and out of the push/deploy.
+
+Solution:
+
+- Re-ran the full verification gate before pushing.
+- Committed the commercial-parity work as `a194025 Add commercial parity planning advisors`.
+- Pushed `agent/test-pilot-feedback-20260831` to GitHub.
+- Deployed the project to Vercel production with `vercel deploy --prod --yes`.
+- Verified the live alias `https://halo-flight-planning.vercel.app` points at the new production deployment.
+
+Verification:
+
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed, 51 files / 255 tests.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed.
+- `pnpm test:e2e`: passed, 3 Playwright tests against production build / `next start`.
+- `vercel inspect https://halo-flight-planning.vercel.app`: production deployment `dpl_B3on6789yW3nuRngP6ckZ9Mk3kJd` was `Ready`.
+- Live `POST /api/route-intelligence/candidates` returned `401` instead of the previous `404`, proving the new authenticated API route is deployed.
+- Live `GET /api/openaip/style` returned `degraded=false`, `baseMode=vector-style`, 8 sources, and 211 layers.
+- `agent-browser` live test-pilot smoke check confirmed the map rendered, the Planner opened, and the new Route Advisor, Fuel Policy, Weather Advisor, Saved Load Templates, Airfield & Frequency Brief, and Dispatch export surfaces were present.
+- The production-readiness stash remained untouched as `stash@{0}: On agent/test-pilot-access-20260810: codex-prod-readiness-local-2026-08-31`.
+
 ## 2026-09-02 Local Map Runtime Rebuild
 
 Problem / requested implementation:
