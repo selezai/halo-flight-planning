@@ -25,6 +25,18 @@ describe('planner snapshot helpers', () => {
         },
       ],
       center: [28, -26],
+      selectedRouteCandidateId: 'current-route',
+      weightBalanceLoadTemplates: [
+        {
+          id: 'template-1',
+          name: 'Dual load',
+          fuelGal: 38,
+          stationWeights: { pilot: 180 },
+          lockedStationWeights: { baggage: 10 },
+          createdAt: '2026-09-01T08:00:00.000Z',
+          updatedAt: '2026-09-01T08:00:00.000Z',
+        },
+      ],
       waypoints: [
         { id: 'faor', type: 'airport', name: 'O.R. Tambo', coordinates: [28.246, -26.1337] },
       ],
@@ -48,6 +60,18 @@ describe('planner snapshot helpers', () => {
         },
       ],
       center: [28, -26],
+      selectedRouteCandidateId: 'current-route',
+      weightBalanceLoadTemplates: [
+        {
+          id: 'template-1',
+          name: 'Dual load',
+          fuelGal: 38,
+          stationWeights: { pilot: 180 },
+          lockedStationWeights: { baggage: 10 },
+          createdAt: '2026-09-01T08:00:00.000Z',
+          updatedAt: '2026-09-01T08:00:00.000Z',
+        },
+      ],
       waypoints: [
         { id: 'faor', type: 'airport', name: 'O.R. Tambo', coordinates: [28.246, -26.1337] },
       ],
@@ -90,6 +114,18 @@ describe('planner snapshot helpers', () => {
           pilot: 180,
         },
       },
+      selectedRouteCandidateId: 'current-route',
+      weightBalanceLoadTemplates: [
+        {
+          id: 'local-load',
+          name: 'Local load',
+          fuelGal: 28,
+          stationWeights: { pilot: 180 },
+          lockedStationWeights: {},
+          createdAt: '2026-09-01T08:00:00.000Z',
+          updatedAt: '2026-09-01T08:00:00.000Z',
+        },
+      ],
       emergencyLandingSites: [
         { id: 'site-2', name: 'Local field', coordinates: [28.3, -26.3], suitability: 'fair' },
       ],
@@ -113,6 +149,18 @@ describe('planner snapshot helpers', () => {
           passenger: 150,
         },
       },
+      selectedRouteCandidateId: 'direct-route',
+      weightBalanceLoadTemplates: [
+        {
+          id: 'remote-load',
+          name: 'Remote load',
+          fuelGal: 20,
+          stationWeights: { passenger: 150 },
+          lockedStationWeights: {},
+          createdAt: '2026-09-01T07:00:00.000Z',
+          updatedAt: '2026-09-01T07:00:00.000Z',
+        },
+      ],
       emergencyLandingSites: [
         { id: 'site-1', name: 'Remote field', coordinates: [28.2, -26.2], suitability: 'good' },
       ],
@@ -139,6 +187,11 @@ describe('planner snapshot helpers', () => {
         pilot: 180,
       },
     });
+    expect(merged.selectedRouteCandidateId).toBe('current-route');
+    expect(merged.weightBalanceLoadTemplates?.map((template) => template.id)).toEqual([
+      'remote-load',
+      'local-load',
+    ]);
     expect(merged.emergencyLandingSites).toHaveLength(2);
     expect(merged.activeMissionId).toBe('local-mission');
     expect(merged.missionLibrary).toHaveLength(2);

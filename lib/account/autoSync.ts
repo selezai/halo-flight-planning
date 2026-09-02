@@ -51,6 +51,8 @@ export const DEFAULT_ACCOUNT_SYNC_SNAPSHOT_STATE: PlannerSnapshotState = planner
   fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
   gridMoraReview: buildDefaultGridMoraReview(),
   weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+  weightBalanceLoadTemplates: [],
+  selectedRouteCandidateId: undefined,
   trainingWind: DEFAULT_TRAINING_WIND,
   filingChecklist: DEFAULT_FILING_CHECKLIST,
   notamBriefingRecord: DEFAULT_NOTAM_BRIEFING_RECORD,

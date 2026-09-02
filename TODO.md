@@ -1,5 +1,14 @@
 # Halo Flight Planning - Development TODO
 
+## Completed in 2026-09-01 Commercial-Parity V1
+
+- [x] Route Advisor v1 with Direct, Current/User Route, and Provider Route candidate cards, typed route token review, and licensed-navdata unavailable states for airways/procedures.
+- [x] Weather + Fuel Advisor v1 with route METAR/TAF review, manual route wind fallback, provider-gated winds aloft status, and required/target-landing/W&B-constrained fuel policies.
+- [x] South Africa airfield and frequency digest from available OpenAIP-style route airport records with official SACAA/ATNS/AIP verification states.
+- [x] W&B saved load templates with locked/default load items and JSON export/import.
+- [x] Structured dispatch briefing package export covering route advisor, navlog, fuel policy, W&B, weather, airspace, NOTAM/admin, route frequencies, emergency planning, and data freshness.
+- [x] Grid MORA remained provider-backed only; no fake Grid MORA values were added.
+
 ## Completed in 2026-07-19 Release
 
 - [x] Next.js App Router scaffold verified.

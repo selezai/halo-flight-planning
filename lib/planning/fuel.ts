@@ -2,6 +2,7 @@ import type {
   AircraftPerformanceProfile,
   AircraftProfile,
   FuelBreakdownItem,
+  FuelPolicyReview,
   FuelPlanLeg,
   FuelPlanningResult,
   FuelPlanningState,
@@ -16,6 +17,7 @@ import type {
   RouteAnalysis,
   RouteLeg,
   RouteWindInput,
+  WeightBalanceResult,
 } from '@/types/planning';
 import { validateAircraftPerformanceProfile } from './aircraftPerformance';
 import { normalizeHeading } from './navigation';
@@ -38,6 +40,8 @@ export const DEFAULT_FUEL_PLANNING_STATE: FuelPlanningState = {
   holdingMinutes: 0,
   finalReserveMinutes: 45,
   contingencyPercent: 10,
+  fuelPolicyMode: 'required',
+  targetLandingFuel: { value: 0, unit: 'usg' },
   additionalFuel: { value: 0, unit: 'usg' },
   discretionaryFuel: { value: 0, unit: 'usg' },
 };
@@ -48,6 +52,7 @@ export interface BuildFuelPlanningResultParams {
   profile?: AircraftPerformanceProfile;
   state: FuelPlanningState;
   cruiseAltitudeFt: number;
+  weightBalanceResult?: WeightBalanceResult;
   now?: Date;
 }
 
@@ -62,6 +67,7 @@ export function buildFuelPlanningResult({
   profile,
   state,
   cruiseAltitudeFt,
+  weightBalanceResult,
   now = new Date(),
 }: BuildFuelPlanningResultParams): FuelPlanningResult {
   if (route.summary.legCount === 0) {
@@ -72,6 +78,7 @@ export function buildFuelPlanningResult({
       status: 'needs-route',
       message: 'Add at least two waypoints before calculating operational fuel.',
       issue: 'Route is incomplete.',
+      weightBalanceResult,
       now,
     });
   }
@@ -84,6 +91,7 @@ export function buildFuelPlanningResult({
       status: 'untrusted-profile',
       message: 'Operational fuel needs an approved POH/AFM performance profile.',
       issue: 'No aircraft performance profile is selected.',
+      weightBalanceResult,
       now,
     });
   }
@@ -97,6 +105,7 @@ export function buildFuelPlanningResult({
       status: 'untrusted-profile',
       message: 'Selected performance profile is not approved for trusted fuel planning.',
       issue: `Selected performance profile status is ${profile.status}.`,
+      weightBalanceResult,
       now,
     });
   }
@@ -111,6 +120,7 @@ export function buildFuelPlanningResult({
       status: 'incomplete-profile',
       message: 'Selected performance profile is missing required POH/AFM data.',
       issue: profileValidation.issues.join(' '),
+      weightBalanceResult,
       now,
     });
   }
@@ -136,6 +146,7 @@ export function buildFuelPlanningResult({
       status: 'incomplete-profile',
       message: 'Operational fuel cannot be trusted because one or more POH table lookups failed.',
       issue: issues.join(' ') || 'POH table lookup failed.',
+      weightBalanceResult,
       now,
     });
   }
@@ -154,6 +165,7 @@ export function buildFuelPlanningResult({
       status: 'incomplete-profile',
       message: 'Operational fuel cannot be trusted because cruise or holding fuel-flow data is missing.',
       issue: 'Cruise and holding tables must return fuel flow per hour.',
+      weightBalanceResult,
       now,
     });
   }
@@ -170,6 +182,7 @@ export function buildFuelPlanningResult({
       status: 'incomplete-profile',
       message: 'Operational fuel cannot be trusted because climb or descent fuel data is missing.',
       issue: 'Climb and descent tables must return fuel or fuel flow plus time.',
+      weightBalanceResult,
       now,
     });
   }
@@ -238,7 +251,7 @@ export function buildFuelPlanningResult({
       ? 'caution'
       : 'ready';
 
-  return {
+  const result: FuelPlanningResult = {
     status,
     ruleSet: state.ruleSet,
     profileId: profile.id,
@@ -271,6 +284,11 @@ export function buildFuelPlanningResult({
     remainingFuel,
     expectedLandingFuel,
     calculatedAt: now.toISOString(),
+  };
+
+  return {
+    ...result,
+    policy: buildFuelPolicyReview(result, state, weightBalanceResult),
   };
 }
 
@@ -365,6 +383,97 @@ export function formatFuelQuantity(
   return `${converted.value.toFixed(digits)} ${suffix[converted.unit]}`;
 }
 
+export function buildFuelPolicyReview(
+  result: Pick<FuelPlanningResult, 'status' | 'trusted' | 'totalRequiredFuel' | 'usableFuel' | 'remainingFuel' | 'expectedLandingFuel'>,
+  state: FuelPlanningState,
+  weightBalanceResult?: WeightBalanceResult
+): FuelPolicyReview {
+  const mode = state.fuelPolicyMode ?? 'required';
+
+  if (mode === 'target-landing') {
+    const target = normalizeFuelQuantity(
+      state.targetLandingFuel ?? { value: 0, unit: result.expectedLandingFuel.unit },
+      result.expectedLandingFuel.unit
+    );
+
+    if (target.value <= 0) {
+      return {
+        mode,
+        status: 'caution',
+        trusted: result.trusted,
+        message: 'Enter a target landing fuel quantity to evaluate this policy.',
+        targetLandingFuel: target,
+        reserveMargin: result.remainingFuel,
+      };
+    }
+
+    const landingMargin = subtractQuantity(result.expectedLandingFuel, target, result.expectedLandingFuel.unit);
+    const status = landingMargin.value < 0
+      ? result.expectedLandingFuel.value < 0 ? 'critical' : 'caution'
+      : result.status === 'critical'
+        ? 'critical'
+        : 'ready';
+
+    return {
+      mode,
+      status,
+      trusted: result.trusted,
+      message: landingMargin.value >= 0
+        ? `Expected landing fuel meets target by ${formatFuelQuantity(landingMargin)}.`
+        : `Expected landing fuel is ${formatFuelQuantity({ value: Math.abs(landingMargin.value), unit: landingMargin.unit })} below target.`,
+      targetLandingFuel: target,
+      reserveMargin: landingMargin,
+    };
+  }
+
+  if (mode === 'max-wb-constrained') {
+    if (!weightBalanceResult || weightBalanceResult.status === 'unconfigured' || weightBalanceResult.status === 'incomplete') {
+      return {
+        mode,
+        status: 'caution',
+        trusted: false,
+        message: 'Configure and calculate W&B before using a max-fuel constrained policy.',
+        maxWbConstrainedFuel: result.usableFuel,
+        usableFuel: result.usableFuel,
+        reserveMargin: result.remainingFuel,
+      };
+    }
+
+    if (weightBalanceResult.status === 'out-of-limits') {
+      return {
+        mode,
+        status: 'critical',
+        trusted: false,
+        message: 'Current load is outside W&B limits; reduce load or fuel before dispatch.',
+        maxWbConstrainedFuel: result.usableFuel,
+        usableFuel: result.usableFuel,
+        reserveMargin: result.remainingFuel,
+      };
+    }
+
+    return {
+      mode,
+      status: result.status === 'critical' ? 'critical' : weightBalanceResult.status === 'caution' ? 'caution' : 'ready',
+      trusted: result.trusted && weightBalanceResult.status !== 'caution',
+      message: weightBalanceResult.status === 'caution'
+        ? 'Current fuel/load is within W&B limits but close to a boundary; adjust in the W&B panel before treating max fuel as dispatch-ready.'
+        : 'Current fuel/load is within W&B limits; max fuel remains constrained by the configured aircraft envelope and station limits.',
+      maxWbConstrainedFuel: result.usableFuel,
+      usableFuel: result.usableFuel,
+      reserveMargin: result.remainingFuel,
+    };
+  }
+
+  return {
+    mode: 'required',
+    status: result.status,
+    trusted: result.trusted,
+    message: `Required fuel policy: ${formatFuelQuantity(result.totalRequiredFuel)} required with ${formatFuelQuantity(result.remainingFuel)} remaining after final reserve.`,
+    usableFuel: result.usableFuel,
+    reserveMargin: result.remainingFuel,
+  };
+}
+
 function buildLegacyResult({
   route,
   aircraft,
@@ -373,6 +482,7 @@ function buildLegacyResult({
   status,
   message,
   issue,
+  weightBalanceResult,
   now,
 }: {
   route: RouteAnalysis;
@@ -382,6 +492,7 @@ function buildLegacyResult({
   status: FuelPlanningResult['status'];
   message: string;
   issue: string;
+  weightBalanceResult?: WeightBalanceResult;
   now: Date;
 }): FuelPlanningResult {
   const tripFuel = { value: route.summary.tripFuelGal, unit: 'usg' as const };
@@ -392,7 +503,7 @@ function buildLegacyResult({
   const remainingFuel = { value: route.summary.fuelRemainingGal, unit: 'usg' as const };
   const zero = { value: 0, unit: 'usg' as const };
 
-  return {
+  const result: FuelPlanningResult = {
     status,
     ruleSet: state.ruleSet,
     profileId: profile?.id,
@@ -426,6 +537,11 @@ function buildLegacyResult({
     remainingFuel,
     expectedLandingFuel: remainingFuel,
     calculatedAt: now.toISOString(),
+  };
+
+  return {
+    ...result,
+    policy: buildFuelPolicyReview(result, state, weightBalanceResult),
   };
 }
 

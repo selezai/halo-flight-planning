@@ -1,5 +1,165 @@
 # Halo Session Log
 
+## 2026-09-02 Local Map Runtime Rebuild
+
+Problem / requested implementation:
+
+- The local Halo map at `http://localhost:3000` was showing the offline planning canvas instead of the real MapLibre/OpenAIP map.
+- Preserve the existing `codex-prod-readiness-local-2026-08-31` stash and do not push it.
+
+Root cause:
+
+- The running local `next start` process was serving the production bundle produced by the Playwright e2e command.
+- The e2e web server intentionally builds with empty map credentials and `NEXT_PUBLIC_APP_URL=http://127.0.0.1:3100`.
+- That build inlined stale public values into the compiled OpenAIP style route, so the local app on port 3000 fetched a style containing a sprite URL for the old e2e server at `127.0.0.1:3100`.
+- Browser evidence showed Halo's fallback text plus `Map degraded` / `Failed to fetch`.
+
+Solution:
+
+- Stopped the stale local `next start` process.
+- Rebuilt the production bundle with the normal `.env.local` values.
+- Restarted `next start` on `http://localhost:3000`.
+- Confirmed the production-readiness stash remains untouched as `stash@{0}: On agent/test-pilot-access-20260810: codex-prod-readiness-local-2026-08-31`.
+
+Verification:
+
+- `pnpm build`: passed.
+- Compiled style route no longer contains `127.0.0.1:3100`.
+- `GET /api/openaip/style`: returned `degraded=false`, `baseMode=vector-style`, 8 sources, 211 layers, and no stale port 3100 sprite URL.
+- `agent-browser` check against `http://localhost:3000`: fallback text absent, `Map degraded` absent, no Next.js error overlay, MapLibre map region and controls present.
+
+## 2026-09-02 Aircraft Profile Migration Verification
+
+Request:
+
+- Check whether the aircraft profile migration was already applied after the user ran migrations, and apply it only if missing.
+
+Result:
+
+- Loaded production database environment values without printing secrets.
+- Ran a read-only schema check against production Neon.
+- Confirmed `public.halo_aircraft_profiles` already exists.
+- Confirmed the expected profile columns exist: `id`, `user_id`, `status`, `registration`, `aircraft_type`, `profile`, `approved_at`, `created_at`, and `updated_at`.
+- Confirmed the expected indexes exist: primary key, `halo_aircraft_profiles_user_id_idx`, `halo_aircraft_profiles_updated_at_idx`, and `halo_aircraft_profiles_registration_idx`.
+- Confirmed the status check constraint exists for `draft`, `approved`, and `archived`.
+- Did not apply any migration because the profile migration was already present.
+
+## 2026-09-02 Production Database Migration Applied
+
+Problem / requested implementation:
+
+- Apply the pending Halo database migrations after explicit confirmation.
+
+Root cause:
+
+- The commercial-parity implementation did not apply production database changes during the feature pass.
+- `.env.local` contained empty `DATABASE_URL` and `POSTGRES_URL` placeholders, while `.vercel/.env.production.local` contained the nonempty production database values.
+- The migration runner loads `.env.local` and `.env` only, so production Vercel env values had to be loaded into the child process environment without printing secrets.
+
+Solution:
+
+- Verified the migration runner and all SQL files before execution.
+- Confirmed the migrations are idempotent DDL for:
+  - `halo_planner_snapshots`
+  - `halo_test_pilot_events`
+  - `halo_aircraft_profiles`
+  - supporting indexes and table comments.
+- Ran the existing `pnpm db:migrate` script with database variables loaded from `.vercel/.env.production.local`.
+- Did not print database URLs, passwords, keys, or other secret values.
+
+Files modified:
+
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Migration command completed successfully: `Applied 12 migration statement(s) from 3 file(s).`
+- Read-only database smoke check confirmed tables: `halo_aircraft_profiles`, `halo_planner_snapshots`, and `halo_test_pilot_events`.
+- Read-only database smoke check confirmed 9 indexes across those tables.
+- Read-only database smoke check confirmed `halo_aircraft_profiles` columns: `id`, `user_id`, `status`, `registration`, `aircraft_type`, `profile`, `approved_at`, `created_at`, and `updated_at`.
+
+## 2026-09-01 Commercial-Parity Roadmap V1
+
+Problem / requested implementation:
+
+- Implement the commercial-parity roadmap for every gap except Grid MORA.
+- Keep Grid MORA provider-backed only while ATNS data access and SACAA approval/guidance are underway.
+- Add South Africa-first GA/private/student-pilot features without fabricating airway routing, procedures, official preferred routes, winds aloft, official airfield data, NOTAMs, or AIP chart data.
+
+Root cause:
+
+- Halo already had strong route entry, advanced fuel, W&B, NOTAM/admin handoff, and briefing foundations, but the features were not packaged into commercial-style advisor/review workflows.
+- Route intelligence needed an explicit boundary between local waypoint geometry and licensed navdata products such as airways, procedures, and provider routes.
+- Weather/fuel planning needed policy-level review states so required fuel, target landing fuel, and W&B-constrained fuel could be evaluated consistently.
+- Airfield/frequency information needed a route digest that surfaces available OpenAIP-style details while still requiring official SACAA/ATNS/AIP verification.
+- W&B loading was useful per flight, but common loads could not be saved, locked as default/basic operating load items, shared, or re-imported.
+- Briefing/export output needed a structured dispatch package instead of only raw briefing text and backup text.
+
+Solution:
+
+- Added Route Intelligence v1 types and pure planning logic for typed route token review, Direct candidate, Current/User Route candidate, Provider Route candidate, provider-unavailable states, and selection tracking.
+- Added authenticated `POST /api/route-intelligence/candidates` with auth, Zod validation, provider availability checks, no secret exposure, and explicit unavailable output when licensed navdata is not configured.
+- Added Weather + Fuel Advisor v1 route weather review for route airport METAR/TAF coverage, manual wind fallback, provider-gated winds aloft status, and fuel policy reviews for required fuel, target landing fuel, and W&B-constrained max fuel.
+- Added South Africa airfield/frequency brief generation from available OpenAIP-style route airport records, with missing data and official SACAA/ATNS/AIP verification represented as review states.
+- Added W&B saved load templates, locked/default station weights, template validation, and JSON export/import through the existing local/account snapshot model.
+- Added Dispatch Briefing Package v1 with route advisor, navlog, fuel policy, W&B, weather, airspace/NOTAM/admin, route frequencies, emergency planning, and data freshness sections.
+- Wired the new reviews into the sidebar Route, Weather, Aircraft/W&B, and Briefing panels, plus briefing text and backup pack exports.
+- Bumped the persisted map store/test-pilot planner schema to version 5 and extended planner snapshot merge/normalization for route advisor selection and W&B load templates.
+- Updated README and TODO documentation to make the new advisor surfaces and licensed-data constraints visible.
+- No production database migration was applied.
+
+Files modified:
+
+- `types/planning.ts`
+- `lib/planning/routeIntelligence.ts`
+- `lib/planning/routeWeather.ts`
+- `lib/planning/airfieldBrief.ts`
+- `lib/planning/fuel.ts`
+- `lib/planning/weightBalance.ts`
+- `lib/planning/briefing.ts`
+- `lib/planning/backupPack.ts`
+- `app/api/route-intelligence/candidates/route.ts`
+- `stores/mapStore.ts`
+- `lib/account/plannerSnapshot.ts`
+- `lib/account/autoSync.ts`
+- `lib/testing/testPilotAccess.ts`
+- `components/sidebar/Sidebar.tsx`
+- `components/shell/HaloAppShell.tsx`
+- `tests/planning/routeIntelligence.test.ts`
+- `tests/planning/routeWeather.test.ts`
+- `tests/planning/airfieldBrief.test.ts`
+- `tests/planning/routeIntelligenceApi.test.ts`
+- `tests/planning/fuel.test.ts`
+- `tests/planning/weightBalance.test.ts`
+- `tests/planning/briefingDigest.test.ts`
+- `tests/account/plannerSnapshot.test.ts`
+- `tests/planning/missions.test.ts`
+- `tests/stores/mapStore.test.ts`
+- `README.md`
+- `TODO.md`
+- `PROJECT_SESSION_LOG.md`
+
+Verification:
+
+- Focused Vitest command covering route intelligence, route weather, airfield brief, fuel policy, W&B templates, dispatch package, route intelligence API, planner snapshot, map store, and test-pilot access passed after updating the test-pilot schema version to 5.
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed, 51 files / 255 tests.
+- `pnpm lint`: passed with no warnings/errors, aside from the Next 15 `next lint` deprecation notice.
+- `pnpm build`: passed on Next.js `15.5.24`; `/api/route-intelligence/candidates` is included in the production route manifest.
+- `pnpm test:e2e`: passed, 3 Playwright tests against production build / `next start`.
+- `agent-browser` smoke check against `http://localhost:3000`: page loaded, content rendered, no Next.js error overlay detected, and expected planner/map controls were present.
+- `git diff --check`: passed.
+
+Debugging note:
+
+- A typecheck run initially failed because dispatch briefing helpers used `BriefingDigestStatus` without importing it, and route-handler unit tests called a `withApiLogging`-wrapped handler without the required context argument. The root cause was fixed by importing the type and passing `{}` as the test context.
+
+Prevention guidelines:
+
+- Provider-gated aviation domains must return explicit unavailable/not-configured states and must have tests proving Halo does not invent licensed data.
+- Persisted planner schema changes must update snapshot normalization, test-pilot store versioning, mission fixtures, and store merge tests together.
+- Unit tests that call `withApiLogging`-wrapped handlers should pass the request and route context arguments, even when the handler ignores context.
+
 ## 2026-08-31 Grid MORA And Advanced Fuel Planning
 
 Problem / requested implementation:

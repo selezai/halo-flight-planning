@@ -23,6 +23,7 @@ import type {
   RouteNotamReview,
   TrainingWind,
   TrackedLocation,
+  WeightBalanceLoadTemplate,
   WeightBalanceLoading,
   Waypoint,
 } from '@/types/planning';
@@ -58,7 +59,12 @@ import {
   DEFAULT_LOCATION_TRACKING_STATE,
 } from '@/lib/planning/routeTracking';
 import { DEFAULT_TRAINING_WIND } from '@/lib/planning/trainingNavlog';
-import { DEFAULT_WEIGHT_BALANCE_LOADING } from '@/lib/planning/weightBalance';
+import {
+  applyWeightBalanceLoadTemplate,
+  createWeightBalanceLoadTemplate,
+  DEFAULT_WEIGHT_BALANCE_LOADING,
+  validateWeightBalanceLoadTemplate,
+} from '@/lib/planning/weightBalance';
 import type { HaloPanelId } from '@/lib/ui/halo';
 import { normalizeHaloPanelId } from '@/lib/ui/halo';
 
@@ -106,6 +112,8 @@ export interface MapState {
   fuelPlanning: FuelPlanningState;
   gridMoraReview: GridMoraReview;
   weightBalanceLoading: WeightBalanceLoading;
+  weightBalanceLoadTemplates: WeightBalanceLoadTemplate[];
+  selectedRouteCandidateId?: string;
   personalMinimums: PersonalMinimums;
   routeAirspaceReview: RouteAirspaceReview;
   renderedRouteAirspaceReview: RouteAirspaceReview;
@@ -150,6 +158,7 @@ export interface MapState {
   duplicateMissionFromHistory: (id: string) => void;
   addRouteWaypoint: (waypoint: Waypoint) => void;
   insertRouteWaypoint: (index: number, waypoint: Waypoint) => void;
+  replaceRouteWaypoints: (waypoints: Waypoint[], selectedCandidateId?: string) => void;
   addUserWaypoint: (coordinates: Coordinates) => string;
   removeRouteWaypoint: (id: string) => void;
   moveRouteWaypoint: (id: string, direction: 'up' | 'down') => void;
@@ -165,6 +174,11 @@ export interface MapState {
   setGridMoraReview: (review: GridMoraReview) => void;
   updateWeightBalanceLoading: (updates: Partial<WeightBalanceLoading>) => void;
   updateWeightBalanceStationWeight: (stationId: string, weightLb: number) => void;
+  saveWeightBalanceLoadTemplate: (name: string, lockedStationWeights?: Record<string, number>) => string | null;
+  applyWeightBalanceLoadTemplateById: (id: string) => void;
+  removeWeightBalanceLoadTemplate: (id: string) => void;
+  importWeightBalanceLoadTemplates: (templates: WeightBalanceLoadTemplate[]) => void;
+  selectRouteCandidate: (id: string | undefined) => void;
   updatePersonalMinimums: (updates: Partial<PersonalMinimums>) => void;
   setRenderedRouteAirspaceReview: (review: RouteAirspaceReview) => void;
   setCoreRouteAirspaceReview: (review: RouteAirspaceReview) => void;
@@ -222,7 +236,7 @@ const DEFAULT_ROUTE_NOTAM_REVIEW: RouteNotamReview = {
 const DEFAULT_GRID_MORA_REVIEW = buildDefaultGridMoraReview();
 
 const DEFAULT_ACTIVE_MISSION_ID = 'mission-local-active';
-export const HALO_MAP_STORE_VERSION = 4;
+export const HALO_MAP_STORE_VERSION = 5;
 
 function createMissionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -246,6 +260,8 @@ function createBlankMissionPlannerState(): HaloMissionPlannerState {
     fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
     gridMoraReview: DEFAULT_GRID_MORA_REVIEW,
     weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+    weightBalanceLoadTemplates: [],
+    selectedRouteCandidateId: undefined,
     trainingWind: DEFAULT_TRAINING_WIND,
     filingChecklist: DEFAULT_FILING_CHECKLIST,
     notamBriefingRecord: DEFAULT_NOTAM_BRIEFING_RECORD,
@@ -270,6 +286,8 @@ function captureMissionPlannerState(state: MapState): HaloMissionPlannerState {
     fuelPlanning: state.fuelPlanning,
     gridMoraReview: state.gridMoraReview,
     weightBalanceLoading: state.weightBalanceLoading,
+    weightBalanceLoadTemplates: state.weightBalanceLoadTemplates,
+    selectedRouteCandidateId: state.selectedRouteCandidateId,
     trainingWind: state.trainingWind,
     filingChecklist: state.filingChecklist,
     notamBriefingRecord: state.notamBriefingRecord,
@@ -322,6 +340,10 @@ function getMissionActivationState(missionState: HaloMissionPlannerState): Parti
         ...missionState.weightBalanceLoading.stationWeights,
       },
     },
+    weightBalanceLoadTemplates: normalizeWeightBalanceLoadTemplates(missionState.weightBalanceLoadTemplates),
+    selectedRouteCandidateId: typeof missionState.selectedRouteCandidateId === 'string'
+      ? missionState.selectedRouteCandidateId
+      : undefined,
     trainingWind: {
       ...DEFAULT_TRAINING_WIND,
       ...missionState.trainingWind,
@@ -460,6 +482,50 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   );
 }
 
+function normalizeWeightBalanceLoadTemplates(value: unknown): WeightBalanceLoadTemplate[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item): WeightBalanceLoadTemplate | null => {
+      if (!isRecord(item)) return null;
+      if (typeof item.id !== 'string' || typeof item.name !== 'string') return null;
+      const createdAt = typeof item.createdAt === 'string' ? item.createdAt : new Date().toISOString();
+
+      return {
+        id: item.id,
+        name: item.name,
+        aircraftId: typeof item.aircraftId === 'string' ? item.aircraftId : undefined,
+        performanceProfileId: typeof item.performanceProfileId === 'string' ? item.performanceProfileId : undefined,
+        fuelGal: Math.max(0, normalizeNumber(item.fuelGal, 0)),
+        landingFuelGal: typeof item.landingFuelGal === 'number'
+          ? Math.max(0, normalizeNumber(item.landingFuelGal, 0))
+          : undefined,
+        stationWeights: normalizeNumberRecord(item.stationWeights),
+        lockedStationWeights: normalizeNumberRecord(item.lockedStationWeights),
+        createdAt,
+        updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : createdAt,
+      };
+    })
+    .filter((template): template is WeightBalanceLoadTemplate => Boolean(template));
+}
+
+function mergeWeightBalanceLoadTemplates(
+  existing: WeightBalanceLoadTemplate[],
+  incoming: WeightBalanceLoadTemplate[]
+): WeightBalanceLoadTemplate[] {
+  const byId = new Map<string, WeightBalanceLoadTemplate>();
+
+  for (const template of [...existing, ...incoming]) {
+    byId.set(template.id, template);
+  }
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const bTime = Date.parse(b.updatedAt);
+    const aTime = Date.parse(a.updatedAt);
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  });
+}
+
 function normalizeVisibleLayers(
   value: unknown,
   fallback: MapState['visibleLayers'] = DEFAULT_VISIBLE_LAYERS
@@ -516,6 +582,15 @@ function normalizeFuelPlanningState(value: unknown): FuelPlanningState {
     holdingMinutes: Math.max(0, normalizeNumber(value.holdingMinutes, DEFAULT_FUEL_PLANNING_STATE.holdingMinutes)),
     finalReserveMinutes: Math.max(0, normalizeNumber(value.finalReserveMinutes, DEFAULT_FUEL_PLANNING_STATE.finalReserveMinutes)),
     contingencyPercent: Math.max(0, normalizeNumber(value.contingencyPercent, DEFAULT_FUEL_PLANNING_STATE.contingencyPercent)),
+    fuelPolicyMode: value.fuelPolicyMode === 'target-landing' || value.fuelPolicyMode === 'max-wb-constrained'
+      ? value.fuelPolicyMode
+      : 'required',
+    targetLandingFuel: isRecord(value.targetLandingFuel)
+      ? {
+          value: Math.max(0, normalizeNumber(value.targetLandingFuel.value, DEFAULT_FUEL_PLANNING_STATE.targetLandingFuel?.value ?? 0)),
+          unit: normalizeFuelUnit(value.targetLandingFuel.unit, DEFAULT_FUEL_PLANNING_STATE.targetLandingFuel?.unit ?? 'usg'),
+        }
+      : DEFAULT_FUEL_PLANNING_STATE.targetLandingFuel,
     alternate: alternate
       ? {
           name: normalizeString(alternate.name, 'Alternate'),
@@ -681,6 +756,10 @@ function normalizeMissionRecord(value: unknown): HaloMissionRecord | null {
           ...normalizeNumberRecord(weightBalanceLoading.stationWeights),
         },
       },
+      weightBalanceLoadTemplates: normalizeWeightBalanceLoadTemplates(state.weightBalanceLoadTemplates),
+      selectedRouteCandidateId: typeof state.selectedRouteCandidateId === 'string'
+        ? state.selectedRouteCandidateId
+        : undefined,
       trainingWind: {
         ...DEFAULT_TRAINING_WIND,
         ...(isRecord(state.trainingWind) ? state.trainingWind : {}),
@@ -759,6 +838,10 @@ function mergePersistedMapState(
       : undefined,
     fuelPlanning: normalizeFuelPlanningState(persistedState?.fuelPlanning),
     gridMoraReview: normalizeGridMoraReview(persistedState?.gridMoraReview),
+    weightBalanceLoadTemplates: normalizeWeightBalanceLoadTemplates(persistedState?.weightBalanceLoadTemplates),
+    selectedRouteCandidateId: typeof persistedState?.selectedRouteCandidateId === 'string'
+      ? persistedState.selectedRouteCandidateId
+      : undefined,
     visibleLayers: normalizeVisibleLayers(persistedState?.visibleLayers, current.visibleLayers),
     activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
     locationTracking: DEFAULT_LOCATION_TRACKING_STATE,
@@ -850,6 +933,12 @@ export function migratePersistedMapState(persistedState: unknown, persistedVersi
     migrated.aircraftPerformanceProfiles = [];
   }
 
+  if (persistedVersion < 5) {
+    migrated.weightBalanceLoadTemplates = [];
+    migrated.selectedRouteCandidateId = undefined;
+    migrated.fuelPlanning = normalizeFuelPlanningState(migrated.fuelPlanning);
+  }
+
   return migrated;
 }
 
@@ -890,6 +979,8 @@ export const useMapStore = createWithEqualityFn<MapState>()(
       fuelPlanning: DEFAULT_FUEL_PLANNING_STATE,
       gridMoraReview: DEFAULT_GRID_MORA_REVIEW,
       weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+      weightBalanceLoadTemplates: [],
+      selectedRouteCandidateId: undefined,
       personalMinimums: DEFAULT_PERSONAL_MINIMUMS,
       routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
       renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
@@ -1282,6 +1373,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         ],
         selectedFeature: null,
         selectedFeatureCandidates: [],
+        selectedRouteCandidateId: undefined,
         sidebarPanel: 'route',
         sidebarOpen: true,
       })),
@@ -1293,7 +1385,23 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         }, index),
         selectedFeature: null,
         selectedFeatureCandidates: [],
+        selectedRouteCandidateId: undefined,
       })),
+
+      replaceRouteWaypoints: (waypoints, selectedCandidateId) => set({
+        waypoints: waypoints.map((waypoint, index) => ({
+          ...waypoint,
+          id: `${waypoint.id || waypoint.type}-${Date.now()}-${index + 1}`,
+        })),
+        selectedRouteCandidateId: selectedCandidateId,
+        selectedFeature: null,
+        selectedFeatureCandidates: [],
+        routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+        renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
+        coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
+        routeNotamReview: DEFAULT_ROUTE_NOTAM_REVIEW,
+        activeRoute: DEFAULT_ACTIVE_ROUTE_STATE,
+      }),
 
       addUserWaypoint: (coordinates) => {
         const state = get();
@@ -1306,6 +1414,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
           ],
           selectedFeature: null,
           selectedFeatureCandidates: [],
+          selectedRouteCandidateId: undefined,
         });
 
         return waypoint.id;
@@ -1313,6 +1422,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
 
       removeRouteWaypoint: (id) => set((state) => ({
         waypoints: state.waypoints.filter((waypoint) => waypoint.id !== id),
+        selectedRouteCandidateId: undefined,
       })),
 
       moveRouteWaypoint: (id, direction) => set((state) => {
@@ -1325,17 +1435,19 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         const waypoints = [...state.waypoints];
         const [waypoint] = waypoints.splice(index, 1);
         waypoints.splice(targetIndex, 0, waypoint);
-        return { waypoints };
+        return { waypoints, selectedRouteCandidateId: undefined };
       }),
 
       updateRouteWaypoint: (id, updates) => set((state) => ({
         waypoints: state.waypoints.map((waypoint) =>
           waypoint.id === id ? { ...waypoint, ...updates } : waypoint
         ),
+        selectedRouteCandidateId: undefined,
       })),
 
       clearRoute: () => set({
         waypoints: [],
+        selectedRouteCandidateId: undefined,
         routeAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
         renderedRouteAirspaceReview: DEFAULT_ROUTE_AIRSPACE_REVIEW,
         coreRouteAirspaceReview: DEFAULT_CORE_ROUTE_AIRSPACE_REVIEW,
@@ -1351,6 +1463,7 @@ export const useMapStore = createWithEqualityFn<MapState>()(
           selectedPerformanceProfileId: aircraft.performanceProfileId,
         },
         weightBalanceLoading: DEFAULT_WEIGHT_BALANCE_LOADING,
+        selectedRouteCandidateId: undefined,
       }),
 
       updateActiveAircraft: (updates) => set((state) => ({
@@ -1421,6 +1534,10 @@ export const useMapStore = createWithEqualityFn<MapState>()(
             ...state.fuelPlanning.discretionaryFuel,
             ...updates.discretionaryFuel,
           },
+          targetLandingFuel: {
+            ...(state.fuelPlanning.targetLandingFuel ?? DEFAULT_FUEL_PLANNING_STATE.targetLandingFuel),
+            ...updates.targetLandingFuel,
+          },
         }),
       })),
 
@@ -1448,6 +1565,72 @@ export const useMapStore = createWithEqualityFn<MapState>()(
           },
         },
       })),
+
+      saveWeightBalanceLoadTemplate: (name, lockedStationWeights) => {
+        const state = get();
+        const template = createWeightBalanceLoadTemplate({
+          name,
+          aircraft: state.activeAircraft,
+          loading: state.weightBalanceLoading,
+          performanceProfileId: state.selectedAircraftPerformanceProfileId,
+          lockedStationWeights,
+        });
+        const issues = validateWeightBalanceLoadTemplate(
+          state.activeAircraft.weightBalance,
+          template,
+          state.activeAircraft.usableFuelGal
+        );
+
+        if (issues.length > 0) return null;
+
+        set((current) => ({
+          weightBalanceLoadTemplates: [
+            template,
+            ...current.weightBalanceLoadTemplates.filter((item) => item.id !== template.id),
+          ].slice(0, 20),
+        }));
+
+        return template.id;
+      },
+
+      applyWeightBalanceLoadTemplateById: (id) => set((state) => {
+        const template = state.weightBalanceLoadTemplates.find((item) => item.id === id);
+        if (!template) return state;
+
+        const issues = validateWeightBalanceLoadTemplate(
+          state.activeAircraft.weightBalance,
+          template,
+          state.activeAircraft.usableFuelGal
+        );
+        if (issues.length > 0) return state;
+
+        return {
+          weightBalanceLoading: applyWeightBalanceLoadTemplate(template, state.weightBalanceLoading),
+        };
+      }),
+
+      removeWeightBalanceLoadTemplate: (id) => set((state) => ({
+        weightBalanceLoadTemplates: state.weightBalanceLoadTemplates.filter((template) => template.id !== id),
+      })),
+
+      importWeightBalanceLoadTemplates: (templates) => set((state) => {
+        const validTemplates = templates.filter((template) =>
+          validateWeightBalanceLoadTemplate(
+            state.activeAircraft.weightBalance,
+            template,
+            state.activeAircraft.usableFuelGal
+          ).length === 0
+        );
+
+        return {
+          weightBalanceLoadTemplates: mergeWeightBalanceLoadTemplates(
+            state.weightBalanceLoadTemplates,
+            validTemplates
+          ).slice(0, 20),
+        };
+      }),
+
+      selectRouteCandidate: (id) => set({ selectedRouteCandidateId: id }),
 
       updatePersonalMinimums: (updates) => set((state) => ({
         personalMinimums: clampPersonalMinimums({ ...state.personalMinimums, ...updates }),
@@ -1553,6 +1736,8 @@ export const useMapStore = createWithEqualityFn<MapState>()(
         fuelPlanning: state.fuelPlanning,
         gridMoraReview: state.gridMoraReview,
         weightBalanceLoading: state.weightBalanceLoading,
+        weightBalanceLoadTemplates: state.weightBalanceLoadTemplates,
+        selectedRouteCandidateId: state.selectedRouteCandidateId,
         trainingWind: state.trainingWind,
         filingChecklist: state.filingChecklist,
         notamBriefingRecord: state.notamBriefingRecord,

@@ -160,6 +160,19 @@ export interface WeightBalanceLoading {
   stationWeights: Record<string, number>;
 }
 
+export interface WeightBalanceLoadTemplate {
+  id: string;
+  name: string;
+  aircraftId?: string;
+  performanceProfileId?: string;
+  fuelGal: number;
+  landingFuelGal?: number;
+  stationWeights: Record<string, number>;
+  lockedStationWeights: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WeightBalanceStateResult {
   label: 'ramp' | 'takeoff' | 'landing';
   weightLb: number;
@@ -294,6 +307,8 @@ export type FlightRules = 'vfr' | 'ifr';
 
 export type FuelPlanningRuleSet = 'sacaa-atns-ga';
 
+export type FuelPolicyMode = 'required' | 'target-landing' | 'max-wb-constrained';
+
 export interface RouteWindInput {
   source: 'manual' | 'provider';
   directionDeg: number;
@@ -321,6 +336,8 @@ export interface FuelPlanningState {
   holdingMinutes: number;
   finalReserveMinutes: number;
   contingencyPercent: number;
+  fuelPolicyMode?: FuelPolicyMode;
+  targetLandingFuel?: FuelQuantity;
   alternate?: AlternateFuelInput;
   additionalFuel: FuelQuantity;
   discretionaryFuel: FuelQuantity;
@@ -370,6 +387,17 @@ export interface FuelPlanLeg {
   fuel: FuelQuantity;
 }
 
+export interface FuelPolicyReview {
+  mode: FuelPolicyMode;
+  status: FuelPlanningResultStatus;
+  trusted: boolean;
+  message: string;
+  targetLandingFuel?: FuelQuantity;
+  maxWbConstrainedFuel?: FuelQuantity;
+  usableFuel?: FuelQuantity;
+  reserveMargin?: FuelQuantity;
+}
+
 export interface FuelPlanningResult {
   status: FuelPlanningResultStatus;
   ruleSet: FuelPlanningRuleSet;
@@ -385,7 +413,99 @@ export interface FuelPlanningResult {
   usableFuel: FuelQuantity;
   remainingFuel: FuelQuantity;
   expectedLandingFuel: FuelQuantity;
+  policy?: FuelPolicyReview;
   calculatedAt: string;
+}
+
+export type RouteTokenKind =
+  | 'waypoint'
+  | 'coordinate'
+  | 'airway'
+  | 'procedure'
+  | 'altitude'
+  | 'direct';
+
+export interface RouteToken {
+  kind: RouteTokenKind;
+  source: string;
+  query?: string;
+  coordinates?: Coordinates;
+  altitudeFt?: number;
+  requiresProvider: boolean;
+}
+
+export type RouteCandidateSource = 'direct' | 'current' | 'licensed-provider';
+
+export type RouteCandidateStatus =
+  | 'available'
+  | 'needs-route'
+  | 'provider-not-configured'
+  | 'unavailable';
+
+export interface RouteCandidate {
+  id: string;
+  title: string;
+  source: RouteCandidateSource;
+  status: RouteCandidateStatus;
+  message: string;
+  waypoints: Waypoint[];
+  totalDistanceNm?: number;
+  estimatedTimeMinutes?: number;
+  totalFuelRequired?: FuelQuantity;
+  remainingFuel?: FuelQuantity;
+  warnings: string[];
+}
+
+export type RouteIntelligenceReviewStatus =
+  | 'needs-route'
+  | 'ready'
+  | 'provider-not-configured'
+  | 'unavailable';
+
+export interface RouteIntelligenceReview {
+  status: RouteIntelligenceReviewStatus;
+  message: string;
+  tokens: RouteToken[];
+  candidates: RouteCandidate[];
+  providerConfigured: boolean;
+  selectedCandidateId?: string;
+  sourceUrl?: string;
+  updatedAt: string;
+}
+
+export type WeatherProviderStatus =
+  | 'manual'
+  | 'configured'
+  | 'provider-not-configured'
+  | 'unavailable';
+
+export type RouteWeatherReviewStatus =
+  | 'needs-route'
+  | 'current'
+  | 'partial'
+  | 'manual-wind'
+  | 'provider-not-configured'
+  | 'unavailable';
+
+export interface RouteWeatherStationReview {
+  icao: string;
+  hasMetar: boolean;
+  hasTaf: boolean;
+  message: string;
+  updatedAt?: string;
+}
+
+export interface RouteWeatherReview {
+  status: RouteWeatherReviewStatus;
+  message: string;
+  stations: RouteWeatherStationReview[];
+  metarCount: number;
+  tafCount: number;
+  windStatus: WeatherProviderStatus;
+  windsAloftStatus: WeatherProviderStatus;
+  wind?: RouteWindInput;
+  sourceUrl?: string;
+  updatedAt: string;
 }
 
 export type GridMoraReviewSource =
@@ -586,6 +706,70 @@ export interface FlightAdminReview {
   updatedAt: string;
 }
 
+export type RouteAirfieldBriefStatus =
+  | 'needs-route'
+  | 'available'
+  | 'partial'
+  | 'missing-official-data';
+
+export interface RouteAirfieldBriefFrequency {
+  type: string;
+  value: string;
+  name?: string;
+  primary?: boolean;
+  source: 'openaip' | 'official-required';
+}
+
+export interface RouteAirfieldBriefRunway {
+  designator: string;
+  length?: number;
+  width?: number;
+  surface?: string;
+  unit?: string;
+}
+
+export interface RouteAirfieldBriefAirport {
+  ident?: string;
+  name: string;
+  sourceId?: string;
+  coordinates: Coordinates;
+  elevationFt?: number;
+  frequencies: RouteAirfieldBriefFrequency[];
+  runways: RouteAirfieldBriefRunway[];
+  missing: string[];
+  message: string;
+}
+
+export interface RouteAirfieldBrief {
+  status: RouteAirfieldBriefStatus;
+  message: string;
+  airports: RouteAirfieldBriefAirport[];
+  source: 'openaip' | 'official-required';
+  sourceUrl?: string;
+  updatedAt: string;
+}
+
+export interface DispatchBriefingSection {
+  id: string;
+  title: string;
+  status: BriefingDigestStatus;
+  lines: string[];
+}
+
+export interface DispatchBriefingPackage {
+  id: string;
+  title: string;
+  generatedAt: string;
+  routeName: string;
+  sections: DispatchBriefingSection[];
+  officialHandoff: {
+    required: boolean;
+    sources: string[];
+    message: string;
+  };
+  dataFreshness: DataFreshness[];
+}
+
 export type HaloMissionStatus = 'draft' | 'needs-review' | 'ready' | 'flown' | 'archived';
 
 export interface HaloMissionPlannerState {
@@ -601,6 +785,8 @@ export interface HaloMissionPlannerState {
   fuelPlanning: FuelPlanningState;
   gridMoraReview: GridMoraReview;
   weightBalanceLoading: WeightBalanceLoading;
+  weightBalanceLoadTemplates: WeightBalanceLoadTemplate[];
+  selectedRouteCandidateId?: string;
   trainingWind: TrainingWind;
   filingChecklist: FilingChecklistState;
   notamBriefingRecord: NotamBriefingRecord;

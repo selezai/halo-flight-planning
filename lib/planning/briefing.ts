@@ -4,18 +4,24 @@ import type {
   AirspaceVerticalProfileItem,
   BriefingDigest,
   BriefingDigestItem,
+  BriefingDigestStatus,
   BriefingRisk,
   DataFreshness,
+  DispatchBriefingPackage,
+  DispatchBriefingSection,
   EmergencyPlanningReview,
   FlightAdminReview,
   FilingWorkflowReview,
   FuelPlanningResult,
   GridMoraReview,
+  RouteAirfieldBrief,
   PersonalMinimums,
   RouteAirspaceAlert,
   RouteAnalysis,
+  RouteIntelligenceReview,
   RouteNotam,
   RouteNotamReview,
+  RouteWeatherReview,
   TrainingNavLog,
   TrainingNavLogLeg,
   WeightBalanceResult,
@@ -24,12 +30,15 @@ import type {
   WeatherReport,
 } from '@/types/planning';
 import { formatCourse, formatDistance, formatDuration, formatFuel } from './navigation';
+import { formatRouteAirfieldBriefLines } from './airfieldBrief';
 import { isBelowPersonalMinimums } from './weather';
 import { formatEmergencyPlanningLines } from './emergencyPlanning';
 import { formatFilingWorkflowLines } from './filingReminder';
 import { formatFlightAdminLines } from './flightAdmin';
 import { formatFuelQuantity } from './fuel';
 import { formatGridMoraReviewLines } from './gridMora';
+import { formatRouteIntelligenceReviewLines } from './routeIntelligence';
+import { formatRouteWeatherReviewLines } from './routeWeather';
 import { getWeightBalanceStatusLabel } from './weightBalance';
 
 export function buildRiskAssessment(
@@ -43,7 +52,10 @@ export function buildRiskAssessment(
   emergencyReview?: EmergencyPlanningReview,
   flightAdminReview?: FlightAdminReview,
   fuelPlanningResult?: FuelPlanningResult,
-  gridMoraReview?: GridMoraReview
+  gridMoraReview?: GridMoraReview,
+  routeIntelligenceReview?: RouteIntelligenceReview,
+  routeWeatherReview?: RouteWeatherReview,
+  routeAirfieldBrief?: RouteAirfieldBrief
 ): BriefingRisk[] {
   const risks: BriefingRisk[] = [];
 
@@ -107,6 +119,9 @@ export function buildRiskAssessment(
   addFlightAdminRisks(risks, flightAdminReview);
   addEmergencyRisks(risks, emergencyReview);
   addGridMoraRisks(risks, gridMoraReview);
+  addRouteIntelligenceRisks(risks, routeIntelligenceReview);
+  addRouteWeatherRisks(risks, routeWeatherReview);
+  addRouteAirfieldRisks(risks, routeAirfieldBrief);
 
   if (risks.length === 0) {
     risks.push({
@@ -138,6 +153,9 @@ export function buildBriefingText(params: {
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
+  routeIntelligenceReview?: RouteIntelligenceReview;
+  routeWeatherReview?: RouteWeatherReview;
+  routeAirfieldBrief?: RouteAirfieldBrief;
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -160,6 +178,9 @@ export function buildBriefingText(params: {
     filingReview,
     flightAdminReview,
     emergencyReview,
+    routeIntelligenceReview,
+    routeWeatherReview,
+    routeAirfieldBrief,
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -184,6 +205,9 @@ export function buildBriefingText(params: {
       filingReview,
       flightAdminReview,
       emergencyReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
     })),
     '',
     'FLIGHT SUMMARY',
@@ -196,6 +220,9 @@ export function buildBriefingText(params: {
     `Fuel required: ${fuelPlanningResult ? formatFuelQuantity(fuelPlanningResult.totalRequiredFuel) : formatFuel(route.summary.totalFuelRequiredGal)}`,
     `Fuel remaining: ${fuelPlanningResult ? formatFuelQuantity(fuelPlanningResult.remainingFuel) : formatFuel(route.summary.fuelRemainingGal)}`,
     `Fuel trust: ${fuelPlanningResult?.trusted ? 'Approved POH/AFM profile' : 'Legacy/untrusted estimate'}`,
+    '',
+    'ROUTE INTELLIGENCE',
+    ...formatRouteIntelligenceReviewLines(routeIntelligenceReview),
     '',
     'NAVIGATION LOG',
     ...route.legs.map((leg, index) => {
@@ -211,6 +238,9 @@ export function buildBriefingText(params: {
     '',
     'FUEL PLANNING',
     ...formatFuelPlanningResultLines(fuelPlanningResult),
+    '',
+    'ROUTE WEATHER REVIEW',
+    ...formatRouteWeatherReviewLines(routeWeatherReview),
     '',
     'WEATHER',
     ...(weather.length
@@ -230,6 +260,9 @@ export function buildBriefingText(params: {
     '',
     'WEIGHT & BALANCE',
     ...formatBriefingWeightBalance(weightBalanceResult),
+    '',
+    'ROUTE AIRFIELDS / FREQUENCIES',
+    ...formatRouteAirfieldBriefLines(routeAirfieldBrief),
     '',
     'DATA FRESHNESS',
     ...formatBriefingFreshness(dataFreshness),
@@ -270,6 +303,9 @@ export function buildBriefingDigest(params: {
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
+  routeIntelligenceReview?: RouteIntelligenceReview;
+  routeWeatherReview?: RouteWeatherReview;
+  routeAirfieldBrief?: RouteAirfieldBrief;
 }): BriefingDigest {
   const items: BriefingDigestItem[] = [];
 
@@ -338,6 +374,9 @@ export function buildBriefingDigest(params: {
   addFlightAdminDigestItems(items, params.flightAdminReview);
   addEmergencyDigestItems(items, params.emergencyReview);
   addGridMoraDigestItems(items, params.gridMoraReview);
+  addRouteIntelligenceDigestItems(items, params.routeIntelligenceReview);
+  addRouteWeatherDigestItems(items, params.routeWeatherReview);
+  addRouteAirfieldDigestItems(items, params.routeAirfieldBrief);
 
   for (const freshness of params.dataFreshness ?? []) {
     if (freshness.status === 'current') continue;
@@ -703,6 +742,272 @@ function addGridMoraDigestItems(items: BriefingDigestItem[], review?: GridMoraRe
   });
 }
 
+function addRouteIntelligenceRisks(risks: BriefingRisk[], review?: RouteIntelligenceReview) {
+  if (!review || review.status === 'needs-route' || review.status === 'ready') return;
+
+  risks.push({
+    id: `route-intelligence-${review.status}`,
+    level: 'caution',
+    title: 'Route provider review unavailable',
+    detail: review.message,
+  });
+}
+
+function addRouteWeatherRisks(risks: BriefingRisk[], review?: RouteWeatherReview) {
+  if (!review || review.status === 'needs-route' || review.status === 'current' || review.status === 'manual-wind') return;
+
+  risks.push({
+    id: `route-weather-${review.status}`,
+    level: 'caution',
+    title: 'Route weather incomplete',
+    detail: review.message,
+  });
+}
+
+function addRouteAirfieldRisks(risks: BriefingRisk[], brief?: RouteAirfieldBrief) {
+  if (!brief || brief.status === 'needs-route' || brief.status === 'available') return;
+
+  risks.push({
+    id: `route-airfield-${brief.status}`,
+    level: 'caution',
+    title: 'Route airfield data needs official check',
+    detail: brief.message,
+  });
+}
+
+function addRouteIntelligenceDigestItems(items: BriefingDigestItem[], review?: RouteIntelligenceReview) {
+  if (!review || review.status === 'needs-route') return;
+
+  if (review.status === 'ready') {
+    const available = review.candidates.filter((candidate) => candidate.status === 'available').length;
+    items.push({
+      id: 'route-intelligence-ready',
+      level: 'info',
+      title: 'Route advisor candidates ready',
+      action: `${available} local route candidate${available === 1 ? '' : 's'} available; provider route is ${review.providerConfigured ? 'configured' : 'not configured'}.`,
+      source: 'Route',
+    });
+    return;
+  }
+
+  items.push({
+    id: `route-intelligence-${review.status}`,
+    level: 'caution',
+    title: 'Provider route not available',
+    action: review.message,
+    source: 'Route',
+  });
+}
+
+function addRouteWeatherDigestItems(items: BriefingDigestItem[], review?: RouteWeatherReview) {
+  if (!review || review.status === 'needs-route') return;
+
+  if (review.status === 'current' || review.status === 'manual-wind') {
+    items.push({
+      id: 'route-weather-ready',
+      level: review.status === 'manual-wind' ? 'caution' : 'info',
+      title: review.status === 'manual-wind' ? 'Weather loaded with manual wind' : 'Route weather loaded',
+      action: review.message,
+      source: 'Weather',
+    });
+    return;
+  }
+
+  items.push({
+    id: `route-weather-${review.status}`,
+    level: 'caution',
+    title: 'Route weather incomplete',
+    action: review.message,
+    source: 'Weather',
+  });
+}
+
+function addRouteAirfieldDigestItems(items: BriefingDigestItem[], brief?: RouteAirfieldBrief) {
+  if (!brief || brief.status === 'needs-route') return;
+
+  items.push({
+    id: `route-airfield-${brief.status}`,
+    level: brief.status === 'available' ? 'info' : 'caution',
+    title: brief.status === 'available' ? 'Route airfield digest ready' : 'Route airfield data incomplete',
+    action: brief.message,
+    source: 'Airfields',
+  });
+}
+
+export function buildDispatchBriefingPackage(params: {
+  routeName: string;
+  aircraft: AircraftProfile;
+  route: RouteAnalysis;
+  waypoints: Waypoint[];
+  digest: BriefingDigest;
+  weather: WeatherReport[];
+  risks: BriefingRisk[];
+  routeAirspaceAlerts?: RouteAirspaceAlert[];
+  airspaceVerticalProfile?: AirspaceVerticalProfile;
+  routeNotamReview?: RouteNotamReview;
+  weightBalanceResult?: WeightBalanceResult;
+  dataFreshness?: DataFreshness[];
+  trainingNavLog?: TrainingNavLog;
+  fuelPlanningResult?: FuelPlanningResult;
+  gridMoraReview?: GridMoraReview;
+  filingReview?: FilingWorkflowReview;
+  flightAdminReview?: FlightAdminReview;
+  emergencyReview?: EmergencyPlanningReview;
+  routeIntelligenceReview?: RouteIntelligenceReview;
+  routeWeatherReview?: RouteWeatherReview;
+  routeAirfieldBrief?: RouteAirfieldBrief;
+  departureTime?: string;
+  cruiseAltitudeFt?: number;
+  notes?: string;
+  now?: Date;
+}): DispatchBriefingPackage {
+  const generatedAt = (params.now ?? new Date()).toISOString();
+  const officialSources = [
+    params.routeNotamReview?.sourceUrl ?? 'https://file2fly.atns.co.za/aes/login.jsp',
+    params.gridMoraReview?.sourceUrl ?? 'Licensed Grid MORA provider not configured in Halo',
+    params.routeAirfieldBrief?.sourceUrl ?? 'https://www.caa.co.za/industry-information/aeronautical-information/',
+    'https://aviationweather.gov/',
+  ];
+  const sections: DispatchBriefingSection[] = [
+    {
+      id: 'route-advisor',
+      title: 'Route Advisor Selection',
+      status: sectionStatusFromReview(params.routeIntelligenceReview?.status),
+      lines: formatRouteIntelligenceReviewLines(params.routeIntelligenceReview),
+    },
+    {
+      id: 'navlog',
+      title: 'Navigation Log',
+      status: params.route.summary.legCount > 0 ? 'ready' : 'stop',
+      lines: params.route.legs.length
+        ? params.route.legs.map((leg, index) =>
+            `${index + 1}. ${leg.from.ident ?? leg.from.name} to ${leg.to.ident ?? leg.to.name}: ${formatDistance(leg.distanceNm)}, TC ${formatCourse(leg.trueCourseDeg)}, MC ${formatCourse(leg.magneticCourseDeg)}, ${formatDuration(leg.estimatedTimeMinutes)}`
+          )
+        : ['No navlog legs available.'],
+    },
+    {
+      id: 'fuel-policy',
+      title: 'Fuel Policy',
+      status: sectionStatusFromFuel(params.fuelPlanningResult),
+      lines: formatFuelPlanningResultLines(params.fuelPlanningResult),
+    },
+    {
+      id: 'weight-balance',
+      title: 'Weight & Balance Manifest',
+      status: sectionStatusFromWeightBalance(params.weightBalanceResult),
+      lines: formatBriefingWeightBalance(params.weightBalanceResult),
+    },
+    {
+      id: 'weather',
+      title: 'Weather',
+      status: sectionStatusFromWeather(params.routeWeatherReview),
+      lines: [
+        ...formatRouteWeatherReviewLines(params.routeWeatherReview),
+        ...params.weather.map((report) => `${report.icao}: ${report.flightCategory} ${report.raw}`),
+      ],
+    },
+    {
+      id: 'airspace-notam-admin',
+      title: 'Airspace, NOTAM & Admin Handoff',
+      status: sectionStatusFromAdmin(params.routeNotamReview, params.flightAdminReview),
+      lines: [
+        'Airspace:',
+        ...(params.routeAirspaceAlerts?.length
+          ? params.routeAirspaceAlerts.map(formatBriefingAirspaceAlert)
+          : ['No rendered OpenAIP airspace intersections recorded. Continue official chart and NOTAM review.']),
+        'NOTAM:',
+        ...formatBriefingNotamReview(params.routeNotamReview),
+        'Flight admin:',
+        ...formatFlightAdminLines(params.flightAdminReview, params.filingReview),
+      ],
+    },
+    {
+      id: 'route-frequencies',
+      title: 'Route Frequencies & Airfields',
+      status: params.routeAirfieldBrief?.status === 'available' ? 'ready' : 'review',
+      lines: formatRouteAirfieldBriefLines(params.routeAirfieldBrief),
+    },
+    {
+      id: 'emergency',
+      title: 'Emergency Plan',
+      status: params.emergencyReview?.status === 'available' ? 'ready' : 'review',
+      lines: formatEmergencyPlanningLines(params.emergencyReview),
+    },
+    {
+      id: 'data-freshness',
+      title: 'Data Freshness',
+      status: params.dataFreshness?.some((item) => item.status !== 'current') ? 'review' : 'ready',
+      lines: formatBriefingFreshness(params.dataFreshness ?? []),
+    },
+  ];
+
+  return {
+    id: `dispatch-${generatedAt}`,
+    title: 'Halo Dispatch Briefing Package',
+    generatedAt,
+    routeName: params.routeName || routeLabel(params.waypoints),
+    sections,
+    officialHandoff: {
+      required: true,
+      sources: Array.from(new Set(officialSources)),
+      message: 'Halo prepared the dispatch package, but official weather, NOTAM, filing, AIP/chart, and licensed navdata checks remain manual unless an authorized provider is configured.',
+    },
+    dataFreshness: params.dataFreshness ?? [],
+  };
+}
+
+export function formatDispatchBriefingPackageLines(dispatchPackage: DispatchBriefingPackage): string[] {
+  return [
+    `${dispatchPackage.title}`,
+    `Generated: ${dispatchPackage.generatedAt}`,
+    `Route: ${dispatchPackage.routeName}`,
+    '',
+    'OFFICIAL HANDOFF',
+    dispatchPackage.officialHandoff.message,
+    ...dispatchPackage.officialHandoff.sources.map((source) => `Source: ${source}`),
+    '',
+    ...dispatchPackage.sections.flatMap((section) => [
+      section.title.toUpperCase(),
+      `Status: ${section.status.toUpperCase()}`,
+      ...section.lines,
+      '',
+    ]),
+  ];
+}
+
+function sectionStatusFromReview(status: RouteIntelligenceReview['status'] | undefined): BriefingDigestStatus {
+  if (status === 'needs-route') return 'stop';
+  if (status === 'ready') return 'ready';
+  return 'review';
+}
+
+function sectionStatusFromFuel(result?: FuelPlanningResult): BriefingDigestStatus {
+  if (!result || result.status === 'needs-route' || result.status === 'critical' || result.policy?.status === 'critical') return 'stop';
+  if (!result.trusted || result.status === 'caution' || result.policy?.status === 'caution') return 'review';
+  return 'ready';
+}
+
+function sectionStatusFromWeightBalance(result?: WeightBalanceResult): BriefingDigestStatus {
+  if (!result || result.status === 'out-of-limits') return 'stop';
+  if (result.status === 'within-limits') return 'ready';
+  return 'review';
+}
+
+function sectionStatusFromWeather(review?: RouteWeatherReview): BriefingDigestStatus {
+  if (!review || review.status === 'needs-route' || review.status === 'unavailable') return 'review';
+  if (review.status === 'current') return 'ready';
+  return 'review';
+}
+
+function sectionStatusFromAdmin(
+  notamReview?: RouteNotamReview,
+  flightAdminReview?: FlightAdminReview
+): BriefingDigestStatus {
+  if (flightAdminReview?.filingStatus === 'rejected') return 'stop';
+  if (notamReview?.status === 'complete' && flightAdminReview?.notamStatus === 'completed') return 'ready';
+  return 'review';
+}
+
 function routeLabel(waypoints: Waypoint[]): string {
   if (waypoints.length === 0) return 'Untitled route';
   return waypoints.map((waypoint) => waypoint.ident ?? waypoint.name).join(' -> ');
@@ -750,6 +1055,9 @@ function digestSummary(
 }
 
 function sourceForRisk(riskId: string): string {
+  if (riskId.startsWith('route-weather')) return 'Weather';
+  if (riskId.startsWith('route-airfield')) return 'Airfields';
+  if (riskId.startsWith('route-intelligence')) return 'Route';
   if (riskId.startsWith('weather')) return 'Weather';
   if (riskId.startsWith('airspace')) return 'Airspace';
   if (riskId.startsWith('notam')) return 'NOTAM';

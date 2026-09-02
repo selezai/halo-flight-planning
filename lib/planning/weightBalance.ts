@@ -2,6 +2,7 @@ import type {
   AircraftProfile,
   WeightBalanceConfig,
   WeightBalanceEnvelopePoint,
+  WeightBalanceLoadTemplate,
   WeightBalanceLoading,
   WeightBalanceResult,
   WeightBalanceStateResult,
@@ -135,6 +136,108 @@ export function getWeightBalanceStatusLabel(status: WeightBalanceStatus): string
     'out-of-limits': 'Out of limits',
   };
   return labels[status];
+}
+
+export function createWeightBalanceLoadTemplate(params: {
+  name: string;
+  aircraft: AircraftProfile;
+  loading: WeightBalanceLoading;
+  performanceProfileId?: string;
+  lockedStationWeights?: Record<string, number>;
+  now?: Date;
+}): WeightBalanceLoadTemplate {
+  const now = params.now ?? new Date();
+
+  return {
+    id: createTemplateId(params.name, now),
+    name: params.name.trim() || 'Saved load',
+    aircraftId: params.aircraft.id,
+    performanceProfileId: params.performanceProfileId ?? params.aircraft.performanceProfileId,
+    fuelGal: clampNonNegative(params.loading.fuelGal),
+    landingFuelGal: params.loading.landingFuelGal === undefined
+      ? undefined
+      : clampNonNegative(params.loading.landingFuelGal),
+    stationWeights: normalizeStationWeights(params.loading.stationWeights),
+    lockedStationWeights: normalizeStationWeights(params.lockedStationWeights ?? {}),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
+export function applyWeightBalanceLoadTemplate(
+  template: WeightBalanceLoadTemplate,
+  current: WeightBalanceLoading = DEFAULT_WEIGHT_BALANCE_LOADING
+): WeightBalanceLoading {
+  const stationWeights = {
+    ...normalizeStationWeights(current.stationWeights),
+    ...normalizeStationWeights(template.stationWeights),
+    ...normalizeStationWeights(template.lockedStationWeights),
+  };
+
+  return {
+    fuelGal: clampNonNegative(template.fuelGal),
+    landingFuelGal: template.landingFuelGal === undefined ? undefined : clampNonNegative(template.landingFuelGal),
+    stationWeights,
+  };
+}
+
+export function validateWeightBalanceLoadTemplate(
+  config: WeightBalanceConfig | undefined,
+  template: WeightBalanceLoadTemplate,
+  usableFuelGal: number
+): string[] {
+  const issues: string[] = [];
+
+  if (!template.name.trim()) issues.push('Load template name is required.');
+  if (template.fuelGal < 0) issues.push('Load template fuel cannot be negative.');
+  if (template.fuelGal > usableFuelGal) issues.push('Load template fuel exceeds selected aircraft usable fuel.');
+  if (template.landingFuelGal !== undefined && template.landingFuelGal > template.fuelGal) {
+    issues.push('Load template landing fuel cannot exceed ramp fuel.');
+  }
+
+  const stationWeights = {
+    ...normalizeStationWeights(template.stationWeights),
+    ...normalizeStationWeights(template.lockedStationWeights),
+  };
+
+  for (const [stationId, weight] of Object.entries(stationWeights)) {
+    if (weight < 0) issues.push(`${stationId} template weight cannot be negative.`);
+  }
+
+  if (config) {
+    const configuredStations = new Set(config.stations.map((station) => station.id));
+
+    for (const [stationId, weight] of Object.entries(stationWeights)) {
+      if (!configuredStations.has(stationId)) {
+        issues.push(`${stationId} is not a configured W&B station.`);
+        continue;
+      }
+
+      const station = config.stations.find((item) => item.id === stationId);
+      if (station?.maxWeightLb !== undefined && weight > station.maxWeightLb) {
+        issues.push(`${station.name} exceeds station max weight.`);
+      }
+    }
+  }
+
+  return Array.from(new Set(issues));
+}
+
+export function exportWeightBalanceLoadTemplates(templates: WeightBalanceLoadTemplate[]): string {
+  return JSON.stringify({ version: 1, templates }, null, 2);
+}
+
+export function importWeightBalanceLoadTemplates(payload: string): WeightBalanceLoadTemplate[] {
+  const parsed = JSON.parse(payload) as unknown;
+  const rawTemplates = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { templates?: unknown }).templates)
+      ? (parsed as { templates: unknown[] }).templates
+      : [];
+
+  return rawTemplates
+    .map(normalizeWeightBalanceLoadTemplate)
+    .filter((template): template is WeightBalanceLoadTemplate => Boolean(template));
 }
 
 function calculateState(
@@ -284,6 +387,50 @@ function isPositive(value: number | undefined): boolean {
 
 function clampNonNegative(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function normalizeStationWeights(value: Record<string, number> | undefined): Record<string, number> {
+  if (!value) return {};
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([stationId, weight]) => stationId.trim() && typeof weight === 'number' && Number.isFinite(weight))
+      .map(([stationId, weight]) => [stationId, clampNonNegative(weight)])
+  );
+}
+
+function normalizeWeightBalanceLoadTemplate(value: unknown): WeightBalanceLoadTemplate | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Partial<WeightBalanceLoadTemplate>;
+  if (typeof record.id !== 'string' || typeof record.name !== 'string') return null;
+
+  const createdAt = typeof record.createdAt === 'string' ? record.createdAt : new Date().toISOString();
+  const updatedAt = typeof record.updatedAt === 'string' ? record.updatedAt : createdAt;
+
+  return {
+    id: record.id,
+    name: record.name,
+    aircraftId: typeof record.aircraftId === 'string' ? record.aircraftId : undefined,
+    performanceProfileId: typeof record.performanceProfileId === 'string' ? record.performanceProfileId : undefined,
+    fuelGal: clampNonNegative(Number(record.fuelGal) || 0),
+    landingFuelGal: typeof record.landingFuelGal === 'number' && Number.isFinite(record.landingFuelGal)
+      ? clampNonNegative(record.landingFuelGal)
+      : undefined,
+    stationWeights: normalizeStationWeights(record.stationWeights),
+    lockedStationWeights: normalizeStationWeights(record.lockedStationWeights),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function createTemplateId(name: string, now: Date): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32) || 'load';
+  return `wb-load-${slug}-${now.getTime()}`;
 }
 
 function interpolate(start: number, end: number, progress: number): number {

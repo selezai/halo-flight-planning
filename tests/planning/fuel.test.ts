@@ -15,6 +15,7 @@ import type {
   PerformancePhase,
   PerformanceTable,
   PerformanceTableOutput,
+  WeightBalanceResult,
   Waypoint,
 } from '@/types/planning';
 
@@ -102,6 +103,60 @@ describe('advanced fuel planning', () => {
 
     expect(headwind.legs[0].groundSpeedKts).toBeLessThan(tailwind.legs[0].groundSpeedKts);
     expect(headwind.tripFuel.value).toBeGreaterThan(tailwind.tripFuel.value);
+  });
+
+  it('evaluates required and target landing fuel policies', () => {
+    const route = calculateRoute([westPoint, eastPoint], DEFAULT_AIRCRAFT);
+    const required = buildFuelPlanningResult({
+      route,
+      aircraft: DEFAULT_AIRCRAFT,
+      profile: sampleApprovedProfile(),
+      state: fuelPlanningState({ fuelPolicyMode: 'required' }),
+      cruiseAltitudeFt: 6000,
+    });
+    const targetLanding = buildFuelPlanningResult({
+      route,
+      aircraft: DEFAULT_AIRCRAFT,
+      profile: sampleApprovedProfile(),
+      state: fuelPlanningState({
+        fuelPolicyMode: 'target-landing',
+        targetLandingFuel: { value: 60, unit: 'usg' },
+      }),
+      cruiseAltitudeFt: 6000,
+    });
+
+    expect(required.policy).toMatchObject({
+      mode: 'required',
+      status: 'ready',
+    });
+    expect(targetLanding.policy).toMatchObject({
+      mode: 'target-landing',
+      status: 'caution',
+    });
+    expect(targetLanding.policy?.message).toContain('below target');
+  });
+
+  it('evaluates max fuel constrained by W&B policy without inventing aircraft-specific limits', () => {
+    const route = calculateRoute([westPoint, eastPoint], DEFAULT_AIRCRAFT);
+    const weightBalanceResult: WeightBalanceResult = {
+      status: 'within-limits',
+      message: 'W&B within limits.',
+      issues: [],
+    };
+    const result = buildFuelPlanningResult({
+      route,
+      aircraft: DEFAULT_AIRCRAFT,
+      profile: sampleApprovedProfile(),
+      state: fuelPlanningState({ fuelPolicyMode: 'max-wb-constrained' }),
+      cruiseAltitudeFt: 6000,
+      weightBalanceResult,
+    });
+
+    expect(result.policy).toMatchObject({
+      mode: 'max-wb-constrained',
+      status: 'ready',
+      maxWbConstrainedFuel: result.usableFuel,
+    });
   });
 
   it('does not extrapolate outside POH table bounds', () => {

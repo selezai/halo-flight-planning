@@ -175,7 +175,7 @@ export default function HaloAppShell() {
     ),
     [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
   );
-  const fuelPlanningResult = useMemo(
+  const baseFuelPlanningResult = useMemo(
     () => buildFuelPlanningResult({
       route,
       aircraft: activeAircraft,
@@ -184,6 +184,43 @@ export default function HaloAppShell() {
       cruiseAltitudeFt,
     }),
     [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
+  const effectiveGridMoraReview = useMemo(() => {
+    const routeSignature = buildGridMoraRouteSignature(waypoints);
+    if (gridMoraReview.routeSignature && gridMoraReview.routeSignature === routeSignature) {
+      return gridMoraReview;
+    }
+    return buildDefaultGridMoraReview(waypoints);
+  }, [gridMoraReview, waypoints]);
+  const routeFreshnessSignature = useMemo(
+    () => `${waypoints.map((waypoint) => `${waypoint.id}:${waypoint.coordinates.join(',')}`).join('|')}@${activeAircraft.id}:${activeAircraft.cruiseSpeedKts}:${activeAircraft.fuelBurnGph}:${baseFuelPlanningResult.calculatedAt}`,
+    [activeAircraft.cruiseSpeedKts, activeAircraft.fuelBurnGph, activeAircraft.id, baseFuelPlanningResult.calculatedAt, waypoints]
+  );
+  const routeCalculatedAt = useMemo(
+    () => routeFreshnessSignature ? new Date().toISOString() : undefined,
+    [routeFreshnessSignature]
+  );
+  const weightBalanceResult = useMemo(
+    () => calculateWeightBalance({
+      aircraft: activeAircraft,
+      loading: weightBalanceLoading,
+      tripFuelGal: toUsGallons(
+        baseFuelPlanningResult.tripFuel,
+        selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb
+      ),
+    }),
+    [activeAircraft, baseFuelPlanningResult.tripFuel, selectedPerformanceProfile?.fuelDensityLbPerUsg, weightBalanceLoading]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+      weightBalanceResult,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile, weightBalanceResult]
   );
   const fuelRemainingPercent = useMemo(
     () => {
@@ -199,32 +236,6 @@ export default function HaloAppShell() {
       fuelPlanningResult.usableFuel,
       selectedPerformanceProfile?.fuelDensityLbPerUsg,
     ]
-  );
-  const effectiveGridMoraReview = useMemo(() => {
-    const routeSignature = buildGridMoraRouteSignature(waypoints);
-    if (gridMoraReview.routeSignature && gridMoraReview.routeSignature === routeSignature) {
-      return gridMoraReview;
-    }
-    return buildDefaultGridMoraReview(waypoints);
-  }, [gridMoraReview, waypoints]);
-  const routeFreshnessSignature = useMemo(
-    () => `${waypoints.map((waypoint) => `${waypoint.id}:${waypoint.coordinates.join(',')}`).join('|')}@${activeAircraft.id}:${activeAircraft.cruiseSpeedKts}:${activeAircraft.fuelBurnGph}:${fuelPlanningResult.calculatedAt}`,
-    [activeAircraft.cruiseSpeedKts, activeAircraft.fuelBurnGph, activeAircraft.id, fuelPlanningResult.calculatedAt, waypoints]
-  );
-  const routeCalculatedAt = useMemo(
-    () => routeFreshnessSignature ? new Date().toISOString() : undefined,
-    [routeFreshnessSignature]
-  );
-  const weightBalanceResult = useMemo(
-    () => calculateWeightBalance({
-      aircraft: activeAircraft,
-      loading: weightBalanceLoading,
-      tripFuelGal: toUsGallons(
-        fuelPlanningResult.tripFuel,
-        selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb
-      ),
-    }),
-    [activeAircraft, fuelPlanningResult.tripFuel, selectedPerformanceProfile?.fuelDensityLbPerUsg, weightBalanceLoading]
   );
   const filingReview = useMemo(
     () => buildFilingWorkflowReview({

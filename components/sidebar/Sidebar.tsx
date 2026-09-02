@@ -27,6 +27,7 @@ import { useMapStore } from '@/stores/mapStore';
 import {
   formatCoordinatesDMS,
   formatCoordinatesDecimal,
+  parseFeature,
 } from '@/lib/openaip/featureParser';
 import { featureSelectionKey } from '@/lib/openaip/featureSelection';
 import {
@@ -46,6 +47,7 @@ import {
   buildFuelPlanningResult,
   formatFuelQuantity,
   normalizeFuelQuantity,
+  toUsGallons,
 } from '@/lib/planning/fuel';
 import {
   buildDefaultGridMoraReview,
@@ -66,12 +68,21 @@ import {
 } from '@/lib/planning/routeInput';
 import type { OpenAipWaypointSearchResponse } from '@/lib/openaip/waypointSearch';
 import { buildBackupPackText } from '@/lib/planning/backupPack';
-import { buildBriefingDigest, buildBriefingText, buildRiskAssessment } from '@/lib/planning/briefing';
+import {
+  buildBriefingDigest,
+  buildBriefingText,
+  buildDispatchBriefingPackage,
+  buildRiskAssessment,
+  formatDispatchBriefingPackageLines,
+} from '@/lib/planning/briefing';
+import { buildRouteAirfieldBrief } from '@/lib/planning/airfieldBrief';
 import { getCategoryClassName, isBelowPersonalMinimums } from '@/lib/planning/weather';
 import {
   calculateWeightBalance,
   createDefaultWeightBalanceConfig,
+  exportWeightBalanceLoadTemplates,
   getWeightBalanceStatusLabel,
+  importWeightBalanceLoadTemplates,
 } from '@/lib/planning/weightBalance';
 import {
   buildCloseReminderFromDeparture,
@@ -89,6 +100,11 @@ import {
 } from '@/lib/planning/freshness';
 import { buildAirspaceVerticalProfile } from '@/lib/planning/airspaceProfile';
 import { buildEmergencyPlanningReview } from '@/lib/planning/emergencyPlanning';
+import {
+  buildRouteIntelligenceReview,
+  routeCandidateLabel,
+} from '@/lib/planning/routeIntelligence';
+import { buildRouteWeatherReview } from '@/lib/planning/routeWeather';
 import { buildTrainingNavLog } from '@/lib/planning/trainingNavlog';
 import HaloLogo from '@/components/shell/HaloLogo';
 import { HALO_PANEL_META } from '@/components/shell/haloNavigation';
@@ -108,20 +124,27 @@ import type {
   FilingChecklistState,
   FilingWorkflowReview,
   FlightCloseReminder,
+  FuelPolicyMode,
   FuelPlanningResult,
   FuelPlanningState,
   FuelQuantityUnit,
   GridMoraReview,
   NotamBriefingRecord,
+  RouteAirfieldBrief,
   RouteAirspaceAlert,
   RouteAirspaceReview,
   BriefingDigest,
   DataFreshness,
+  RouteCandidate,
+  RouteIntelligenceReview,
   RouteNotam,
   RouteNotamReview,
+  RouteWeatherReview,
   TrainingNavLog,
   WeightBalanceConfig,
   WeightBalanceEnvelopePoint,
+  WeightBalanceLoadTemplate,
+  WeightBalanceLoading,
   WeightBalanceResult,
   WeatherReport,
   Waypoint,
@@ -130,6 +153,14 @@ import type {
 interface RouteWeatherState {
   reports: Record<string, WeatherReport | null>;
   tafs: Record<string, string | null>;
+  updatedAt?: string;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+}
+
+interface RouteAirfieldDetailsState {
+  features: ParsedFeature[];
   updatedAt?: string;
   loading: boolean;
   error: string | null;
@@ -569,11 +600,11 @@ function RoutePanel() {
     routeName,
     setRouteName,
     waypoints,
-    addRouteWaypoint,
     removeRouteWaypoint,
     moveRouteWaypoint,
     updateRouteWaypoint,
     clearRoute,
+    replaceRouteWaypoints,
     activeAircraft,
     cruiseAltitudeFt,
     routeAirspaceReview,
@@ -584,15 +615,18 @@ function RoutePanel() {
     fuelPlanning,
     updateFuelPlanning,
     gridMoraReview,
+    weightBalanceLoading,
+    selectedRouteCandidateId,
+    selectRouteCandidate,
   } = useMapStore((state) => ({
     routeName: state.routeName,
     setRouteName: state.setRouteName,
     waypoints: state.waypoints,
-    addRouteWaypoint: state.addRouteWaypoint,
     removeRouteWaypoint: state.removeRouteWaypoint,
     moveRouteWaypoint: state.moveRouteWaypoint,
     updateRouteWaypoint: state.updateRouteWaypoint,
     clearRoute: state.clearRoute,
+    replaceRouteWaypoints: state.replaceRouteWaypoints,
     activeAircraft: state.activeAircraft,
     cruiseAltitudeFt: state.cruiseAltitudeFt,
     routeAirspaceReview: state.routeAirspaceReview,
@@ -603,6 +637,9 @@ function RoutePanel() {
     fuelPlanning: state.fuelPlanning,
     updateFuelPlanning: state.updateFuelPlanning,
     gridMoraReview: state.gridMoraReview,
+    weightBalanceLoading: state.weightBalanceLoading,
+    selectedRouteCandidateId: state.selectedRouteCandidateId,
+    selectRouteCandidate: state.selectRouteCandidate,
   }), shallow);
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const selectedPerformanceProfile = useMemo(
@@ -611,7 +648,7 @@ function RoutePanel() {
     ),
     [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
   );
-  const fuelPlanningResult = useMemo(
+  const baseFuelPlanningResult = useMemo(
     () => buildFuelPlanningResult({
       route,
       aircraft: activeAircraft,
@@ -620,6 +657,28 @@ function RoutePanel() {
       cruiseAltitudeFt,
     }),
     [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile]
+  );
+  const routeWeightBalanceResult = useMemo(
+    () => calculateWeightBalance({
+      aircraft: activeAircraft,
+      loading: weightBalanceLoading,
+      tripFuelGal: toUsGallons(
+        baseFuelPlanningResult.tripFuel,
+        selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb
+      ),
+    }),
+    [activeAircraft, baseFuelPlanningResult.tripFuel, selectedPerformanceProfile?.fuelDensityLbPerUsg, weightBalanceLoading]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+      weightBalanceResult: routeWeightBalanceResult,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, routeWeightBalanceResult, selectedPerformanceProfile]
   );
   const effectiveGridMoraReview = useMemo(() => {
     const routeSignature = buildGridMoraRouteSignature(waypoints);
@@ -634,6 +693,16 @@ function RoutePanel() {
     message: null,
   });
   const [typedRouteLoading, setTypedRouteLoading] = useState(false);
+  const routeIntelligenceReview = useMemo(
+    () => buildRouteIntelligenceReview({
+      waypoints,
+      aircraft: activeAircraft,
+      typedRoute,
+      selectedCandidateId: selectedRouteCandidateId,
+      currentFuelPlanningResult: fuelPlanningResult,
+    }),
+    [activeAircraft, fuelPlanningResult, selectedRouteCandidateId, typedRoute, waypoints]
+  );
 
   const loadTypedRoute = useCallback(async () => {
     const parsedRoute = parseRouteInputItems(typedRoute);
@@ -700,8 +769,7 @@ function RoutePanel() {
         return;
       }
 
-      clearRoute();
-      resolvedWaypoints.forEach((waypoint) => addRouteWaypoint(waypoint));
+      replaceRouteWaypoints(resolvedWaypoints, 'current-route');
       setPlanningMode(false);
       setTypedRouteStatus({
         tone: 'success',
@@ -715,7 +783,7 @@ function RoutePanel() {
     } finally {
       setTypedRouteLoading(false);
     }
-  }, [addRouteWaypoint, clearRoute, setPlanningMode, typedRoute]);
+  }, [replaceRouteWaypoints, setPlanningMode, typedRoute]);
 
   return (
     <div className="space-y-5">
@@ -771,6 +839,23 @@ function RoutePanel() {
             )}
           </div>
         </PanelBlock>
+
+        <RouteAdvisorPanel
+          review={routeIntelligenceReview}
+          onSelectCandidate={selectRouteCandidate}
+          onApplyCandidate={(candidate) => {
+            if (candidate.status !== 'available') {
+              selectRouteCandidate(candidate.id);
+              return;
+            }
+            if (candidate.id === 'current-route') {
+              selectRouteCandidate(candidate.id);
+              return;
+            }
+            replaceRouteWaypoints(candidate.waypoints, candidate.id);
+            setPlanningMode(false);
+          }}
+        />
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
           <div className="mb-2 px-1">
@@ -939,6 +1024,128 @@ function RoutePanel() {
   );
 }
 
+function RouteAdvisorPanel({
+  review,
+  onSelectCandidate,
+  onApplyCandidate,
+}: {
+  review: RouteIntelligenceReview;
+  onSelectCandidate: (id: string | undefined) => void;
+  onApplyCandidate: (candidate: RouteCandidate) => void;
+}) {
+  return (
+    <PanelBlock title="Route advisor" icon={<Navigation className="h-4 w-4" />}>
+      <div className="space-y-3">
+        <div className="rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+          {review.message}
+        </div>
+        {review.tokens.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {review.tokens.slice(0, 12).map((token, index) => (
+              <span
+                key={`${token.source}-${index}`}
+                className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                  token.requiresProvider
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-cyan-50 text-cyan-800'
+                }`}
+              >
+                {token.source} · {token.kind}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="grid gap-2">
+          {review.candidates.map((candidate) => {
+            const selected = review.selectedCandidateId === candidate.id;
+            return (
+              <div
+                key={candidate.id}
+                className={`rounded-md border p-3 ${
+                  selected ? 'border-cyan-300 bg-cyan-50/70' : 'border-slate-200 bg-white'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">{routeCandidateLabel(candidate)}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{candidate.message}</p>
+                  </div>
+                  <StatusPill status={candidate.status === 'available' ? 'ok' : 'review'}>
+                    {candidate.status === 'available' ? 'Available' : formatCandidateStatus(candidate.status)}
+                  </StatusPill>
+                </div>
+                {candidate.totalFuelRequired && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+                    <Metric label="Fuel req" value={formatFuelQuantity(candidate.totalFuelRequired)} />
+                    <Metric label="Reserve margin" value={candidate.remainingFuel ? formatFuelQuantity(candidate.remainingFuel) : 'NIL'} />
+                  </div>
+                )}
+                {candidate.warnings.map((warning) => (
+                  <WarningLine key={warning} text={warning} />
+                ))}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelectCandidate(selected ? undefined : candidate.id)}
+                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {selected ? 'Selected' : 'Select'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onApplyCandidate(candidate)}
+                    disabled={candidate.status !== 'available'}
+                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Navigation className="h-3.5 w-3.5" />
+                    Apply
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </PanelBlock>
+  );
+}
+
+function RouteIntelligenceReviewPanel({ review }: { review: RouteIntelligenceReview }) {
+  const status = review.status === 'ready'
+    ? 'ok'
+    : review.status === 'needs-route'
+      ? 'critical'
+      : 'review';
+
+  return (
+    <PanelBlock title="Route advisor review" icon={<Navigation className="h-4 w-4" />}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-950">Candidate set</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{review.message}</p>
+        </div>
+        <StatusPill status={status}>
+          {review.status.replace(/-/g, ' ')}
+        </StatusPill>
+      </div>
+      <div className="mt-3 space-y-2">
+        {review.candidates.map((candidate) => (
+          <div key={candidate.id} className="rounded-md border border-slate-200 p-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-slate-900">{routeCandidateLabel(candidate)}</p>
+              <span className="shrink-0 text-[10px] font-bold uppercase text-slate-500">
+                {formatCandidateStatus(candidate.status)}
+              </span>
+            </div>
+            <p className="mt-1 leading-5 text-slate-600">{candidate.message}</p>
+          </div>
+        ))}
+      </div>
+    </PanelBlock>
+  );
+}
+
 function FuelEstimatePanel({
   route,
   aircraft,
@@ -957,6 +1164,7 @@ function FuelEstimatePanel({
   const profileLabel = profile
     ? `${profile.registration} ${profile.aircraftType} · ${formatPerformanceProfileStatus(profile.status)}`
     : `${aircraft.registration} ${aircraft.type} · no POH profile selected`;
+  const fuelPolicyMode = fuelPlanning.fuelPolicyMode ?? 'required';
 
   return (
     <PanelBlock title="Fuel planning" icon={<Gauge className="h-4 w-4" />}>
@@ -981,6 +1189,16 @@ function FuelEstimatePanel({
             ['ifr', 'IFR GA'],
           ]}
           onChange={(value) => onFuelPlanningChange({ flightRules: value })}
+        />
+        <SelectField<FuelPolicyMode>
+          label="Fuel policy"
+          value={fuelPolicyMode}
+          options={[
+            ['required', 'Required fuel'],
+            ['target-landing', 'Target landing'],
+            ['max-wb-constrained', 'Max by W&B'],
+          ]}
+          onChange={(value) => onFuelPlanningChange({ fuelPolicyMode: value })}
         />
         <NumberField
           label="Temp C"
@@ -1018,6 +1236,24 @@ function FuelEstimatePanel({
           onChange={(value) => onFuelPlanningChange({ contingencyPercent: value })}
         />
       </div>
+
+      {fuelPolicyMode === 'target-landing' && (
+        <div className="mt-4">
+          <FuelQuantityField
+            label="Target landing fuel"
+            quantity={fuelPlanning.targetLandingFuel ?? { value: 0, unit: profile?.displayFuelUnit ?? 'usg' }}
+            fuelDensityLbPerUsg={profile?.fuelDensityLbPerUsg}
+            onChange={(quantity) => onFuelPlanningChange({ targetLandingFuel: quantity })}
+          />
+        </div>
+      )}
+
+      {fuelPlanningResult.policy && (
+        <div className={`mt-3 rounded-md px-3 py-2 text-xs ${getFuelPolicyTone(fuelPlanningResult.policy.status)}`}>
+          <p className="font-semibold">{formatFuelPolicyMode(fuelPlanningResult.policy.mode)}</p>
+          <p className="mt-1 leading-5">{fuelPlanningResult.policy.message}</p>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <TextField
@@ -1272,8 +1508,19 @@ function AirspaceVerticalProfilePanel({ profile }: { profile: AirspaceVerticalPr
 function WeatherPanel() {
   const waypoints = useMapStore((state) => state.waypoints);
   const personalMinimums = useMapStore((state) => state.personalMinimums);
+  const fuelPlanning = useMapStore((state) => state.fuelPlanning);
   const weather = useRouteWeather(true);
   const stations = useMemo(() => getRouteStationIds(waypoints), [waypoints]);
+  const routeWeatherReview = useMemo(
+    () => buildRouteWeatherReview({
+      waypoints,
+      reports: weather.reports,
+      tafs: weather.tafs,
+      wind: fuelPlanning.wind,
+      now: weather.updatedAt ? new Date(weather.updatedAt) : new Date(),
+    }),
+    [fuelPlanning.wind, weather.reports, weather.tafs, weather.updatedAt, waypoints]
+  );
 
   return (
     <div className="space-y-5">
@@ -1290,6 +1537,8 @@ function WeatherPanel() {
           </button>
         }
       />
+
+      <RouteWeatherReviewPanel review={routeWeatherReview} />
 
       {stations.length === 0 ? (
         <EmptyState title="No airport weather points" detail="Add an airport waypoint to load METAR and TAF data." />
@@ -1339,6 +1588,94 @@ function WeatherPanel() {
   );
 }
 
+function RouteWeatherReviewPanel({ review }: { review: RouteWeatherReview }) {
+  const status = review.status === 'current' ? 'ok' : review.status === 'unavailable' ? 'critical' : 'review';
+
+  return (
+    <PanelBlock title="Weather advisor" icon={<RefreshCcw className="h-4 w-4" />}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-950">Route METAR/TAF</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{review.message}</p>
+        </div>
+        <StatusPill status={status}>
+          {review.status.replace(/-/g, ' ')}
+        </StatusPill>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="METAR" value={`${review.metarCount}/${review.stations.length}`} />
+        <Metric label="TAF" value={`${review.tafCount}/${review.stations.length}`} />
+        <Metric label="Route wind" value={review.windStatus === 'configured' ? 'Provider' : 'Manual'} />
+        <Metric label="Winds aloft" value={review.windsAloftStatus === 'configured' ? 'Provider' : 'Not configured'} />
+      </div>
+    </PanelBlock>
+  );
+}
+
+function RouteAirfieldBriefPanel({
+  brief,
+  loading,
+  error,
+  onRefresh,
+}: {
+  brief: RouteAirfieldBrief;
+  loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => Promise<void>;
+}) {
+  const status = brief.status === 'available'
+    ? 'ok'
+    : brief.status === 'needs-route'
+      ? 'critical'
+      : 'review';
+
+  return (
+    <PanelBlock title="Airfield & frequency brief" icon={<MapPin className="h-4 w-4" />}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-950">Route airfields</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{brief.message}</p>
+        </div>
+        <StatusPill status={status}>
+          {brief.status.replace(/-/g, ' ')}
+        </StatusPill>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded bg-slate-50 p-2 text-xs">
+        <Metric label="Airfields" value={String(brief.airports.length)} />
+        <Metric label="Freqs" value={String(brief.airports.reduce((sum, airport) => sum + airport.frequencies.length, 0))} />
+      </div>
+      {brief.airports.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {brief.airports.slice(0, 5).map((airport) => (
+            <div key={`${airport.sourceId ?? airport.ident ?? airport.name}`} className="rounded-md border border-slate-200 p-2 text-xs">
+              <p className="font-semibold text-slate-900">{airport.ident ?? 'Airport'} · {airport.name}</p>
+              <p className="mt-1 leading-5 text-slate-600">{airport.message}</p>
+              {airport.frequencies.length > 0 && (
+                <p className="mt-1 font-mono text-[11px] text-slate-600">
+                  {airport.frequencies.map((frequency) => `${frequency.type} ${frequency.value}`).join(' · ')}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        {error ? <p className="text-xs text-amber-800">{error}</p> : <p className="text-xs text-slate-500">Use official SACAA/ATNS/AIP sources before flight.</p>}
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={() => void onRefresh()}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        )}
+      </div>
+    </PanelBlock>
+  );
+}
+
 function AircraftPanel() {
   const {
     activeAircraft,
@@ -1349,8 +1686,13 @@ function AircraftPanel() {
     upsertAircraftPerformanceProfile,
     selectAircraftPerformanceProfile,
     weightBalanceLoading,
+    weightBalanceLoadTemplates,
     updateWeightBalanceLoading,
     updateWeightBalanceStationWeight,
+    saveWeightBalanceLoadTemplate,
+    applyWeightBalanceLoadTemplateById,
+    removeWeightBalanceLoadTemplate,
+    importWeightBalanceLoadTemplates: importWeightBalanceLoadTemplatesToStore,
     personalMinimums,
     updatePersonalMinimums,
   } = useMapStore((state) => ({
@@ -1362,8 +1704,13 @@ function AircraftPanel() {
     upsertAircraftPerformanceProfile: state.upsertAircraftPerformanceProfile,
     selectAircraftPerformanceProfile: state.selectAircraftPerformanceProfile,
     weightBalanceLoading: state.weightBalanceLoading,
+    weightBalanceLoadTemplates: state.weightBalanceLoadTemplates,
     updateWeightBalanceLoading: state.updateWeightBalanceLoading,
     updateWeightBalanceStationWeight: state.updateWeightBalanceStationWeight,
+    saveWeightBalanceLoadTemplate: state.saveWeightBalanceLoadTemplate,
+    applyWeightBalanceLoadTemplateById: state.applyWeightBalanceLoadTemplateById,
+    removeWeightBalanceLoadTemplate: state.removeWeightBalanceLoadTemplate,
+    importWeightBalanceLoadTemplates: state.importWeightBalanceLoadTemplates,
     personalMinimums: state.personalMinimums,
     updatePersonalMinimums: state.updatePersonalMinimums,
   }), shallow);
@@ -1450,6 +1797,16 @@ function AircraftPanel() {
           <NumberField label="Glide ratio" value={activeAircraft.glideRatio ?? 9} onChange={(value) => updateActiveAircraft({ glideRatio: value })} step="0.1" />
         </div>
       </PanelBlock>
+
+      <WeightBalanceLoadTemplatesPanel
+        activeAircraft={activeAircraft}
+        templates={weightBalanceLoadTemplates}
+        currentLoading={weightBalanceLoading}
+        onSaveTemplate={saveWeightBalanceLoadTemplate}
+        onApplyTemplate={applyWeightBalanceLoadTemplateById}
+        onRemoveTemplate={removeWeightBalanceLoadTemplate}
+        onImportTemplates={importWeightBalanceLoadTemplatesToStore}
+      />
 
       <PanelGroupHeader
         eyebrow="Loading"
@@ -1626,6 +1983,174 @@ function AircraftPanel() {
         </div>
       </PanelBlock>
     </div>
+  );
+}
+
+function WeightBalanceLoadTemplatesPanel({
+  activeAircraft,
+  templates,
+  currentLoading,
+  onSaveTemplate,
+  onApplyTemplate,
+  onRemoveTemplate,
+  onImportTemplates,
+}: {
+  activeAircraft: AircraftProfile;
+  templates: WeightBalanceLoadTemplate[];
+  currentLoading: WeightBalanceLoading;
+  onSaveTemplate: (name: string, lockedStationWeights?: Record<string, number>) => string | null;
+  onApplyTemplate: (id: string) => void;
+  onRemoveTemplate: (id: string) => void;
+  onImportTemplates: (templates: WeightBalanceLoadTemplate[]) => void;
+}) {
+  const [templateName, setTemplateName] = useState('Normal load');
+  const [lockNonZeroStations, setLockNonZeroStations] = useState(false);
+  const [transferText, setTransferText] = useState('');
+  const [message, setMessage] = useState<RouteEntryStatus>({ tone: 'idle', message: null });
+  const activeTemplates = useMemo(
+    () => templates.filter((template) => !template.aircraftId || template.aircraftId === activeAircraft.id),
+    [activeAircraft.id, templates]
+  );
+
+  const saveTemplate = useCallback(() => {
+    const lockedStationWeights = lockNonZeroStations
+      ? Object.fromEntries(
+          Object.entries(currentLoading.stationWeights)
+            .filter(([, weight]) => weight > 0)
+        )
+      : undefined;
+    const id = onSaveTemplate(templateName, lockedStationWeights);
+
+    if (!id) {
+      setMessage({
+        tone: 'error',
+        message: 'Load template could not be saved. Check fuel quantity and configured station limits.',
+      });
+      return;
+    }
+
+    setMessage({ tone: 'success', message: 'Load template saved.' });
+  }, [currentLoading.stationWeights, lockNonZeroStations, onSaveTemplate, templateName]);
+
+  const exportTemplates = useCallback(() => {
+    const payload = exportWeightBalanceLoadTemplates(activeTemplates);
+    setTransferText(payload);
+    downloadTextFile(payload, `${activeAircraft.registration || 'halo'}-wb-load-templates.json`, 'application/json;charset=utf-8');
+    setMessage({ tone: 'success', message: `Exported ${activeTemplates.length} load template${activeTemplates.length === 1 ? '' : 's'}.` });
+  }, [activeAircraft.registration, activeTemplates]);
+
+  const importTemplates = useCallback(() => {
+    try {
+      const imported = importWeightBalanceLoadTemplates(transferText);
+      if (imported.length === 0) {
+        setMessage({ tone: 'error', message: 'No valid W&B load templates found in the import text.' });
+        return;
+      }
+      onImportTemplates(imported);
+      setMessage({ tone: 'success', message: `Imported ${imported.length} load template${imported.length === 1 ? '' : 's'}.` });
+    } catch {
+      setMessage({ tone: 'error', message: 'Import text must be valid W&B template JSON.' });
+    }
+  }, [onImportTemplates, transferText]);
+
+  return (
+    <PanelBlock title="Saved load templates" icon={<ClipboardCheck className="h-4 w-4" />}>
+      <div className="grid gap-3">
+        <div className="grid grid-cols-[1fr,auto] gap-2">
+          <div>
+            <Label htmlFor="wb-template-name">Template name</Label>
+            <input
+              id="wb-template-name"
+              value={templateName}
+              onChange={(event) => setTemplateName(event.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-950 focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={saveTemplate}
+            className="mt-6 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Save
+          </button>
+        </div>
+        <label className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-600">
+          <input
+            type="checkbox"
+            checked={lockNonZeroStations}
+            onChange={(event) => setLockNonZeroStations(event.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-slate-300"
+          />
+          <span>Lock nonzero station weights as default/basic operating load items in this template.</span>
+        </label>
+
+        {activeTemplates.length === 0 ? (
+          <EmptyState title="No saved loads" detail="Save common training, solo, dual, family, or baggage configurations for this aircraft." />
+        ) : (
+          <div className="space-y-2">
+            {activeTemplates.map((template) => (
+              <div key={template.id} className="rounded-md border border-slate-200 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-950">{template.name}</p>
+                    <p className="text-xs text-slate-500">
+                      Fuel {template.fuelGal.toFixed(1)} gal · {Object.keys(template.stationWeights).length} stations · {Object.keys(template.lockedStationWeights).length} locked
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <IconButton label="Apply load template" onClick={() => onApplyTemplate(template.id)}>
+                      <CheckCircle2 className="h-4 w-4" />
+                    </IconButton>
+                    <IconButton label="Remove load template" onClick={() => onRemoveTemplate(template.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <details className="rounded-md border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+            Share / import JSON
+          </summary>
+          <div className="space-y-3 p-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={exportTemplates}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={importTemplates}
+                disabled={!transferText.trim()}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                Import
+              </button>
+            </div>
+            <textarea
+              value={transferText}
+              onChange={(event) => setTransferText(event.target.value)}
+              rows={5}
+              className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 font-mono text-xs focus:border-slate-950 focus:outline-none"
+              aria-label="W&B load template JSON"
+            />
+          </div>
+        </details>
+
+        {message.message && (
+          <p className={`text-xs ${getTypedRouteStatusClassName(message.tone)}`}>{message.message}</p>
+        )}
+      </div>
+    </PanelBlock>
   );
 }
 
@@ -2014,6 +2539,7 @@ function BriefingPanel() {
     fuelPlanning,
     gridMoraReview,
     weightBalanceLoading,
+    selectedRouteCandidateId,
     personalMinimums,
     routeAirspaceReview,
     routeNotamReview,
@@ -2039,6 +2565,7 @@ function BriefingPanel() {
     fuelPlanning: state.fuelPlanning,
     gridMoraReview: state.gridMoraReview,
     weightBalanceLoading: state.weightBalanceLoading,
+    selectedRouteCandidateId: state.selectedRouteCandidateId,
     personalMinimums: state.personalMinimums,
     routeAirspaceReview: state.routeAirspaceReview,
     routeNotamReview: state.routeNotamReview,
@@ -2051,6 +2578,7 @@ function BriefingPanel() {
     emergencyLandingSites: state.emergencyLandingSites,
   }), shallow);
   const weather = useRouteWeather(false);
+  const airfieldDetails = useRouteAirfieldDetails(waypoints);
   const now = useNowMinute();
   const route = useMemo(() => calculateRoute(waypoints, activeAircraft), [waypoints, activeAircraft]);
   const selectedPerformanceProfile = useMemo(
@@ -2059,7 +2587,7 @@ function BriefingPanel() {
     ),
     [aircraftPerformanceProfiles, fuelPlanning.selectedPerformanceProfileId, selectedAircraftPerformanceProfileId]
   );
-  const fuelPlanningResult = useMemo(
+  const baseFuelPlanningResult = useMemo(
     () => buildFuelPlanningResult({
       route,
       aircraft: activeAircraft,
@@ -2092,9 +2620,50 @@ function BriefingPanel() {
     () => calculateWeightBalance({
       aircraft: activeAircraft,
       loading: weightBalanceLoading,
-      tripFuelGal: route.summary.tripFuelGal,
+      tripFuelGal: toUsGallons(
+        baseFuelPlanningResult.tripFuel,
+        selectedPerformanceProfile?.fuelDensityLbPerUsg ?? activeAircraft.weightBalance?.fuel.weightPerGalLb
+      ),
     }),
-    [activeAircraft, route.summary.tripFuelGal, weightBalanceLoading]
+    [activeAircraft, baseFuelPlanningResult.tripFuel, selectedPerformanceProfile?.fuelDensityLbPerUsg, weightBalanceLoading]
+  );
+  const fuelPlanningResult = useMemo(
+    () => buildFuelPlanningResult({
+      route,
+      aircraft: activeAircraft,
+      profile: selectedPerformanceProfile,
+      state: fuelPlanning,
+      cruiseAltitudeFt,
+      weightBalanceResult,
+    }),
+    [activeAircraft, cruiseAltitudeFt, fuelPlanning, route, selectedPerformanceProfile, weightBalanceResult]
+  );
+  const routeIntelligenceReview = useMemo(
+    () => buildRouteIntelligenceReview({
+      waypoints,
+      aircraft: activeAircraft,
+      selectedCandidateId: selectedRouteCandidateId,
+      currentFuelPlanningResult: fuelPlanningResult,
+    }),
+    [activeAircraft, fuelPlanningResult, selectedRouteCandidateId, waypoints]
+  );
+  const routeWeatherReview = useMemo(
+    () => buildRouteWeatherReview({
+      waypoints,
+      reports: weather.reports,
+      tafs: weather.tafs,
+      wind: fuelPlanning.wind,
+      now: weather.updatedAt ? new Date(weather.updatedAt) : new Date(),
+    }),
+    [fuelPlanning.wind, weather.reports, weather.tafs, weather.updatedAt, waypoints]
+  );
+  const routeAirfieldBrief = useMemo(
+    () => buildRouteAirfieldBrief({
+      waypoints,
+      features: airfieldDetails.features,
+      now: airfieldDetails.updatedAt ? new Date(airfieldDetails.updatedAt) : new Date(),
+    }),
+    [airfieldDetails.features, airfieldDetails.updatedAt, waypoints]
   );
   const airspaceVerticalProfile = useMemo(
     () => buildAirspaceVerticalProfile(route, routeAirspaceReview.alerts, cruiseAltitudeFt),
@@ -2145,8 +2714,13 @@ function BriefingPanel() {
         maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.route,
       }),
       assessDataFreshness({
+        source: 'Route Advisor',
+        updatedAt: routeIntelligenceReview.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.route,
+      }),
+      assessDataFreshness({
         source: 'Weather',
-        updatedAt: weather.updatedAt ?? newestWeatherObservedAt(reports),
+        updatedAt: routeWeatherReview.updatedAt ?? weather.updatedAt ?? newestWeatherObservedAt(reports),
         maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.weather,
       }),
       assessDataFreshness({
@@ -2174,12 +2748,32 @@ function BriefingPanel() {
         updatedAt: effectiveGridMoraReview.updatedAt,
         maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
       }),
+      assessDataFreshness({
+        source: 'Airfields',
+        updatedAt: routeAirfieldBrief.updatedAt,
+        maxAgeMinutes: FRESHNESS_THRESHOLDS_MINUTES.airspace,
+      }),
     ],
-    [effectiveGridMoraReview.updatedAt, fuelPlanningResult.calculatedAt, reports, routeAirspaceReview.updatedAt, routeCalculatedAt, routeNotamReview.updatedAt, weather.updatedAt, weightBalanceResult.calculatedAt]
+    [effectiveGridMoraReview.updatedAt, fuelPlanningResult.calculatedAt, reports, routeAirfieldBrief.updatedAt, routeAirspaceReview.updatedAt, routeCalculatedAt, routeIntelligenceReview.updatedAt, routeNotamReview.updatedAt, routeWeatherReview.updatedAt, weather.updatedAt, weightBalanceResult.calculatedAt]
   );
   const risks = useMemo(
-    () => buildRiskAssessment(route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview, fuelPlanningResult, effectiveGridMoraReview),
-    [route, reports, personalMinimums, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, filingReview, emergencyReview, flightAdminReview, fuelPlanningResult, effectiveGridMoraReview]
+    () => buildRiskAssessment(
+      route,
+      reports,
+      personalMinimums,
+      routeAirspaceReview.alerts,
+      routeNotamReview,
+      weightBalanceResult,
+      filingReview,
+      emergencyReview,
+      flightAdminReview,
+      fuelPlanningResult,
+      effectiveGridMoraReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief
+    ),
+    [effectiveGridMoraReview, flightAdminReview, fuelPlanningResult, filingReview, emergencyReview, personalMinimums, reports, route, routeAirfieldBrief, routeAirspaceReview.alerts, routeIntelligenceReview, routeNotamReview, routeWeatherReview, weightBalanceResult]
   );
   const digest = useMemo(
     () => buildBriefingDigest({
@@ -2196,8 +2790,11 @@ function BriefingPanel() {
       filingReview,
       flightAdminReview,
       emergencyReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
     }),
-    [routeName, route, risks, reports, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, dataFreshness, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview]
+    [routeName, route, risks, reports, routeAirspaceReview.alerts, routeNotamReview, weightBalanceResult, dataFreshness, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, routeIntelligenceReview, routeWeatherReview, routeAirfieldBrief]
   );
   const briefingText = useMemo(
     () => buildBriefingText({
@@ -2218,11 +2815,14 @@ function BriefingPanel() {
       filingReview,
       flightAdminReview,
       emergencyReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, routeIntelligenceReview, routeWeatherReview, routeAirfieldBrief, departureTime, cruiseAltitudeFt, routeNotes]
   );
   const backupPackText = useMemo(
     () => buildBackupPackText({
@@ -2244,11 +2844,43 @@ function BriefingPanel() {
       filingReview,
       flightAdminReview,
       emergencyReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
       departureTime,
       cruiseAltitudeFt,
       notes: routeNotes,
     }),
-    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, departureTime, cruiseAltitudeFt, routeNotes]
+    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, routeIntelligenceReview, routeWeatherReview, routeAirfieldBrief, departureTime, cruiseAltitudeFt, routeNotes]
+  );
+  const dispatchPackage = useMemo(
+    () => buildDispatchBriefingPackage({
+      routeName,
+      aircraft: activeAircraft,
+      route,
+      waypoints,
+      digest,
+      weather: reports,
+      risks,
+      routeAirspaceAlerts: routeAirspaceReview.alerts,
+      airspaceVerticalProfile,
+      routeNotamReview,
+      weightBalanceResult,
+      dataFreshness,
+      trainingNavLog,
+      fuelPlanningResult,
+      gridMoraReview: effectiveGridMoraReview,
+      filingReview,
+      flightAdminReview,
+      emergencyReview,
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
+      departureTime,
+      cruiseAltitudeFt,
+      notes: routeNotes,
+    }),
+    [routeName, activeAircraft, route, waypoints, digest, reports, risks, routeAirspaceReview.alerts, airspaceVerticalProfile, routeNotamReview, weightBalanceResult, dataFreshness, trainingNavLog, fuelPlanningResult, effectiveGridMoraReview, filingReview, flightAdminReview, emergencyReview, routeIntelligenceReview, routeWeatherReview, routeAirfieldBrief, departureTime, cruiseAltitudeFt, routeNotes]
   );
 
   return (
@@ -2309,6 +2941,17 @@ function BriefingPanel() {
 
       <FreshnessPanel freshness={dataFreshness} />
 
+      <RouteIntelligenceReviewPanel review={routeIntelligenceReview} />
+
+      <RouteWeatherReviewPanel review={routeWeatherReview} />
+
+      <RouteAirfieldBriefPanel
+        brief={routeAirfieldBrief}
+        loading={airfieldDetails.loading}
+        error={airfieldDetails.error}
+        onRefresh={airfieldDetails.refresh}
+      />
+
       <FuelPlanningReviewPanel result={fuelPlanningResult} displayUnit={selectedPerformanceProfile?.displayFuelUnit} />
 
       <WeightBalanceReviewPanel result={weightBalanceResult} />
@@ -2365,6 +3008,14 @@ function BriefingPanel() {
           >
             <Download className="h-3.5 w-3.5" />
             Backup pack
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadBriefing(formatDispatchBriefingPackageLines(dispatchPackage).join('\n'), `${routeName || 'halo'}-dispatch-package`)}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Dispatch
           </button>
           <button
             type="button"
@@ -3468,6 +4119,65 @@ function useRouteWeather(autoRefresh: boolean): RouteWeatherState {
   return { reports, tafs, updatedAt, loading, error, refresh };
 }
 
+function useRouteAirfieldDetails(waypoints: Waypoint[]): RouteAirfieldDetailsState {
+  const airports = useMemo(
+    () => waypoints
+      .filter((waypoint) => waypoint.type === 'airport' && waypoint.sourceId)
+      .map((waypoint) => ({
+        sourceId: waypoint.sourceId as string,
+        ident: waypoint.ident,
+      })),
+    [waypoints]
+  );
+  const signature = useMemo(
+    () => airports.map((airport) => airport.sourceId).sort().join('|'),
+    [airports]
+  );
+  const [features, setFeatures] = useState<ParsedFeature[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | undefined>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (airports.length === 0) {
+      setFeatures([]);
+      setUpdatedAt(undefined);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const results = await Promise.all(
+        airports.map(async (airport) => {
+          const response = await fetch(`/api/openaip/airports/${encodeURIComponent(airport.sourceId)}`);
+          if (!response.ok) return null;
+          const payload = await response.json() as Record<string, unknown>;
+          return parseFeature({
+            properties: payload,
+            sourceLayer: 'airports',
+          });
+        })
+      );
+
+      setFeatures(results.filter((feature): feature is ParsedFeature => Boolean(feature)));
+      setUpdatedAt(new Date().toISOString());
+    } catch {
+      setError('Airfield detail lookup failed. Verify official AIP/briefing source.');
+    } finally {
+      setLoading(false);
+    }
+  }, [airports]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh, signature]);
+
+  return { features, updatedAt, loading, error, refresh };
+}
+
 async function resolveRouteWaypointQuery(query: string): Promise<Waypoint | null> {
   const southAfricaResult = await fetchRouteWaypointQuery(query, 'ZA');
   if (southAfricaResult) return southAfricaResult;
@@ -3745,6 +4455,19 @@ function getFuelPlanningTone(result: FuelPlanningResult): string {
   return 'bg-slate-50 text-slate-700';
 }
 
+function getFuelPolicyTone(status: FuelPlanningResult['status']): string {
+  if (status === 'critical') return 'bg-rose-50 text-rose-800';
+  if (status === 'caution' || status === 'untrusted-profile' || status === 'incomplete-profile') return 'bg-amber-50 text-amber-900';
+  if (status === 'ready') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-slate-50 text-slate-700';
+}
+
+function formatFuelPolicyMode(mode: FuelPolicyMode): string {
+  if (mode === 'target-landing') return 'Target landing fuel policy';
+  if (mode === 'max-wb-constrained') return 'Max fuel constrained by W&B';
+  return 'Required fuel policy';
+}
+
 function getDigestTone(status: BriefingDigest['status']): string {
   if (status === 'stop') return 'bg-rose-50 text-rose-800';
   if (status === 'review') return 'bg-amber-50 text-amber-900';
@@ -3829,6 +4552,13 @@ function formatEmergencyStatus(status: EmergencyPlanningReview['status']): strin
   return 'Route required for emergency planning';
 }
 
+function formatCandidateStatus(status: RouteCandidate['status']): string {
+  if (status === 'needs-route') return 'Needs route';
+  if (status === 'provider-not-configured') return 'Provider off';
+  if (status === 'unavailable') return 'Unavailable';
+  return 'Available';
+}
+
 function getEmergencySuitabilityTone(suitability: EmergencyLandingSuitability): string {
   if (suitability === 'good') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
   if (suitability === 'caution') return 'border-amber-200 bg-amber-50 text-amber-900';
@@ -3880,6 +4610,26 @@ function SummaryGrid({
         <Metric key={label} label={label} value={value} />
       ))}
     </div>
+  );
+}
+
+function StatusPill({
+  status,
+  children,
+}: {
+  status: 'ok' | 'review' | 'critical';
+  children: React.ReactNode;
+}) {
+  const tone = status === 'critical'
+    ? 'bg-rose-50 text-rose-800'
+    : status === 'review'
+      ? 'bg-amber-50 text-amber-900'
+      : 'bg-emerald-50 text-emerald-800';
+
+  return (
+    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${tone}`}>
+      {children}
+    </span>
   );
 }
 

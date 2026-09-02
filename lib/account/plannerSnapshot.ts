@@ -20,6 +20,8 @@ export const PLANNER_SNAPSHOT_KEYS = [
   'fuelPlanning',
   'gridMoraReview',
   'weightBalanceLoading',
+  'weightBalanceLoadTemplates',
+  'selectedRouteCandidateId',
   'trainingWind',
   'filingChecklist',
   'notamBriefingRecord',
@@ -69,6 +71,8 @@ export const plannerSnapshotStateSchema = z.object({
   fuelPlanning: jsonObjectSchema.optional(),
   gridMoraReview: jsonObjectSchema.optional(),
   weightBalanceLoading: jsonObjectSchema.optional(),
+  weightBalanceLoadTemplates: z.array(jsonObjectSchema).max(200).optional(),
+  selectedRouteCandidateId: z.string().max(160).optional(),
   trainingWind: jsonObjectSchema.optional(),
   filingChecklist: jsonObjectSchema.optional(),
   notamBriefingRecord: jsonObjectSchema.optional(),
@@ -166,6 +170,15 @@ export function mergePlannerSnapshotStates(
       'stationWeights'
     );
   }
+
+  merged.selectedRouteCandidateId = preferNonEmptyString(
+    localState.selectedRouteCandidateId,
+    remoteState.selectedRouteCandidateId
+  );
+  merged.weightBalanceLoadTemplates = mergeObjectArraysByIdentity(
+    remoteState.weightBalanceLoadTemplates,
+    localState.weightBalanceLoadTemplates
+  );
 
   if (remoteState.personalMinimums || localState.personalMinimums) {
     merged.personalMinimums = {

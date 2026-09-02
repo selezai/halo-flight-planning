@@ -17,18 +17,22 @@ Live production deployment: https://halo-flight-planning.vercel.app
 - Emergency/forced-landing planning with approximate glide rings, route/starter/user landing candidates, suitability scoring, and user-marked forced-landing sites.
 - Graceful fallback base map when OpenAIP credentials or aviation resources are unavailable.
 - Route planning with global OpenAIP Core airport/navaid search, instant starter fallback results, manual coordinates, map-click waypoints, rubber-band map editing, snap-to-feature drops, reordering, removal, and persisted local routes.
+- Route Advisor v1 with Direct, Current/User Route, and Provider Route candidate cards; typed route token review recognizes waypoints, coordinates, airway/procedure-looking tokens, and altitude hints without fabricating licensed navdata.
 - Mission Library for saving, switching, duplicating, and archiving multiple local mission drafts while keeping one active mission on the map.
 - Leg-by-leg distance, true course, estimated magnetic course, ETE, and fuel burn.
+- Weather + Fuel Advisor v1 with route airport METAR/TAF collection, manual route wind fallback, provider-gated winds aloft status, required-fuel, target-landing-fuel, and W&B-constrained max-fuel policy reviews.
 - Aircraft presets plus editable cruise speed, fuel burn, usable fuel, reserve, contingency, magnetic variation, compass deviation, glide ratio, and POH/AFM W&B setup.
 - Hybrid weight-and-balance with preset aircraft templates, custom station/envelope entry, ramp/takeoff/landing CG checks, and briefing/risk review status.
+- W&B saved load templates with locked/default load items plus JSON export/import for profile and manifest handoff.
 - Training/checkride navlog mode with pilot-entered route wind, TC/MC/WCA/TH/MH/CH/GS/ETE/fuel calculations, formula explanation, and export text.
 - Personal minimums for ceiling, visibility, reserve fuel, wind, and crosswind.
 - METAR and TAF lookup through validated server API routes using AviationWeather.gov.
 - Weather category display for VFR, MVFR, IFR, LIFR, and UNKNOWN.
+- South Africa airfield and frequency digest built from available OpenAIP-style route airport records, with explicit official SACAA/ATNS/AIP verification states when data is missing or unofficial.
 - South Africa-first route NOTAM review with official File2Fly/SACAA manual briefing mode by default, an authorized live-provider adapter path, route airport/navaid filtering, source attribution, and explicit unavailable states.
 - South Africa-safe filing handoff checklist with File2Fly link, close-flight reminder times, overdue state, and optional browser notification while the app is open.
-- Data freshness badges for route, weather, airspace, NOTAM, and W&B states so stale or unknown data is never presented as clear.
-- Briefing generation with pilot digest, risk review, W&B, weather, fuel, airspace, NOTAM status/results, print, text export, clipboard copy, and one-click backup/print pack download.
+- Data freshness badges for route, Route Advisor, weather, airspace, NOTAM, fuel, Grid MORA, airfields, and W&B states so stale or unknown data is never presented as clear.
+- Briefing generation with pilot digest, risk review, W&B, weather, fuel, route advisor, route airfields/frequencies, airspace, NOTAM status/results, print, text export, clipboard copy, one-click backup/print pack download, and structured dispatch package export.
 - Repository research docs documenting competitor pain points and Halo's product response.
 - Optional Clerk + Neon account sync path with local-only fallback, authenticated server-side snapshot APIs, and browser-to-account save/load/merge controls.
 - Unit tests for navigation and weather logic.
@@ -62,14 +66,18 @@ SOUTH_AFRICA_NOTAM_API_AUTH_HEADER=Authorization
 SOUTH_AFRICA_NOTAM_API_AUTH_SCHEME=Bearer
 FAA_NOTAM_CLIENT_ID=your_faa_notam_client_id_here
 FAA_NOTAM_CLIENT_SECRET=your_faa_notam_client_secret_here
+HALO_NAVDATA_PROVIDER_URL=
+HALO_NAVDATA_PROVIDER_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`, a public NOTAM API key, or any public FAA credential. Aviation and NOTAM credentials must stay server-side.
+Do not add `NEXT_PUBLIC_OPENAIP_API_KEY`, a public NOTAM API key, public navdata key, or any public FAA credential. Aviation, NOTAM, and navdata credentials must stay server-side.
 
 `NEXT_PUBLIC_MAPTILER_BASE_STYLE` defaults to `outdoor-v2` because OpenAIP renders its map as a full vector style: ground land/water/road/place-label layers underneath OpenAIP aviation vector layers. Halo mirrors that structure with MapTiler vector ground layers, tuned city/town/POI label thresholds, and OpenAIP aviation layers above. If the vector style cannot be fetched, Halo falls back to a basic raster basemap rather than leaving the map blank.
 
 `NOTAM_PROVIDER=south-africa-manual` is the safe production default for South Africa launch. Set `NOTAM_PROVIDER=south-africa-live` only after SACAA/ATNS or an authorized provider supplies a legitimate JSON API endpoint and key. Halo must not scrape File2Fly or treat SACAA's public daily summary as flight-preparation data.
+
+Route Advisor provider routing remains unavailable unless `HALO_NAVDATA_PROVIDER_URL` and `HALO_NAVDATA_PROVIDER_KEY` are configured for a licensed navdata source. Halo does not expand airways, SIDs, STARs, approaches, or official preferred routes without that authorized provider boundary.
 
 Account sync uses Clerk for authentication and Neon Postgres for storage. If `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `POSTGRES_URL`/`DATABASE_URL` are absent, Halo remains fully usable in local-only mode. After provisioning Neon, run:
 
@@ -109,6 +117,7 @@ pnpm test:e2e   # Run Playwright integration tests against next build && next st
 app/
   api/account/      Authenticated account snapshot sync route
   api/openaip/      OpenAIP style, tile, sprite, and detail proxies
+  api/route-intelligence/ Authenticated route candidate provider boundary
   api/weather/      METAR and TAF proxies
 components/
   auth/             Clerk provider and account sync controls
@@ -135,6 +144,9 @@ types/              OpenAIP and planning TypeScript models
 - Production is deployed on Vercel. `OPENAIP_API_KEY` and `NEXT_PUBLIC_MAPTILER_KEY` are configured for the production deployment.
 - Supabase auth/account sync has been replaced by the current Clerk + Neon path. Vercel Marketplace approval/account setup is required before production account sync can be enabled.
 - Live NOTAM data is not faked. Halo defaults to South Africa official manual briefing mode, prepares route locations, and links ATNS File2Fly. The live South Africa adapter is present behind `NOTAM_PROVIDER=south-africa-live` but requires a real authorized API URL and key. FAA remains available only behind `NOTAM_PROVIDER=faa` for future international rollout.
+- Route Advisor does not fake airway, procedure, or official preferred-route expansion. Direct and Current/User Route candidates use local waypoint geometry; Provider Route returns an explicit unavailable/not-configured state until licensed navdata is configured.
+- Airfield and frequency briefs use available OpenAIP-style feature data only and keep official SACAA/ATNS/AIP verification visible. Missing frequency/runway data is treated as a review item, not a successful blank result.
+- Winds aloft remains provider-gated; manual route wind is the default operational fallback when no authorized winds provider is configured.
 - Weight-and-balance remains aircraft-registration-specific: presets provide structure, but pilots must enter verified POH/AFM empty weight, arms, max weights, and envelope points before using the CG status operationally.
 
 ## Documentation

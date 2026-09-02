@@ -10,9 +10,12 @@ import type {
   FilingWorkflowReview,
   FuelPlanningResult,
   GridMoraReview,
+  RouteAirfieldBrief,
   RouteAirspaceAlert,
   RouteAnalysis,
+  RouteIntelligenceReview,
   RouteNotamReview,
+  RouteWeatherReview,
   TrainingNavLog,
   WeightBalanceResult,
   WeightBalanceStateResult,
@@ -25,6 +28,9 @@ import { formatFilingWorkflowLines } from './filingReminder';
 import { formatFlightAdminLines } from './flightAdmin';
 import { formatFuelQuantity } from './fuel';
 import { formatGridMoraReviewLines } from './gridMora';
+import { formatRouteAirfieldBriefLines } from './airfieldBrief';
+import { formatRouteIntelligenceReviewLines } from './routeIntelligence';
+import { formatRouteWeatherReviewLines } from './routeWeather';
 import { getWeightBalanceStatusLabel } from './weightBalance';
 
 export interface BackupPackParams {
@@ -46,6 +52,9 @@ export interface BackupPackParams {
   filingReview?: FilingWorkflowReview;
   flightAdminReview?: FlightAdminReview;
   emergencyReview?: EmergencyPlanningReview;
+  routeIntelligenceReview?: RouteIntelligenceReview;
+  routeWeatherReview?: RouteWeatherReview;
+  routeAirfieldBrief?: RouteAirfieldBrief;
   departureTime?: string;
   cruiseAltitudeFt?: number;
   notes?: string;
@@ -71,6 +80,9 @@ export function buildBackupPackText(params: BackupPackParams): string {
     filingReview,
     flightAdminReview,
     emergencyReview,
+    routeIntelligenceReview,
+    routeWeatherReview,
+    routeAirfieldBrief,
     departureTime,
     cruiseAltitudeFt,
     notes,
@@ -101,6 +113,9 @@ export function buildBackupPackText(params: BackupPackParams): string {
     'WAYPOINTS',
     ...formatWaypoints(waypoints),
     '',
+    'ROUTE ADVISOR',
+    ...formatRouteIntelligenceReviewLines(routeIntelligenceReview),
+    '',
     'NAVLOG',
     ...formatOperationalNavLog(route),
     '',
@@ -109,6 +124,9 @@ export function buildBackupPackText(params: BackupPackParams): string {
     '',
     'FUEL',
     ...formatFuelPlanning(fuelPlanningResult, route),
+    '',
+    'ROUTE WEATHER REVIEW',
+    ...formatRouteWeatherReviewLines(routeWeatherReview),
     '',
     'WEIGHT & BALANCE',
     ...formatWeightBalance(weightBalanceResult),
@@ -124,6 +142,9 @@ export function buildBackupPackText(params: BackupPackParams): string {
     '',
     'GRID MORA',
     ...formatGridMoraReviewLines(gridMoraReview),
+    '',
+    'ROUTE AIRFIELDS / FREQUENCIES',
+    ...formatRouteAirfieldBriefLines(routeAirfieldBrief),
     '',
     'NOTAM',
     ...formatNotam(routeNotamReview),
@@ -151,6 +172,8 @@ export function buildBackupPackText(params: BackupPackParams): string {
     'OFFICIAL SOURCE LINKS',
     `NOTAM source: ${routeNotamReview?.sourceUrl ?? 'Official source not configured in Halo'}`,
     `Grid MORA source: ${gridMoraReview?.sourceUrl ?? 'Licensed provider not configured in Halo'}`,
+    `Route airfield source: ${routeAirfieldBrief?.sourceUrl ?? 'https://www.caa.co.za/industry-information/aeronautical-information/'}`,
+    `Route weather source: ${routeWeatherReview?.sourceUrl ?? 'https://aviationweather.gov/'}`,
     'Weather source: https://aviationweather.gov/',
     'South Africa official filing/briefing: https://file2fly.atns.co.za/aes/login.jsp',
     'OpenAIP aviation data: https://www.openaip.net/',

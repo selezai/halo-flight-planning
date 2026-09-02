@@ -13,7 +13,7 @@ export const TEST_PILOT_OPENED_STORAGE_KEY = 'halo-test-pilot-opened';
 export const TEST_PILOT_CONTINUE_HREF = '/?testPilot=1&source=access-gate';
 export const TEST_PILOT_OWNER_STORAGE_VALUE = 'test-pilot';
 export const TEST_PILOT_STORAGE_BACKUP_PREFIX = 'halo-test-pilot-storage-backup-';
-export const TEST_PILOT_MAP_STORE_VERSION = 4;
+export const TEST_PILOT_MAP_STORE_VERSION = 5;
 
 export type TestPilotSearchParams = Record<string, string | string[] | undefined>;
 

@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_AIRCRAFT } from '@/lib/planning/aircraft';
-import { buildBriefingDigest, buildBriefingText } from '@/lib/planning/briefing';
+import {
+  buildBriefingDigest,
+  buildBriefingText,
+  buildDispatchBriefingPackage,
+  formatDispatchBriefingPackageLines,
+} from '@/lib/planning/briefing';
+import { buildRouteAirfieldBrief } from '@/lib/planning/airfieldBrief';
 import { buildFlightAdminReview } from '@/lib/planning/flightAdmin';
 import { calculateRoute } from '@/lib/planning/navigation';
+import { buildRouteIntelligenceReview } from '@/lib/planning/routeIntelligence';
+import { buildRouteWeatherReview } from '@/lib/planning/routeWeather';
 import type { BriefingRisk, RouteNotamReview, Waypoint, WeightBalanceResult } from '@/types/planning';
 
 const faor: Waypoint = {
@@ -105,5 +113,60 @@ describe('briefing digest', () => {
     expect(text).toContain('PILOT DIGEST');
     expect(text).toContain('FLIGHT ADMIN');
     expect(text).toContain('Official NOTAM briefing is not recorded in Halo');
+  });
+
+  it('builds a structured dispatch package with every commercial-parity section and handoff warning', () => {
+    const route = calculateRoute([faor, fala], DEFAULT_AIRCRAFT);
+    const routeIntelligenceReview = buildRouteIntelligenceReview({
+      waypoints: [faor, fala],
+      aircraft: DEFAULT_AIRCRAFT,
+    });
+    const routeWeatherReview = buildRouteWeatherReview({
+      waypoints: [faor, fala],
+      reports: {},
+      tafs: {},
+    });
+    const routeAirfieldBrief = buildRouteAirfieldBrief({
+      waypoints: [faor, fala],
+    });
+    const digest = buildBriefingDigest({
+      routeName: 'FAOR-FALA',
+      route,
+      risks: [],
+      weather: [],
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
+    });
+    const dispatchPackage = buildDispatchBriefingPackage({
+      routeName: 'FAOR-FALA',
+      aircraft: DEFAULT_AIRCRAFT,
+      route,
+      waypoints: [faor, fala],
+      digest,
+      weather: [],
+      risks: [],
+      routeIntelligenceReview,
+      routeWeatherReview,
+      routeAirfieldBrief,
+      routeNotamReview: notamReview,
+      weightBalanceResult,
+      now: new Date('2026-09-01T08:00:00Z'),
+    });
+
+    expect(dispatchPackage.sections.map((section) => section.id)).toEqual([
+      'route-advisor',
+      'navlog',
+      'fuel-policy',
+      'weight-balance',
+      'weather',
+      'airspace-notam-admin',
+      'route-frequencies',
+      'emergency',
+      'data-freshness',
+    ]);
+    expect(dispatchPackage.officialHandoff.required).toBe(true);
+    expect(dispatchPackage.officialHandoff.message).toContain('official weather');
+    expect(formatDispatchBriefingPackageLines(dispatchPackage).join('\n')).toContain('ROUTE FREQUENCIES & AIRFIELDS');
   });
 });

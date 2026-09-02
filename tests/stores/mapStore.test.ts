@@ -20,6 +20,8 @@ describe('map store route planning actions', () => {
       missionLibrary: [],
       routeName: 'Test active mission',
       waypoints: [],
+      selectedRouteCandidateId: undefined,
+      weightBalanceLoadTemplates: [],
       sidebarOpen: false,
       sidebarPanel: 'briefing',
       routeEditingActive: false,
@@ -63,6 +65,50 @@ describe('map store route planning actions', () => {
       inserted.id,
       second.id,
     ]);
+  });
+
+  it('replaces route waypoints when applying a route advisor candidate', () => {
+    const first = createUserWaypoint([28, -26], 1);
+    const second = createUserWaypoint([29, -27], 2);
+
+    useMapStore.getState().replaceRouteWaypoints([first, second], 'direct-route');
+    const state = useMapStore.getState();
+
+    expect(state.waypoints).toHaveLength(2);
+    expect(state.selectedRouteCandidateId).toBe('direct-route');
+    expect(state.routeNotamReview.status).toBe('needs-route');
+  });
+
+  it('saves and applies W&B load templates through store actions', () => {
+    useMapStore.setState({
+      activeAircraft: DEFAULT_AIRCRAFT,
+      weightBalanceLoading: {
+        fuelGal: 22,
+        stationWeights: {
+          'front-seats': 180,
+        },
+      },
+      weightBalanceLoadTemplates: [],
+    });
+
+    const templateId = useMapStore.getState().saveWeightBalanceLoadTemplate('Solo local load');
+
+    expect(templateId).toBeTruthy();
+
+    useMapStore.getState().updateWeightBalanceLoading({
+      fuelGal: 10,
+      stationWeights: {
+        'front-seats': 100,
+      },
+    });
+    useMapStore.getState().applyWeightBalanceLoadTemplateById(templateId as string);
+
+    expect(useMapStore.getState().weightBalanceLoading).toMatchObject({
+      fuelGal: 22,
+      stationWeights: {
+        'front-seats': 180,
+      },
+    });
   });
 
   it('tracks active route editing without changing persisted planner fields', () => {

@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AircraftProfile, WeightBalanceConfig, WeightBalanceLoading } from '@/types/planning';
 import {
+  applyWeightBalanceLoadTemplate,
   calculateWeightBalance,
+  createWeightBalanceLoadTemplate,
   createDefaultWeightBalanceConfig,
+  exportWeightBalanceLoadTemplates,
+  importWeightBalanceLoadTemplates,
   interpolateEnvelopeLimits,
+  validateWeightBalanceLoadTemplate,
 } from '@/lib/planning/weightBalance';
 
 const config: WeightBalanceConfig = {
@@ -136,5 +141,64 @@ describe('weight and balance', () => {
     expect(result.status).toBe('out-of-limits');
     expect(result.issues.some((issue) => issue.includes('exceeds loaded takeoff fuel'))).toBe(true);
     expect(result.landing?.weightLb).toBeLessThan(result.takeoff?.weightLb ?? 0);
+  });
+
+  it('saves load templates and preserves locked/default station weights when applied', () => {
+    const template = createWeightBalanceLoadTemplate({
+      name: 'Dual training',
+      aircraft,
+      loading,
+      lockedStationWeights: { baggage: 15 },
+      now: new Date('2026-09-01T08:00:00Z'),
+    });
+    const applied = applyWeightBalanceLoadTemplate(template, {
+      fuelGal: 20,
+      stationWeights: { baggage: 80 },
+    });
+
+    expect(template.aircraftId).toBe('test-c172');
+    expect(applied.fuelGal).toBe(40);
+    expect(applied.stationWeights).toMatchObject({
+      'front-seats': 340,
+      'rear-seats': 120,
+      baggage: 15,
+    });
+  });
+
+  it('validates saved load templates against station limits and aircraft usable fuel', () => {
+    const template = createWeightBalanceLoadTemplate({
+      name: 'Invalid baggage',
+      aircraft,
+      loading: {
+        fuelGal: 60,
+        stationWeights: {
+          ...loading.stationWeights,
+          baggage: 160,
+        },
+      },
+    });
+
+    const issues = validateWeightBalanceLoadTemplate(config, template, aircraft.usableFuelGal);
+
+    expect(issues).toContain('Load template fuel exceeds selected aircraft usable fuel.');
+    expect(issues).toContain('Baggage exceeds station max weight.');
+  });
+
+  it('exports and imports load template manifests as JSON', () => {
+    const template = createWeightBalanceLoadTemplate({
+      name: 'Solo',
+      aircraft,
+      loading,
+      now: new Date('2026-09-01T08:00:00Z'),
+    });
+    const payload = exportWeightBalanceLoadTemplates([template]);
+    const imported = importWeightBalanceLoadTemplates(payload);
+
+    expect(imported).toHaveLength(1);
+    expect(imported[0]).toMatchObject({
+      id: template.id,
+      name: 'Solo',
+      fuelGal: 40,
+    });
   });
 });
